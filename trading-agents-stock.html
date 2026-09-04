@@ -2754,7 +2754,7 @@
         el.sectorStrengthGrid.innerHTML = `<div class="sector-strength-empty">板块强度暂不可用：${escapeHtml(state.marketMessage)}</div>`;
         return;
       }
-      const sectors = state.sectorStrength.slice(0, 8);
+      const sectors = state.sectorStrength.slice(0, 9);
       el.sectorStrengthTag.textContent = state.sectorRefreshError
         ? "刷新失败 · 保留上次数据"
         : sectors.length ? `前 ${sectors.length} 强` : "暂无数据";

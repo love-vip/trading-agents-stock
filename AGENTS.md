@@ -9,7 +9,7 @@
 ## 文件与架构
 
 - `market_server.py`：仅使用 Python 标准库的 HTTP 服务、公开行情适配、筛选因子、缓存和 JSON API。
-- `tradingagents-stock-selector.html`：单文件前端，包含样式、页面结构和原生 JavaScript 状态管理与 SVG 图表。
+- `trading-agents-stock.html`：单文件前端，包含样式、页面结构和原生 JavaScript 状态管理与 SVG 图表。
 
 服务直接读取同目录的 HTML 文件，因此修改前端后刷新浏览器即可生效，不需要前端构建步骤。
 
@@ -27,7 +27,7 @@ python3 market_server.py --host 127.0.0.1 --port 8502
 
 ```bash
 python3 -m py_compile market_server.py
-node -e 'const fs=require("fs"); const h=fs.readFileSync("tradingagents-stock-selector.html","utf8"); new Function(h.split("<script>")[1].split("</script>")[0]); console.log("HTML script OK")'
+node -e 'const fs=require("fs"); const h=fs.readFileSync("trading-agents-stock.html","utf8"); new Function(h.split("<script>")[1].split("</script>")[0]); console.log("HTML script OK")'
 curl -fsS http://127.0.0.1:8502/api/health
 ```
 

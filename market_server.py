@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 
 BASE_DIR = Path(__file__).resolve().parent
-HTML_FILE = BASE_DIR / "tradingagents-stock-selector.html"
+HTML_FILE = BASE_DIR / "trading-agents-stock.html"
 QUOTE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 EASTMONEY_LIST_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
 EASTMONEY_MINUTE_KLINE_URL = "https://push2delay.eastmoney.com/api/qt/stock/kline/get"
@@ -818,8 +818,8 @@ def aggregate_sector_strength(quotes: List[Dict[str, Any]]) -> List[Dict[str, An
         leaders = sorted(
             members,
             key=lambda item: (
-                item.get("screener", {}).get("snapshotScore") or 0,
                 item.get("changePct") or -100,
+                item.get("screener", {}).get("snapshotScore") or 0,
                 item.get("amount") or 0,
             ),
             reverse=True,
