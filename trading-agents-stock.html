@@ -608,6 +608,38 @@
       text-align: center;
     }
 
+    .limit-up-view { padding: 16px; }
+    .limit-up-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .limit-up-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .limit-up-card { position: relative; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
+    .limit-up-card[data-status="sealed"] { border-color: rgba(255, 92, 92, .55); box-shadow: inset 3px 0 0 var(--red); }
+    .limit-up-card[data-status="broken"] { border-color: rgba(255, 184, 77, .5); }
+    .limit-up-card-head { display: flex; justify-content: space-between; gap: 10px; padding-right: 38px; }
+    .limit-up-name { font-size: 15px; font-weight: 700; }
+    .limit-up-code, .limit-up-industry, .limit-up-note { color: var(--muted); font-size: 11px; }
+    .limit-up-change { font-size: 18px; font-weight: 750; }
+    .limit-up-badge { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid var(--cyan); border-radius: 50%; color: var(--cyan); font-size: 12px; font-weight: 800; background: rgba(56, 189, 248, .1); }
+    .limit-up-badge[data-level="hot"] { border-color: var(--red); color: var(--red); background: rgba(255, 92, 92, .12); }
+    .limit-up-badge[data-level="warm"] { border-color: var(--amber); color: var(--amber); background: rgba(255, 184, 77, .12); }
+    .limit-up-board-tag { display: inline-block; margin-left: 6px; padding: 2px 4px; border: 1px solid; border-radius: 4px; font-size: 10px; font-weight: 800; line-height: 1.1; vertical-align: 2px; }
+    .limit-up-board-tag[data-tag="one-word"] { border-color: rgba(255, 92, 92, .7); color: var(--red); background: rgba(255, 92, 92, .14); }
+    .limit-up-board-tag[data-tag="re-seal"] { border-color: rgba(34, 211, 238, .65); color: var(--cyan); background: rgba(34, 211, 238, .12); }
+    .limit-up-board-tag[data-tag="broken"] { border-color: rgba(255, 184, 77, .7); color: var(--amber); background: rgba(255, 184, 77, .14); }
+    .limit-up-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 12px 0; }
+    .limit-up-metric { padding: 7px; border-radius: 6px; background: rgba(255,255,255,.035); }
+    .limit-up-metric span { display: block; color: var(--muted-2); font-size: 10px; }
+    .limit-up-metric strong { display: block; margin-top: 2px; font-size: 12px; }
+    .limit-up-score-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; }
+    .limit-up-score { position: relative; font-size: 20px; font-weight: 800; color: var(--cyan); cursor: help; }
+    .limit-up-score::after { content: attr(data-tooltip); position: absolute; z-index: 7; right: 0; bottom: calc(100% + 8px); width: max-content; max-width: 300px; padding: 8px 9px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel-strong); box-shadow: 0 8px 20px rgba(0,0,0,.24); color: var(--text); font-size: 11px; font-weight: 500; line-height: 1.45; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity 140ms ease, transform 140ms ease; white-space: normal; }
+    .limit-up-score:hover::after, .limit-up-score:focus-visible::after { opacity: 1; transform: translateY(0); }
+    .limit-up-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .limit-up-signals { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0 2px; }
+    .limit-up-signal { position: relative; padding: 3px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted-2); font-size: 10px; cursor: help; }
+    .limit-up-signal.met { border-color: rgba(52, 211, 153, .45); color: var(--green); background: rgba(52, 211, 153, .08); }
+    .limit-up-signal::after { content: attr(data-tooltip); position: absolute; z-index: 6; left: 0; bottom: calc(100% + 7px); width: max-content; max-width: 250px; padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel-strong); box-shadow: 0 8px 20px rgba(0,0,0,.24); color: var(--text); font-size: 11px; font-weight: 500; line-height: 1.4; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity 140ms ease, transform 140ms ease; white-space: normal; }
+    .limit-up-signal:hover::after, .limit-up-signal:focus-visible::after { opacity: 1; transform: translateY(0); }
+
     .main-grid {
       display: grid;
       grid-template-columns: 280px minmax(0, 1.35fr) minmax(320px, 0.85fr);
@@ -745,6 +777,7 @@
     }
 
     .score {
+      position: relative;
       width: 58px;
       height: 58px;
       border-radius: 50%;
@@ -756,7 +789,35 @@
       font-weight: 800;
       color: var(--text);
       flex: 0 0 auto;
+      cursor: help;
     }
+
+    .score::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      z-index: 8;
+      right: 0;
+      bottom: calc(100% + 8px);
+      width: max-content;
+      max-width: 310px;
+      padding: 8px 9px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--panel-strong);
+      box-shadow: 0 8px 20px rgba(0,0,0,.24);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.45;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(3px);
+      transition: opacity 140ms ease, transform 140ms ease;
+      white-space: normal;
+    }
+
+    .score:hover::after,
+    .score:focus-visible::after { opacity: 1; transform: translateY(0); }
 
     .stock-quote {
       min-width: 88px;
@@ -1562,6 +1623,7 @@
     }
 
     @media (max-width: 1160px) {
+      .limit-up-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .control-deck {
         grid-template-columns: repeat(3, minmax(180px, 1fr));
       }
@@ -1671,6 +1733,8 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      .limit-up-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
       .dynamic-deck {
         grid-template-columns: 1fr 1fr;
       }
@@ -1681,6 +1745,7 @@
     }
 
     @media (max-width: 560px) {
+      .limit-up-grid { grid-template-columns: 1fr; }
       .nav-submenu {
         grid-template-columns: repeat(2, minmax(132px, 1fr));
       }
@@ -1755,14 +1820,16 @@
         <button class="nav-button active" id="overviewNav" type="button" data-market="all">
           <span>全部类型</span><span class="nav-count" id="overviewCount"></span>
         </button>
-        <button class="nav-button" id="sectorStrengthNav" type="button">
-          <span>板块强度</span><span class="nav-count">今日</span>
-        </button>
-        <div class="nav-section-label">其他市场</div>
         <button class="nav-button" id="sectorToggle" type="button" aria-expanded="true" aria-controls="sectorNav">
           <span>市场切换</span><span class="nav-count" id="sectorTotal">5</span>
         </button>
         <div class="nav-submenu" id="sectorNav"></div>
+        <button class="nav-button" id="sectorStrengthNav" type="button">
+          <span>板块强度</span><span class="nav-count">今日</span>
+        </button>
+        <button class="nav-button" id="limitUpNav" type="button">
+          <span>涨停打板</span><span class="nav-count">主板</span>
+        </button>
       </nav>
       <div class="nav-foot">每次仅扫描所选市场的实时快照。入选候选在打开图表时按需加载历史 K 线。</div>
     </aside>
@@ -1960,6 +2027,23 @@
         </div>
       </div>
       <div class="sector-strength-grid" id="sectorStrengthGrid" aria-live="polite"></div>
+    </section>
+
+    <section class="panel limit-up-view" id="limitUpView" aria-label="涨停打板候选" hidden>
+      <div class="section-head">
+        <div>
+          <h2>涨停打板候选</h2>
+          <span class="sector-strength-note">仅扫描沪深主板；根据板块共振、攻击强度、成交活跃、换手、流通盘与历史涨停综合评分</span>
+        </div>
+        <div class="limit-up-actions">
+          <span class="tag" id="limitUpTradingStatus">状态：判断中</span>
+          <span class="tag" id="limitUpDelayStatus">延迟：--</span>
+          <span class="tag" id="limitUpCountdown">下次刷新：--</span>
+          <button class="btn" id="limitUpRefresh" type="button">刷新候选</button>
+        </div>
+      </div>
+      <div class="limit-up-summary" id="limitUpSummary"></div>
+      <div class="limit-up-grid" id="limitUpGrid" aria-live="polite"></div>
     </section>
     </main>
   </div>
@@ -2220,6 +2304,9 @@
       downtrendExcludedCount: null,
       sectorStrength: [],
       sectorRefreshError: null,
+      limitUpCandidates: [],
+      limitUpScannedCount: null,
+      limitUpError: null,
       detailLoadingCode: null,
       conceptLoadingCode: null,
       stockClickTimer: null,
@@ -2263,6 +2350,7 @@
       sectorRefreshCountdown: document.getElementById("sectorRefreshCountdown"),
       screenerView: document.getElementById("screenerView"),
       sectorStrengthView: document.getElementById("sectorStrengthView"),
+      limitUpView: document.getElementById("limitUpView"),
       weightRows: document.getElementById("weightRows"),
       strategyTag: document.getElementById("strategyTag"),
       selectionReason: document.getElementById("selectionReason"),
@@ -2273,6 +2361,13 @@
       themeToggle: document.getElementById("themeToggle"),
       overviewNav: document.getElementById("overviewNav"),
       sectorStrengthNav: document.getElementById("sectorStrengthNav"),
+      limitUpNav: document.getElementById("limitUpNav"),
+      limitUpGrid: document.getElementById("limitUpGrid"),
+      limitUpSummary: document.getElementById("limitUpSummary"),
+      limitUpRefresh: document.getElementById("limitUpRefresh"),
+      limitUpTradingStatus: document.getElementById("limitUpTradingStatus"),
+      limitUpDelayStatus: document.getElementById("limitUpDelayStatus"),
+      limitUpCountdown: document.getElementById("limitUpCountdown"),
       overviewCount: document.getElementById("overviewCount"),
       sectorToggle: document.getElementById("sectorToggle"),
       sectorNav: document.getElementById("sectorNav"),
@@ -2295,11 +2390,16 @@
     const SECTOR_REFRESH_BACKGROUND_MS = 90000;
     const SCREENER_REFRESH_FOREGROUND_MS = 60000;
     const SCREENER_REFRESH_BACKGROUND_MS = 180000;
+    const LIMIT_UP_REFRESH_FOREGROUND_MS = 25000;
+    const LIMIT_UP_REFRESH_BACKGROUND_MS = 90000;
     let sectorRefreshTimer = null;
     let sectorRefreshNextAt = null;
     let sectorRefreshInFlight = false;
     let screenerRefreshTimer = null;
     let screenerRefreshNextAt = null;
+    let limitUpRefreshTimer = null;
+    let limitUpRefreshNextAt = null;
+    let limitUpRefreshInFlight = false;
 
     function savedTheme() {
       try {
@@ -2435,6 +2535,13 @@
     }
 
     function updatePageMeta() {
+      if (state.pageView === "limit-up") {
+        el.pageTitle.textContent = "涨停打板";
+        el.pageDescription.textContent = "仅关注沪深主板，以板块共振、盘中攻击性和一年涨停记录筛选短线候选。";
+        el.sectorMode.textContent = "范围：沪深主板";
+        document.title = "TradingAgents 涨停打板";
+        return;
+      }
       if (state.pageView === "sector-strength") {
         el.pageTitle.textContent = "今日板块强度";
         el.pageDescription.textContent = "观察全市场行业强弱与核心强势票，数据来自当日行情快照。";
@@ -2454,6 +2561,7 @@
       const [primary, ...secondary] = entries;
       el.overviewNav.classList.toggle("active", state.pageView === "screener" && state.marketScope === primary[0]);
       el.sectorStrengthNav.classList.toggle("active", state.pageView === "sector-strength");
+      el.limitUpNav.classList.toggle("active", state.pageView === "limit-up");
       el.overviewCount.textContent = "";
       el.sectorTotal.textContent = secondary.length;
       el.sectorNav.innerHTML = secondary.map(([key, market]) => `
@@ -2473,6 +2581,7 @@
       clearPendingStockClick();
       clearSectorRefreshTimer();
       clearScreenerRefreshTimer();
+      clearLimitUpRefreshTimer();
       if (state.chartOpen) closeChartModal();
       state.scannedCount = null;
       state.matchedCount = null;
@@ -2497,6 +2606,7 @@
     function openSectorStrength(forceRefresh = false) {
       clearPendingStockClick();
       clearScreenerRefreshTimer();
+      clearLimitUpRefreshTimer();
       if (state.chartOpen) closeChartModal();
       const enteringView = state.pageView !== "sector-strength";
       const needsAllMarket = state.marketScope !== "all";
@@ -2510,6 +2620,20 @@
       } else {
         scheduleSectorRefresh();
       }
+    }
+
+    function openLimitUp(forceRefresh = false) {
+      clearPendingStockClick();
+      clearSectorRefreshTimer();
+      clearScreenerRefreshTimer();
+      if (state.chartOpen) closeChartModal();
+      const enteringView = state.pageView !== "limit-up";
+      state.pageView = "limit-up";
+      state.marketStatus = state.limitUpCandidates.length ? "ready" : "loading";
+      renderSectorNavigation();
+      render();
+      if (enteringView || !state.limitUpCandidates.length || forceRefresh) refreshLimitUpNow(forceRefresh);
+      else scheduleLimitUpRefresh();
     }
 
     function chinaMarketClock(date = new Date()) {
@@ -2552,6 +2676,70 @@
       if (screenerRefreshTimer !== null) window.clearTimeout(screenerRefreshTimer);
       screenerRefreshTimer = null;
       screenerRefreshNextAt = null;
+    }
+
+    function clearLimitUpRefreshTimer() {
+      if (limitUpRefreshTimer !== null) window.clearTimeout(limitUpRefreshTimer);
+      limitUpRefreshTimer = null;
+      limitUpRefreshNextAt = null;
+    }
+
+    function renderLimitUpStatus() {
+      const session = marketSessionState();
+      el.limitUpTradingStatus.textContent = `状态：${session.label}`;
+      const quoteTime = state.marketUpdatedAt ? new Date(state.marketUpdatedAt).getTime() : NaN;
+      if (!Number.isFinite(quoteTime)) el.limitUpDelayStatus.textContent = "延迟：--";
+      else if (!session.active) el.limitUpDelayStatus.textContent = `${session.label} · 行情 ${formatUpdatedAt(state.marketUpdatedAt)}`;
+      else {
+        const lag = Math.max(0, Math.round((Date.now() - quoteTime) / 1000));
+        el.limitUpDelayStatus.textContent = lag <= 60 ? `准实时 · 延迟约 ${lag} 秒` : `行情延迟约 ${Math.ceil(lag / 60)} 分钟`;
+      }
+      if (!session.active) el.limitUpCountdown.textContent = `${session.label} · 自动刷新已停`;
+      else if (limitUpRefreshInFlight) el.limitUpCountdown.textContent = "正在刷新...";
+      else if (limitUpRefreshNextAt) el.limitUpCountdown.textContent = `下次刷新：${Math.max(0, Math.ceil((limitUpRefreshNextAt - Date.now()) / 1000))} 秒`;
+      else el.limitUpCountdown.textContent = "等待自动刷新";
+    }
+
+    function scheduleLimitUpRefresh() {
+      clearLimitUpRefreshTimer();
+      const session = marketSessionState();
+      if (state.pageView !== "limit-up" || !session.active) {
+        renderLimitUpStatus();
+        return;
+      }
+      const delay = document.hidden ? LIMIT_UP_REFRESH_BACKGROUND_MS : LIMIT_UP_REFRESH_FOREGROUND_MS;
+      limitUpRefreshNextAt = Date.now() + delay;
+      limitUpRefreshTimer = window.setTimeout(() => refreshLimitUpNow(true), delay);
+      renderLimitUpStatus();
+    }
+
+    async function refreshLimitUpNow(forceRefresh = true) {
+      if (limitUpRefreshInFlight) return;
+      clearLimitUpRefreshTimer();
+      limitUpRefreshInFlight = true;
+      state.limitUpError = null;
+      renderLimitUpStatus();
+      try {
+        const query = new URLSearchParams();
+        if (forceRefresh) query.set("refresh", "1");
+        const response = await fetch(`/api/limit-up?${query}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        state.limitUpCandidates = Array.isArray(payload.quotes) ? payload.quotes : [];
+        state.limitUpScannedCount = payload.scannedCount ?? null;
+        state.marketDate = payload.marketDate;
+        state.marketUpdatedAt = payload.updatedAt;
+        state.marketSource = payload.source;
+        state.marketStatus = "ready";
+        state.marketMessage = `涨停候选已更新，共 ${state.limitUpCandidates.length} 只`;
+      } catch (error) {
+        state.limitUpError = error.message || "无法刷新涨停候选";
+        if (!state.limitUpCandidates.length) state.marketStatus = "error";
+      }
+      limitUpRefreshInFlight = false;
+      renderSectorNavigation();
+      render();
+      scheduleLimitUpRefresh();
     }
 
     function screenerRefreshStatusText() {
@@ -2788,6 +2976,90 @@
       `).join("");
     }
 
+    function renderLimitUpCandidates() {
+      if (limitUpRefreshInFlight && !state.limitUpCandidates.length) {
+        el.limitUpSummary.innerHTML = `<span class="tag">正在扫描沪深主板并统计一年涨停记录...</span>`;
+        el.limitUpGrid.innerHTML = `<div class="sector-strength-empty">首次加载需要补充候选股历史日线，请稍候。</div>`;
+        return;
+      }
+      if (state.limitUpError && !state.limitUpCandidates.length) {
+        el.limitUpSummary.innerHTML = `<span class="tag">获取失败</span>`;
+        el.limitUpGrid.innerHTML = `<div class="sector-strength-empty">${escapeHtml(state.limitUpError)}</div>`;
+        return;
+      }
+      const list = state.limitUpCandidates;
+      const sealed = list.filter((stock) => stock.limitUp?.status === "sealed").length;
+      const broken = list.filter((stock) => stock.limitUp?.status === "broken").length;
+      const repeated = list.filter((stock) => (stock.limitUp?.history?.sealedCount || 0) >= 1).length;
+      el.limitUpSummary.innerHTML = `
+        <span class="tag">扫描 ${hasNumber(state.limitUpScannedCount) ? state.limitUpScannedCount.toLocaleString("zh-CN") : "--"} 只</span>
+        <span class="tag">候选 ${list.length} 只</span>
+        <span class="tag">已封板 ${sealed} 只</span>
+        <span class="tag">炸板 ${broken} 只</span>
+        <span class="tag">一年有封板记录 ${repeated} 只</span>
+        ${state.limitUpError ? `<span class="tag">刷新失败 · 保留上次数据</span>` : ""}
+      `;
+      if (!list.length) {
+        el.limitUpGrid.innerHTML = `<div class="sector-strength-empty">当前没有满足成交额与涨幅基础条件的沪深主板股票。</div>`;
+        return;
+      }
+      const signalTooltip = (signal, stock, history) => {
+        const sector = stock.limitUp?.sector || {};
+        const descriptions = {
+          sector: `标准：板块强度前 9，且至少 3 只上涨。当前：第 ${sector.rank ?? "--"}，上涨 ${sector.risingCount ?? "--"}/${sector.memberCount ?? "--"}。`,
+          gain: `标准：涨幅 5%–9.8%，且现价不低于开盘价。当前涨幅：${formatPct(stock.changePct)}。`,
+          linkage: `标准：板块至少 4 只上涨，且上涨占比不低于 50%。当前上涨：${sector.risingCount ?? "--"}/${sector.memberCount ?? "--"}。`,
+          amount: `标准：成交额不低于 1 亿元，避免无量拉升。当前：${formatAmount(stock.amount)}。`,
+          volume: `标准：量比不低于 1.5，代表当前成交速度明显高于日常。当前：${hasNumber(stock.volumeRatio) ? stock.volumeRatio.toFixed(2) : "--"}。`,
+          turnover: `标准：换手率处于 3%–18%，兼顾资金参与和不过度爆量。当前：${hasNumber(stock.screener?.turnover) ? stock.screener.turnover.toFixed(2) : "--"}%。`,
+          cap: `标准：流通市值处于 30–500 亿元。当前：${formatAmount(stock.floatMarketCap)}。`,
+          history: `展示项：过去一年收盘封板次数，不作为候选硬门槛。当前：${history.sealedCount || 0} 次。`,
+          recent: `标准：最近一次封板距今 20–60 个交易日，代表短线资金记忆仍在。当前：${history.sessionsSinceRecentLimit ?? "--"} 个交易日。`,
+          open: `标准：开盘涨幅不超过 4%、现价不低于开盘价、振幅不超过 12%。当前开盘涨幅：${hasNumber(stock.limitUp?.openGapPct) ? formatPct(stock.limitUp.openGapPct) : "--"}。`,
+        };
+        return `${descriptions[signal.key] || signal.label} ${signal.met ? "当前满足。" : "当前未满足。"}`;
+      };
+      const scoreTooltip = (stock) => {
+        const score = stock.limitUp?.score || {};
+        const contribution = (key, weight) => ((score[key] || 0) * weight).toFixed(1);
+        const brokenPenalty = stock.limitUp?.status === "broken" ? "；触板已开额外扣 12 分" : "";
+        return `综合分 = 板块×25% + 攻击×25% + 活跃×15% + 换手×10% + 历史×10% + 流通盘×10% + 稳定×5%。当前贡献：板块 ${contribution("sector", .25)}、攻击 ${contribution("attack", .25)}、活跃 ${contribution("activity", .15)}、换手 ${contribution("turnover", .10)}、历史 ${contribution("history", .10)}、流通盘 ${contribution("marketCap", .10)}、稳定 ${contribution("stability", .05)}${brokenPenalty}。`;
+      };
+      el.limitUpGrid.innerHTML = list.map((stock) => {
+        const history = stock.limitUp?.history || {};
+        const count = history.sealedCount || 0;
+        const badge = `<span class="limit-up-badge" data-level="${count >= 7 ? "hot" : count >= 5 ? "warm" : "normal"}" title="过去一年收盘封板 ${count} 次">${count}</span>`;
+        const boardTag = stock.limitUp?.boardTag;
+        const boardTagMarkup = boardTag
+          ? `<span class="limit-up-board-tag" data-tag="${boardTag.key}" title="${escapeHtml(boardTag.note)}">${escapeHtml(boardTag.label)}</span>`
+          : "";
+        return `
+          <article class="limit-up-card" data-status="${stock.limitUp?.status || "candidate"}">
+            ${badge}
+            <div class="limit-up-card-head">
+              <div><div class="limit-up-name">${escapeHtml(stock.name)}${boardTagMarkup}</div><div class="limit-up-code">${stock.code} · ${escapeHtml(stock.actualIndustry || "行业待分类")}</div></div>
+              <div class="limit-up-change ${quoteClass(stock.changePct)}">${formatPct(stock.changePct)}</div>
+            </div>
+            <div class="limit-up-metrics">
+              <div class="limit-up-metric"><span>总市值 / 流通市值</span><strong>${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}</strong></div>
+              <div class="limit-up-metric"><span>现价 / 涨停价</span><strong>${formatPrice(stock.price)} / ${formatPrice(stock.limitUp?.limitPrice)}</strong></div>
+              <div class="limit-up-metric"><span>成交额 / 换手</span><strong>${formatAmount(stock.amount)} / ${stock.screener?.turnover?.toFixed(2) ?? "--"}%</strong></div>
+              <div class="limit-up-metric"><span>一年封板 / 炸板</span><strong>${history.available ? `${count} / ${history.brokenCount || 0}` : "历史数据不足"}</strong></div>
+            </div>
+            <div class="limit-up-signals" aria-label="${escapeHtml(stock.name)}条件命中情况">
+              ${(stock.limitUp?.signals || []).map((signal) => {
+                const tooltip = signalTooltip(signal, stock, history);
+                return `<span class="limit-up-signal${signal.met ? " met" : ""}" tabindex="0" data-tooltip="${escapeHtml(tooltip)}" title="${escapeHtml(tooltip)}">${signal.met ? "✓" : "○"} ${escapeHtml(signal.label)}</span>`;
+              }).join("")}
+            </div>
+            <div class="limit-up-score-row">
+              <span class="limit-up-note">最近封板：${history.recentLimitDate || "--"} · 间隔 ${history.sessionsSinceRecentLimit ?? "--"} 日 · 板块第 ${stock.limitUp?.sector?.rank ?? "--"}</span>
+              <span class="limit-up-score" tabindex="0" data-tooltip="${escapeHtml(scoreTooltip(stock))}" title="${escapeHtml(scoreTooltip(stock))}">${stock.limitUp?.score?.total ?? "--"}</span>
+            </div>
+          </article>`;
+      }).join("");
+    }
+
     async function loadStockDetails(code) {
       const stock = stocks.find((item) => item.code === code);
       if (!stock || (stock.history || []).length || state.detailLoadingCode === code) return;
@@ -2850,6 +3122,14 @@
         b.stability * weights.stability;
       const riskPenalty = b.risk * weights.risk;
       return Math.max(0, Math.min(99, Math.round((positive - riskPenalty) / 90)));
+    }
+
+    function dynamicScoreTooltip(stock) {
+      const weights = strategies[state.strategy].weights;
+      const b = stock.base;
+      const contribution = (key) => ((b[key] || 0) * weights[key] / 90).toFixed(1);
+      const riskPenalty = ((b.risk || 0) * weights.risk / 90).toFixed(1);
+      return `${strategies[state.strategy].label}：综合分 =（趋势×${weights.trend} + 动量×${weights.momentum} + 流动性×${weights.liquidity} + 强弱×${weights.strength} + 稳定×${weights.stability} − 风险×${weights.risk}）÷90。当前贡献：趋势 ${contribution("trend")}、动量 ${contribution("momentum")}、流动性 ${contribution("liquidity")}、强弱 ${contribution("strength")}、稳定 ${contribution("stability")}、风险扣 ${riskPenalty}。`;
     }
 
     function filteredStocks() {
@@ -2973,7 +3253,7 @@
                 <div class="stock-price">${formatPrice(stock.price)}</div>
                 <div class="stock-change">${formatPct(stock.change)}</div>
               </div>
-              <div class="score" style="--score:${stock.score}">${stock.score}</div>
+              <div class="score" style="--score:${stock.score}" data-tooltip="${escapeHtml(dynamicScoreTooltip(stock))}" title="${escapeHtml(dynamicScoreTooltip(stock))}">${stock.score}</div>
             </div>
             <p class="reason">${stock.reason}</p>
             <div class="mini-bars" role="img" aria-label="评分指标：趋势 ${stock.base.trend} 分，动量 ${stock.base.momentum} 分，流动性 ${stock.base.liquidity} 分，强弱 ${stock.base.strength} 分，稳定性 ${stock.base.stability} 分">
@@ -3440,7 +3720,7 @@
               <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 17h16M7 13l3-4 3 3 5-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
               K 线图
             </button>
-            <div class="score" style="--score:${stock.score}" aria-label="综合分 ${stock.score}">${stock.score}</div>
+            <div class="score" tabindex="0" style="--score:${stock.score}" aria-label="综合分 ${stock.score}" data-tooltip="${escapeHtml(dynamicScoreTooltip(stock))}" title="${escapeHtml(dynamicScoreTooltip(stock))}">${stock.score}</div>
           </div>
         </div>
 
@@ -3559,6 +3839,7 @@
       updatePageMeta();
       el.screenerView.hidden = state.pageView !== "screener";
       el.sectorStrengthView.hidden = state.pageView !== "sector-strength";
+      el.limitUpView.hidden = state.pageView !== "limit-up";
       syncDynamicControls();
       el.scoreValue.textContent = state.minScore;
       renderMarketStatus();
@@ -3568,6 +3849,10 @@
       if (state.pageView === "sector-strength") {
         renderSectorStrength();
         renderSectorRefreshStatus();
+      }
+      if (state.pageView === "limit-up") {
+        renderLimitUpCandidates();
+        renderLimitUpStatus();
       }
       renderList(list);
       renderSelectionReason(list);
@@ -3642,6 +3927,8 @@
 
     el.sectorStrengthNav.addEventListener("click", () => openSectorStrength());
     el.sectorStrengthRefresh.addEventListener("click", () => refreshSectorStrengthNow(true));
+    el.limitUpNav.addEventListener("click", () => openLimitUp());
+    el.limitUpRefresh.addEventListener("click", () => refreshLimitUpNow(true));
 
     el.sectorToggle.addEventListener("click", () => {
       const expanded = el.sectorToggle.getAttribute("aria-expanded") === "true";
@@ -3739,6 +4026,7 @@
     document.addEventListener("visibilitychange", () => {
       if (state.pageView === "sector-strength") scheduleSectorRefresh();
       if (state.pageView === "screener") scheduleScreenerRefresh();
+      if (state.pageView === "limit-up") scheduleLimitUpRefresh();
     });
 
     window.setInterval(() => {
@@ -3747,11 +4035,14 @@
         if (marketSessionState().active && sectorRefreshTimer === null && !sectorRefreshInFlight) {
           scheduleSectorRefresh();
         }
-      } else {
+      } else if (state.pageView === "screener") {
         syncDynamicControls();
         if (marketSessionState().active && screenerRefreshTimer === null && state.marketStatus !== "loading") {
           scheduleScreenerRefresh();
         }
+      } else if (state.pageView === "limit-up") {
+        renderLimitUpStatus();
+        if (marketSessionState().active && limitUpRefreshTimer === null && !limitUpRefreshInFlight) scheduleLimitUpRefresh();
       }
     }, 1000);
 

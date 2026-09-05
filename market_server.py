@@ -10,6 +10,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,6 +23,7 @@ QUOTE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 EASTMONEY_LIST_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
 EASTMONEY_MINUTE_KLINE_URL = "https://push2delay.eastmoney.com/api/qt/stock/kline/get"
 EASTMONEY_HOT_CONCEPT_URL = "https://emappdata.eastmoney.com/stockrank/getHotStockRankList"
+SINA_DAILY_KLINE_URL = "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
 CHINA_TZ = timezone(timedelta(hours=8))
 HISTORY_DAYS = 400
 CACHE_TTL_SECONDS = 20
@@ -34,6 +36,10 @@ DOWNTREND_CACHE_TTL_SECONDS = 300
 DOWNTREND_CANDIDATE_BUFFER = 20
 DOWNTREND_MAX_WORKERS = 8
 CONCEPT_CACHE_TTL_SECONDS = 600
+LIMIT_UP_CACHE_TTL_SECONDS = 25
+LIMIT_UP_HISTORY_CACHE_TTL_SECONDS = 12 * 60 * 60
+LIMIT_UP_HISTORY_DAYS = 280
+LIMIT_UP_CANDIDATE_LIMIT = 36
 REQUEST_TIMEOUT_SECONDS = 10
 MARKET_PAGE_SIZE = 100
 
@@ -181,6 +187,8 @@ _sector_strength_cache: Dict[str, Dict[str, Any]] = {}
 _stock_cache: Dict[str, Dict[str, Any]] = {}
 _downtrend_history_cache: Dict[str, Dict[str, Any]] = {}
 _concept_cache: Dict[str, Dict[str, Any]] = {}
+_limit_up_cache: Dict[str, Any] = {}
+_limit_up_history_cache: Dict[str, Dict[str, Any]] = {}
 
 
 class MarketDataError(RuntimeError):
@@ -200,6 +208,14 @@ def stock_rank_symbol(code: str) -> str:
 def eastmoney_secid(code: str) -> str:
     market = "1" if code.startswith(("5", "6")) else "0"
     return f"{market}.{code}"
+
+
+def main_board_code(code: str) -> bool:
+    return code.startswith(MARKET_SCOPES["sh-main"]["prefixes"] + MARKET_SCOPES["sz-main"]["prefixes"])
+
+
+def normal_limit_price(previous_close: float) -> float:
+    return float((Decimal(str(previous_close)) * Decimal("1.10")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def request_json(url: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1032,6 +1048,263 @@ def get_sector_strength_data(market_key: str, force_refresh: bool = False) -> Di
     return payload
 
 
+def fetch_limit_up_history(code: str) -> Dict[str, Any]:
+    payload = request_json(
+        SINA_DAILY_KLINE_URL,
+        {
+            "symbol": stock_symbol(code),
+            "scale": 240,
+            "ma": "no",
+            "datalen": LIMIT_UP_HISTORY_DAYS,
+        },
+    )
+    rows: List[Dict[str, Any]] = []
+    for row in payload if isinstance(payload, list) else []:
+        if not isinstance(row, dict):
+            continue
+        close = number(row.get("close"))
+        high = number(row.get("high"))
+        if close is not None and high is not None:
+            rows.append({"date": str(row.get("day") or ""), "close": close, "high": high})
+    if len(rows) < 2:
+        raise MarketDataError(f"{code} 一年日线数据不足")
+
+    try:
+        latest_date = datetime.strptime(rows[-1]["date"], "%Y-%m-%d")
+        cutoff = latest_date - timedelta(days=365)
+    except ValueError:
+        cutoff = datetime.now(CHINA_TZ).replace(tzinfo=None) - timedelta(days=365)
+
+    sealed = 0
+    touched = 0
+    recent_limit_date: Optional[str] = None
+    recent_limit_index: Optional[int] = None
+    for index in range(1, len(rows)):
+        current = rows[index]
+        try:
+            trade_date = datetime.strptime(current["date"], "%Y-%m-%d")
+        except ValueError:
+            continue
+        if trade_date < cutoff:
+            continue
+        previous_close = rows[index - 1]["close"]
+        if previous_close in (None, 0):
+            continue
+        limit_price = normal_limit_price(previous_close)
+        if current["high"] >= limit_price - 0.001:
+            touched += 1
+        if current["close"] >= limit_price - 0.001:
+            sealed += 1
+            recent_limit_date = current["date"]
+            recent_limit_index = index
+    return {
+        "available": True,
+        "sealedCount": sealed,
+        "touchedCount": touched,
+        "brokenCount": max(0, touched - sealed),
+        "recentLimitDate": recent_limit_date,
+        "sessionsSinceRecentLimit": (
+            len(rows) - 1 - recent_limit_index if recent_limit_index is not None else None
+        ),
+    }
+
+
+def get_limit_up_history(code: str) -> Dict[str, Any]:
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _limit_up_history_cache.get(code)
+        if cached and now - cached["created_at"] < LIMIT_UP_HISTORY_CACHE_TTL_SECONDS:
+            return cached["payload"]
+    payload = fetch_limit_up_history(code)
+    with _cache_lock:
+        _limit_up_history_cache[code] = {"created_at": time.monotonic(), "payload": payload}
+    return payload
+
+
+def limit_up_candidate_score(quote: Dict[str, Any], sector_score: float, history_count: int = 0) -> Dict[str, int]:
+    change_pct = float(quote.get("changePct") or 0)
+    amount = float(quote.get("amount") or 0)
+    turnover = float(quote.get("screener", {}).get("turnover") or 0)
+    amplitude = float(quote.get("screener", {}).get("amplitude") or 0)
+    volume_ratio = float(quote.get("volumeRatio") or 0)
+    float_cap = float(quote.get("floatMarketCap") or 0)
+    attack = clamp((change_pct - 2) / 7.8 * 100)
+    activity = clamp(35 + math.log10(max(amount, 1) / 100_000_000) * 24 + min(volume_ratio, 5) * 8)
+    turnover_score = clamp(100 - abs(turnover - 9) * 6)
+    cap_score = clamp(100 - abs(math.log10(max(float_cap, 1)) - 10.5) * 38)
+    stability = clamp(100 - max(0, amplitude - abs(change_pct) - 2) * 9)
+    history_score = clamp(history_count * 12)
+    total = round(
+        sector_score * 0.25
+        + attack * 0.25
+        + activity * 0.15
+        + turnover_score * 0.10
+        + history_score * 0.10
+        + cap_score * 0.10
+        + stability * 0.05
+    )
+    return {
+        "total": total,
+        "sector": round(sector_score),
+        "attack": attack,
+        "activity": activity,
+        "turnover": turnover_score,
+        "history": history_score,
+        "marketCap": cap_score,
+        "stability": stability,
+    }
+
+
+def fetch_limit_up_candidates() -> Dict[str, Any]:
+    rows: List[Dict[str, Any]] = []
+    totals = 0
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(fetch_market_rows, key) for key in ("sh-main", "sz-main")]
+        for future in as_completed(futures):
+            market_rows, total = future.result()
+            rows.extend(market_rows)
+            totals += total
+
+    updated_at = datetime.now(CHINA_TZ)
+    quotes: List[Dict[str, Any]] = []
+    market_quotes: List[Dict[str, Any]] = []
+    for row in rows:
+        code = str(row.get("f12") or "")
+        name = str(row.get("f14") or "")
+        if not main_board_code(code) or "ST" in name.upper() or "退" in name:
+            continue
+        timestamp = number(row.get("f124"))
+        row_updated_at = updated_at
+        if timestamp is not None:
+            if timestamp > 10_000_000_000:
+                timestamp /= 1000
+            try:
+                row_updated_at = datetime.fromtimestamp(timestamp, CHINA_TZ)
+                updated_at = max(updated_at, row_updated_at)
+            except (OverflowError, OSError, ValueError):
+                pass
+        quote = dynamic_snapshot(row, row_updated_at, "all")
+        if quote is None or quote["previousClose"] in (None, 0):
+            continue
+        market_quotes.append(quote)
+        if (
+            quote["changePct"] < 2
+            or quote["amount"] < 100_000_000
+            or quote.get("floatMarketCap") is None
+            or quote["floatMarketCap"] <= 3_000_000_000
+        ):
+            continue
+        quotes.append(quote)
+
+    sectors = aggregate_sector_strength(market_quotes)
+    sector_scores = {item["name"]: item["strengthScore"] for item in sectors}
+    sector_details = {item["name"]: item for item in sectors}
+    for quote in quotes:
+        quote["limitUp"] = {
+            "score": limit_up_candidate_score(quote, sector_scores.get(quote.get("actualIndustry"), 50), 0),
+        }
+    quotes.sort(key=lambda item: (item["limitUp"]["score"]["total"], item["changePct"]), reverse=True)
+    candidate_pool = quotes[:LIMIT_UP_CANDIDATE_LIMIT]
+
+    histories: Dict[str, Dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=min(8, len(candidate_pool))) as executor:
+        futures = {executor.submit(get_limit_up_history, item["code"]): item["code"] for item in candidate_pool}
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                histories[code] = future.result()
+            except MarketDataError:
+                histories[code] = {"available": False, "sealedCount": 0, "touchedCount": 0, "brokenCount": 0, "recentLimitDate": None}
+
+    candidates: List[Dict[str, Any]] = []
+    for quote in candidate_pool:
+        history = histories[quote["code"]]
+        limit_price = normal_limit_price(quote["previousClose"])
+        at_limit = quote["price"] >= limit_price - 0.001
+        touched_today = (quote.get("high") or 0) >= limit_price - 0.001
+        status = "sealed" if at_limit else "broken" if touched_today else "candidate"
+        one_word = (
+            at_limit
+            and (quote.get("open") or 0) >= limit_price - 0.001
+            and (quote.get("low") or 0) >= limit_price - 0.001
+            and (quote.get("high") or 0) >= limit_price - 0.001
+        )
+        re_sealed = at_limit and not one_word and (quote.get("low") or 0) < limit_price - 0.001
+        board_tag = (
+            {"key": "one-word", "label": "一字", "note": "开盘、最低、最高和现价均在涨停价，全天一字封板。"}
+            if one_word
+            else {"key": "re-seal", "label": "回封", "note": "日内价格低于涨停价，随后收盘重新封住涨停。"}
+            if re_sealed
+            else {"key": "broken", "label": "炸板", "note": "盘中触及涨停价，但当前未封在涨停价。"}
+            if status == "broken"
+            else None
+        )
+        score = limit_up_candidate_score(
+            quote,
+            sector_scores.get(quote.get("actualIndustry"), 50),
+            history["sealedCount"],
+        )
+        if status == "broken":
+            score["total"] = max(0, score["total"] - 12)
+        sector = sector_details.get(quote.get("actualIndustry"), {})
+        open_gap = return_pct(quote["previousClose"], quote.get("open"))
+        volume_ratio = quote.get("volumeRatio")
+        turnover = quote.get("screener", {}).get("turnover")
+        float_cap = quote.get("floatMarketCap")
+        sessions_since_limit = history.get("sessionsSinceRecentLimit")
+        signals = [
+            {"key": "sector", "label": "板块前列", "met": sector.get("rank", 99) <= 9 and sector.get("risingCount", 0) >= 3},
+            {"key": "gain", "label": "5%–9.8%强攻", "met": 5 <= quote["changePct"] <= 9.8 and (quote.get("price") or 0) >= (quote.get("open") or 0)},
+            {"key": "linkage", "label": "板块联动", "met": sector.get("risingCount", 0) >= 4 and sector.get("advanceRatio", 0) >= 50},
+            {"key": "amount", "label": "有效成交额", "met": quote["amount"] >= 100_000_000},
+            {"key": "volume", "label": "量比放大", "met": volume_ratio is not None and volume_ratio >= 1.5},
+            {"key": "turnover", "label": "换手适中", "met": turnover is not None and 3 <= turnover <= 18},
+            {"key": "cap", "label": "流通市值>30亿", "met": float_cap is not None and float_cap > 3_000_000_000},
+            {"key": "history", "label": "一年封板记录", "met": history["sealedCount"] >= 1},
+            {"key": "recent", "label": "20–60日涨停记忆", "met": sessions_since_limit is not None and 20 <= sessions_since_limit <= 60},
+            {"key": "open", "label": "开盘承接稳定", "met": open_gap is not None and open_gap <= 4 and (quote.get("price") or 0) >= (quote.get("open") or 0) and (quote.get("screener", {}).get("amplitude") or 0) <= 12},
+        ]
+        quote["limitUp"] = {
+            "limitPrice": limit_price,
+            "distancePct": round(max(0.0, (limit_price - quote["price"]) / quote["price"] * 100), 2),
+            "status": status,
+            "boardTag": board_tag,
+            "history": history,
+            "score": score,
+            "signals": signals,
+            "signalCount": sum(1 for signal in signals if signal["met"]),
+            "sector": {
+                "rank": sector.get("rank"),
+                "risingCount": sector.get("risingCount"),
+                "memberCount": sector.get("memberCount"),
+            },
+            "openGapPct": round(open_gap, 2) if open_gap is not None else None,
+        }
+        candidates.append(quote)
+    candidates.sort(key=lambda item: (item["limitUp"]["score"]["total"], item["changePct"]), reverse=True)
+    return {
+        "source": "东方财富沪深主板行情快照 + 新浪证券不复权日线",
+        "marketDate": updated_at.strftime("%Y-%m-%d"),
+        "updatedAt": updated_at.isoformat(),
+        "fetchedAt": datetime.now(CHINA_TZ).isoformat(),
+        "scannedCount": totals,
+        "candidateCount": len(candidates),
+        "quotes": candidates,
+    }
+
+
+def get_limit_up_candidates(force_refresh: bool = False) -> Dict[str, Any]:
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _limit_up_cache.get("main-board")
+        if cached and now - cached["created_at"] < LIMIT_UP_CACHE_TTL_SECONDS and not force_refresh:
+            return cached["payload"]
+    payload = fetch_limit_up_candidates()
+    with _cache_lock:
+        _limit_up_cache["main-board"] = {"created_at": time.monotonic(), "payload": payload}
+    return payload
+
+
 def get_stock_data(code: str, force_refresh: bool = False) -> Dict[str, Any]:
     now = time.monotonic()
     with _cache_lock:
@@ -1208,6 +1481,15 @@ class AppHandler(BaseHTTPRequestHandler):
                         market_key,
                         query.get("refresh") == ["1"],
                     ),
+                )
+            except MarketDataError as exc:
+                self.send_json(502, {"error": str(exc)})
+            return
+        if parsed.path == "/api/limit-up":
+            try:
+                self.send_json(
+                    200,
+                    get_limit_up_candidates(query.get("refresh") == ["1"]),
                 )
             except MarketDataError as exc:
                 self.send_json(502, {"error": str(exc)})
