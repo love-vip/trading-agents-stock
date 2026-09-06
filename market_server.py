@@ -4,6 +4,9 @@
 import argparse
 import json
 import math
+import os
+import shlex
+import sqlite3
 import statistics
 import subprocess
 import threading
@@ -24,6 +27,7 @@ EASTMONEY_LIST_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
 EASTMONEY_MINUTE_KLINE_URL = "https://push2delay.eastmoney.com/api/qt/stock/kline/get"
 EASTMONEY_HOT_CONCEPT_URL = "https://emappdata.eastmoney.com/stockrank/getHotStockRankList"
 SINA_DAILY_KLINE_URL = "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
+THS_HOT_RANK_URL = "https://eq.10jqka.com.cn/earlyInterpret/index.php"
 CHINA_TZ = timezone(timedelta(hours=8))
 HISTORY_DAYS = 400
 CACHE_TTL_SECONDS = 20
@@ -38,10 +42,24 @@ DOWNTREND_MAX_WORKERS = 8
 CONCEPT_CACHE_TTL_SECONDS = 600
 LIMIT_UP_CACHE_TTL_SECONDS = 25
 LIMIT_UP_HISTORY_CACHE_TTL_SECONDS = 12 * 60 * 60
-LIMIT_UP_HISTORY_DAYS = 280
+# Keep roughly three years of trading sessions for the follow-up model's
+# historical calibration. Limit-up counts themselves still use a one-year cutoff.
+LIMIT_UP_HISTORY_DAYS = 750
 LIMIT_UP_CANDIDATE_LIMIT = 36
+THS_POPULARITY_CACHE_TTL_SECONDS = 10 * 60
 REQUEST_TIMEOUT_SECONDS = 10
 MARKET_PAGE_SIZE = 100
+AUCTION_DATA_DIR = BASE_DIR / "data" / "auction"
+BACKTEST_DB_PATH = BASE_DIR / "data" / "backtest.sqlite"
+BACKTEST_LOOKBACK_DAYS = 30
+BACKTEST_HORIZON_DAYS = 10
+BACKTEST_TARGET_RETURN = 0.05
+# This command is deliberately supplied through the local environment, never code.
+# It must print an EMT get_open_call_auction JSON result for the whole A-share universe.
+# Example: EMT_AUCTION_COMMAND='python3 /path/to/export_emt_auction.py --date {date}'
+EMT_AUCTION_COMMAND = os.environ.get("EMT_AUCTION_COMMAND", "").strip()
+AUCTION_CAPTURE_WINDOW_START = (9, 25, 0)
+AUCTION_CAPTURE_WINDOW_END = (9, 30, 0)
 
 SECTOR_ORDER = ("semiconductor", "new-energy", "consumer", "medicine", "ai-computing")
 SECTORS: Dict[str, Dict[str, Any]] = {
@@ -189,6 +207,12 @@ _downtrend_history_cache: Dict[str, Dict[str, Any]] = {}
 _concept_cache: Dict[str, Dict[str, Any]] = {}
 _limit_up_cache: Dict[str, Any] = {}
 _limit_up_history_cache: Dict[str, Dict[str, Any]] = {}
+_ths_popularity_cache: Dict[str, Dict[str, Any]] = {}
+_auction_capture_attempts: Dict[str, float] = {}
+_backtest_lock = threading.Lock()
+_all_market_backtest_status: Dict[str, Any] = {
+    "status": "idle", "total": 0, "processed": 0, "records": 0, "failed": 0,
+}
 
 
 class MarketDataError(RuntimeError):
@@ -214,8 +238,170 @@ def main_board_code(code: str) -> bool:
     return code.startswith(MARKET_SCOPES["sh-main"]["prefixes"] + MARKET_SCOPES["sz-main"]["prefixes"])
 
 
+def bse_code(code: str) -> bool:
+    return code.startswith(MARKET_SCOPES["bse"]["prefixes"])
+
+
 def normal_limit_price(previous_close: float) -> float:
     return float((Decimal(str(previous_close)) * Decimal("1.10")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def auction_data_path(trade_date: str) -> Path:
+    return AUCTION_DATA_DIR / f"{trade_date}.json"
+
+
+def auction_code(record: Dict[str, Any]) -> str:
+    raw = str(record.get("code") or record.get("symbol") or record.get("sec_id") or "")
+    return raw.split(".")[-1].strip()
+
+
+def number_or_none(value: Any) -> Optional[float]:
+    return number(value)
+
+
+def normalize_auction_records(payload: Any, trade_date: str) -> Dict[str, Dict[str, Any]]:
+    """Normalize EMT's open-call-auction rows without retaining any account credentials."""
+    records = payload.get("data", payload) if isinstance(payload, dict) else payload
+    if not isinstance(records, list):
+        raise MarketDataError("竞价导出结果应为数组，或包含 data 数组的 JSON 对象")
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        code = auction_code(row)
+        if len(code) != 6 or not code.isdigit():
+            continue
+        bid_amount = 0.0
+        for level in range(1, 6):
+            price = number_or_none(row.get(f"bid_p{level}"))
+            volume = number_or_none(row.get(f"bid_v{level}"))
+            if price is not None and volume is not None and price > 0 and volume > 0:
+                bid_amount += price * volume
+        normalized[code] = {
+            "code": code,
+            "auctionAmount": number_or_none(row.get("open_amount") or row.get("auctionAmount")),
+            "auctionVolume": number_or_none(row.get("open_volume") or row.get("auctionVolume")),
+            "auctionPrice": number_or_none(row.get("current_price") or row.get("auctionPrice")),
+            "unmatchedBuyAmount": round(bid_amount, 2) if bid_amount else None,
+            "capturedAt": str(row.get("time") or f"{trade_date} 09:25:00"),
+        }
+    if not normalized:
+        raise MarketDataError("竞价导出中没有可识别的股票记录")
+    return normalized
+
+
+def load_auction_snapshot(trade_date: str) -> Dict[str, Any]:
+    path = auction_data_path(trade_date)
+    if not path.exists():
+        return {"available": False, "status": "missing", "records": {}, "message": "尚未保存 09:25 竞价快照"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        records = payload.get("records") if isinstance(payload, dict) else None
+        if not isinstance(records, dict):
+            raise ValueError("records 缺失")
+        return {
+            "available": True,
+            "status": "ready",
+            "records": records,
+            "capturedAt": payload.get("capturedAt"),
+            "message": "已保存 09:25 竞价快照",
+        }
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return {"available": False, "status": "error", "records": {}, "message": f"竞价快照读取失败: {exc}"}
+
+
+def capture_emt_auction_snapshot(trade_date: str) -> Dict[str, Any]:
+    """Run an opt-in local EMT exporter and persist only derived market fields."""
+    if not EMT_AUCTION_COMMAND:
+        return {"available": False, "status": "unconfigured", "records": {}, "message": "未配置 EMT_AUCTION_COMMAND，未接入竞价数据"}
+    command = shlex.split(EMT_AUCTION_COMMAND.replace("{date}", trade_date))
+    if not command:
+        return {"available": False, "status": "unconfigured", "records": {}, "message": "EMT_AUCTION_COMMAND 为空"}
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=45)
+        records = normalize_auction_records(json.loads(result.stdout), trade_date)
+        AUCTION_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        snapshot = {
+            "marketDate": trade_date,
+            "capturedAt": datetime.now(CHINA_TZ).isoformat(),
+            "provider": "东方财富 EMT get_open_call_auction",
+            "records": records,
+        }
+        path = auction_data_path(trade_date)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(path)
+        return {"available": True, "status": "ready", "records": records, "capturedAt": snapshot["capturedAt"], "message": "已采集并保存 09:25 竞价快照"}
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError, MarketDataError) as exc:
+        return {"available": False, "status": "error", "records": {}, "message": f"EMT 竞价采集失败: {exc}"}
+
+
+def get_auction_snapshot(trade_date: str, capture_if_due: bool = False) -> Dict[str, Any]:
+    snapshot = load_auction_snapshot(trade_date)
+    if snapshot["available"] or not capture_if_due:
+        return snapshot
+    if not EMT_AUCTION_COMMAND:
+        return {"available": False, "status": "unconfigured", "records": {}, "message": "未配置 EMT_AUCTION_COMMAND，未接入竞价数据"}
+    now = datetime.now(CHINA_TZ)
+    current_time = (now.hour, now.minute, now.second)
+    if now.strftime("%Y-%m-%d") != trade_date or now.weekday() >= 5 or not (AUCTION_CAPTURE_WINDOW_START <= current_time < AUCTION_CAPTURE_WINDOW_END):
+        return snapshot
+    last_attempt = _auction_capture_attempts.get(trade_date, 0)
+    if time.monotonic() - last_attempt < 25:
+        return snapshot
+    _auction_capture_attempts[trade_date] = time.monotonic()
+    return capture_emt_auction_snapshot(trade_date)
+
+
+def auction_capture_loop(stop_event: threading.Event) -> None:
+    """Capture once after 09:25 when the local service remains running during the auction."""
+    while not stop_event.wait(1):
+        now = datetime.now(CHINA_TZ)
+        if now.weekday() >= 5:
+            continue
+        current_time = (now.hour, now.minute, now.second)
+        if not (AUCTION_CAPTURE_WINDOW_START <= current_time < AUCTION_CAPTURE_WINDOW_END):
+            continue
+        trade_date = now.strftime("%Y-%m-%d")
+        snapshot = load_auction_snapshot(trade_date)
+        if not snapshot["available"]:
+            get_auction_snapshot(trade_date, capture_if_due=True)
+
+
+def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
+    """Save one end-of-day candidate snapshot while the local service is running."""
+    captured_dates: set[str] = set()
+    while not stop_event.wait(30):
+        now = datetime.now(CHINA_TZ)
+        if now.weekday() >= 5 or now.hour != 15 or not (5 <= now.minute < 30):
+            continue
+        trade_date = now.strftime("%Y-%m-%d")
+        if trade_date in captured_dates:
+            continue
+        try:
+            fetch_dynamic_market_data("all", 0, -20, 0, 100)
+            captured_dates.add(trade_date)
+            print(f"后续上涨模型已保存 {trade_date} 收盘候选快照")
+        except (MarketDataError, OSError, ValueError) as exc:
+            print(f"后续上涨模型收盘快照失败: {exc}")
+
+
+def auction_strength_score(auction: Optional[Dict[str, Any]], float_cap: Optional[float]) -> Dict[str, Any]:
+    """Score the 09:25 unmatched five-level buy amount; unavailable data is neutral, never zero."""
+    if not auction or auction.get("unmatchedBuyAmount") in (None, 0):
+        return {"available": False, "score": 50, "absolute": None, "relative": None, "vsAuction": None}
+    buy_amount = float(auction["unmatchedBuyAmount"])
+    auction_amount = float(auction.get("auctionAmount") or 0)
+    absolute = clamp(20 + math.log10(max(buy_amount, 1) / 1_000_000) * 30)
+    relative = clamp((buy_amount / max(float(float_cap or 1), 1)) * 500_000)
+    vs_auction = clamp((buy_amount / max(auction_amount, 1)) * 100)
+    return {
+        "available": True,
+        "score": round(absolute * 0.5 + relative * 0.3 + vs_auction * 0.2),
+        "absolute": round(absolute),
+        "relative": round(relative),
+        "vsAuction": round(vs_auction),
+    }
 
 
 def request_json(url: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -530,25 +716,102 @@ def dynamic_factors(
     }
 
 
-def fetch_downtrend_history(code: str) -> List[Dict[str, Any]]:
-    """Fetch only the daily bars needed by the dynamic downtrend filter."""
-    symbol = stock_symbol(code)
+def fetch_ths_popularity(code: str, trade_date: str) -> Dict[str, Any]:
     payload = request_json(
-        QUOTE_URL,
-        {"param": f"{symbol},day,,,{DOWNTREND_HISTORY_DAYS},qfq"},
+        THS_HOT_RANK_URL,
+        {"con": "index", "act": "getIndexData", "stockCode": code, "date": trade_date.replace("-", "")},
     )
-    data = (payload.get("data") or {}).get(symbol) or {}
-    rows: List[Dict[str, Any]] = []
-    for fields in data.get("qfqday") or data.get("day") or []:
-        if len(fields) < 5:
-            continue
-        close = number(fields[2])
-        if close is None:
-            continue
-        rows.append({"date": fields[0], "close": close})
-    if payload.get("code") != 0 or not rows:
+    stock_info = ((payload.get("data") or {}).get("stockInfo") or {}) if isinstance(payload, dict) else {}
+    rank = number(stock_info.get("hotRank"))
+    total = number(stock_info.get("stockCnt"))
+    if rank is None or rank <= 0:
+        raise MarketDataError(f"{code} 同花顺人气排名不可用")
+    return {"available": True, "rank": int(rank), "total": int(total) if total else None, "source": "同花顺人气"}
+
+
+def get_ths_popularity(code: str, trade_date: str) -> Dict[str, Any]:
+    cache_key = f"{trade_date}:{code}"
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _ths_popularity_cache.get(cache_key)
+        if cached and now - cached["created_at"] < THS_POPULARITY_CACHE_TTL_SECONDS:
+            return cached["payload"]
+    payload = fetch_ths_popularity(code, trade_date)
+    with _cache_lock:
+        _ths_popularity_cache[cache_key] = {"created_at": time.monotonic(), "payload": payload}
+    return payload
+
+
+def add_ths_popularity(quotes: List[Dict[str, Any]], trade_date: str) -> None:
+    if not quotes:
+        return
+    results: Dict[str, Dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=min(6, len(quotes))) as executor:
+        futures = {executor.submit(get_ths_popularity, quote["code"], trade_date): quote["code"] for quote in quotes}
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                results[code] = future.result()
+            except MarketDataError:
+                results[code] = {"available": False, "rank": None, "total": None, "source": "同花顺人气"}
+    for quote in quotes:
+        quote["popularity"] = results[quote["code"]]
+
+
+def add_related_sectors(quotes: List[Dict[str, Any]]) -> None:
+    """Attach the highest-heat Eastmoney concept as a display-only related sector."""
+    if not quotes:
+        return
+    results: Dict[str, List[str]] = {}
+    with ThreadPoolExecutor(max_workers=min(6, len(quotes))) as executor:
+        futures = {executor.submit(get_stock_concepts, quote["code"]): quote["code"] for quote in quotes}
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                concepts = future.result()
+                results[code] = [str(concept["name"]) for concept in concepts[:5] if concept.get("name")]
+            except MarketDataError:
+                results[code] = []
+    for quote in quotes:
+        quote["relatedSectors"] = results.get(quote["code"], [])
+
+
+def fetch_downtrend_history(code: str) -> List[Dict[str, Any]]:
+    """Fetch daily bars for the downtrend filter, with a Sina fallback for moving averages."""
+    symbol = stock_symbol(code)
+    try:
+        payload = request_json(
+            QUOTE_URL,
+            {"param": f"{symbol},day,,,{DOWNTREND_HISTORY_DAYS},qfq"},
+        )
+        data = (payload.get("data") or {}).get(symbol) or {}
+        rows: List[Dict[str, Any]] = []
+        for fields in data.get("qfqday") or data.get("day") or []:
+            if len(fields) < 5:
+                continue
+            open_price = number(fields[1])
+            close = number(fields[2])
+            if close is not None:
+                rows.append({"date": fields[0], "open": open_price, "close": close, "high": number(fields[3]), "low": number(fields[4])})
+        if payload.get("code") == 0 and rows:
+            return rows[-DOWNTREND_HISTORY_DAYS:]
+    except MarketDataError:
+        pass
+
+    payload = request_json(
+        SINA_DAILY_KLINE_URL,
+        {"symbol": symbol, "scale": 240, "ma": "no", "datalen": DOWNTREND_HISTORY_DAYS},
+    )
+    rows = [
+        {"date": str(row.get("day") or ""), "open": number(row.get("open")), "close": close, "high": number(row.get("high")), "low": number(row.get("low"))}
+        for row in (payload if isinstance(payload, list) else [])
+        if isinstance(row, dict)
+        for close in [number(row.get("close"))]
+        if close is not None
+    ]
+    if not rows:
         raise MarketDataError(f"{code} 日线数据不足")
-    return rows
+    return rows[-DOWNTREND_HISTORY_DAYS:]
 
 
 def get_downtrend_history(code: str) -> List[Dict[str, Any]]:
@@ -580,6 +843,10 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         }
 
     latest = closes[-1]
+    moving_averages = {
+        f"ma{period}": round(sum(closes[-period:]) / period, 2) if len(closes) >= period else None
+        for period in (5, 10, 20, 30)
+    }
     ma10 = sum(closes[-10:]) / 10
     ma20 = sum(closes[-20:]) / 20
     ma10_previous = sum(closes[-15:-5]) / 10
@@ -593,6 +860,35 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
     high_20 = max(closes[-21:])
     drawdown_20 = return_pct(high_20, latest) * -1
     rebound_from_low = return_pct(min(closes[-5:]), latest)
+    recent_rows = [row for row in history if row.get("close") not in (None, 0)][-22:]
+    pattern_signals: List[str] = []
+    pattern_score = 0
+    if len(recent_rows) >= 5 and all(row.get("open") is not None for row in recent_rows[-5:]):
+        small_yang = sum(row["close"] > row["open"] and return_pct(row["open"], row["close"]) <= 3.5 for row in recent_rows[-5:])
+        if small_yang >= 4 and closes[-1] > closes[-5]:
+            pattern_signals.append("碎步小阳")
+            pattern_score += 10
+    if len(recent_rows) >= 3 and all(row.get("open") is not None for row in recent_rows[-3:]):
+        last_three = recent_rows[-3:]
+        if all(row["close"] > row["open"] for row in last_three) and last_three[0]["close"] < last_three[1]["close"] < last_three[2]["close"]:
+            pattern_signals.append("红三兵")
+            pattern_score += 12
+    if len(recent_rows) >= 4 and all(row.get("open") is not None for row in recent_rows[-4:]):
+        previous = recent_rows[-4:-1]
+        current = recent_rows[-1]
+        if all(row["close"] < row["open"] for row in previous) and current["close"] > current["open"] and current["open"] <= min(row["close"] for row in previous) and current["close"] >= max(row["open"] for row in previous):
+            pattern_signals.append("一阳包三阴")
+            pattern_score += 14
+    if len(closes) >= 20:
+        low_index = closes[-20:].index(min(closes[-20:]))
+        if 5 <= low_index <= 14 and closes[-1] > sum(closes[-5:]) / 5 > min(closes[-20:]):
+            pattern_signals.append("圆弧底")
+            pattern_score += 10
+        boll_mid = sum(closes[-20:]) / 20
+        boll_std = statistics.pstdev(closes[-20:])
+        if latest > boll_mid + 2 * boll_std and moving_averages["ma5"] > moving_averages["ma10"] > moving_averages["ma20"]:
+            pattern_signals.append("均线多头-布林突破")
+            pattern_score += 14
 
     bearish_structure = (
         latest < ma10
@@ -636,6 +932,9 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         "return10": round(return_10, 2),
         "return20": round(return_20, 2),
         "drawdown20": round(drawdown_20, 2),
+        "movingAverages": moving_averages,
+        "patternSignals": pattern_signals,
+        "patternScore": min(40, pattern_score),
     }
 
 
@@ -666,6 +965,14 @@ def filter_steady_decline_quotes(quotes: List[Dict[str, Any]]) -> Tuple[List[Dic
     excluded_count = 0
     for quote in quotes:
         analysis = analyses[quote["code"]]
+        averages = quote.get("screener", {}).get("movingAverages") or {}
+        quote["screener"]["movingAverages"] = {
+            key: {
+                "value": value,
+                "above": value is not None and quote.get("price") is not None and quote["price"] >= value,
+            }
+            for key, value in averages.items()
+        }
         quote["screener"]["downtrend"] = analysis
         if analysis["excluded"]:
             excluded_count += 1
@@ -773,6 +1080,7 @@ def dynamic_snapshot(
         "floatMarketCap": number(row.get("f21")),
         "peTtm": number(row.get("f9")),
         "volumeRatio": number(row.get("f10")),
+        "netInflow": number(row.get("f62")),
         "pb": number(row.get("f23")),
         "base": factors,
         "screener": {
@@ -898,7 +1206,7 @@ def fetch_market_rows(market_key: str) -> Tuple[List[Dict[str, Any]], int]:
         "invt": 2,
         "fid": "f3",
         "fs": market["fs"],
-        "fields": "f2,f3,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f100,f124",
+        "fields": "f2,f3,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f62,f100,f124",
     }
     first_page = request_json(EASTMONEY_LIST_URL, params)
     data = first_page.get("data") or {}
@@ -919,13 +1227,15 @@ def fetch_market_rows(market_key: str) -> Tuple[List[Dict[str, Any]], int]:
 
 
 def fetch_dynamic_market_data(
-    market_key: str, min_amount: float, min_change: float, min_turnover: float, limit: int
+    market_key: str, min_amount: float, min_change: float, min_turnover: float, limit: int,
+    include_all: bool = False,
 ) -> Dict[str, Any]:
     market = MARKET_SCOPES[market_key]
     rows, total = fetch_market_rows(market_key)
     updated_at = datetime.now(CHINA_TZ)
     quotes: List[Dict[str, Any]] = []
     market_quotes: List[Dict[str, Any]] = []
+    market_cap_excluded_count = 0
     for row in rows:
         if market_key != "all" and not str(row.get("f12") or "").startswith(market["prefixes"]):
             continue
@@ -941,6 +1251,9 @@ def fetch_dynamic_market_data(
         if quote is None:
             continue
         market_quotes.append(quote)
+        if not bse_code(quote["code"]) and (quote.get("marketCap") is None or quote["marketCap"] < 3_000_000_000):
+            market_cap_excluded_count += 1
+            continue
         if (
             quote["amount"] < min_amount
             or quote["changePct"] < min_change
@@ -953,13 +1266,22 @@ def fetch_dynamic_market_data(
         key=lambda item: (item["changePct"], item["screener"]["snapshotScore"]),
         reverse=True,
     )
-    screening_pool_size = min(
-        len(quotes),
-        min(150, limit + DOWNTREND_CANDIDATE_BUFFER),
+    screening_pool_size = len(quotes) if include_all else min(
+        len(quotes), min(150, limit + DOWNTREND_CANDIDATE_BUFFER)
     )
     screened_quotes, downtrend_excluded_count = filter_steady_decline_quotes(
         quotes[:screening_pool_size]
     )
+    screened_quotes, limit_up_excluded_count = filter_recent_limit_up_quotes(screened_quotes)
+    final_quotes = screened_quotes if include_all else screened_quotes[:limit]
+    sector_strength = aggregate_sector_strength(market_quotes)
+    add_probability_models(final_quotes, sector_strength, updated_at.strftime("%Y-%m-%d"))
+    calibration = {"samples": 0, "updatedAt": datetime.now(CHINA_TZ).isoformat()}
+    if not include_all:
+        calibration = build_follow_up_calibration(final_quotes, updated_at.strftime("%Y-%m-%d"))
+    apply_follow_up_calibration(final_quotes, calibration)
+    add_ths_popularity(final_quotes, updated_at.strftime("%Y-%m-%d"))
+    add_related_sectors(final_quotes)
     return {
         "source": f"东方财富{market['label']}行情快照",
         "sector": {
@@ -967,17 +1289,24 @@ def fetch_dynamic_market_data(
             "label": f"{market['label']}动态选股",
             "shortLabel": market["label"],
             "description": market["description"],
-            "count": len(screened_quotes[:limit]),
+            "count": len(final_quotes),
         },
         "marketDate": updated_at.strftime("%Y-%m-%d"),
         "updatedAt": updated_at.isoformat(),
         "fetchedAt": datetime.now(CHINA_TZ).isoformat(),
         "scannedCount": total,
         "matchedCount": len(quotes),
+        "marketCapExcludedCount": market_cap_excluded_count,
         "downtrendExcludedCount": downtrend_excluded_count,
-        "sectorStrength": aggregate_sector_strength(market_quotes),
+        "limitUpExcludedCount": limit_up_excluded_count,
+        "sectorStrength": sector_strength,
+        "followUpBacktest": {
+            "samples": calibration["samples"],
+            "target": "未来 10 个交易日最高价较信号日收盘上涨至少 5%",
+            "updatedAt": calibration["updatedAt"],
+        },
         "unavailableCodes": [],
-        "quotes": screened_quotes[:limit],
+        "quotes": final_quotes,
     }
 
 
@@ -987,16 +1316,17 @@ def get_dynamic_market_data(
     min_change: float,
     min_turnover: float,
     limit: int,
+    include_all: bool = False,
     force_refresh: bool = False,
 ) -> Dict[str, Any]:
-    cache_key = f"{market_key}:{min_amount:.0f}:{min_change:.2f}:{min_turnover:.2f}:{limit}"
+    cache_key = f"{market_key}:{min_amount:.0f}:{min_change:.2f}:{min_turnover:.2f}:{limit}:{include_all}"
     now = time.monotonic()
     with _cache_lock:
         cached = _dynamic_cache.get(cache_key)
         if cached and now - cached["created_at"] < DYNAMIC_CACHE_TTL_SECONDS and not force_refresh:
             return cached["payload"]
 
-    payload = fetch_dynamic_market_data(market_key, min_amount, min_change, min_turnover, limit)
+    payload = fetch_dynamic_market_data(market_key, min_amount, min_change, min_turnover, limit, include_all)
     with _cache_lock:
         _dynamic_cache[cache_key] = {"created_at": time.monotonic(), "payload": payload}
     return payload
@@ -1065,7 +1395,13 @@ def fetch_limit_up_history(code: str) -> Dict[str, Any]:
         close = number(row.get("close"))
         high = number(row.get("high"))
         if close is not None and high is not None:
-            rows.append({"date": str(row.get("day") or ""), "close": close, "high": high})
+            rows.append({
+                "date": str(row.get("day") or ""),
+                "open": number(row.get("open")),
+                "close": close,
+                "high": high,
+                "low": number(row.get("low")),
+            })
     if len(rows) < 2:
         raise MarketDataError(f"{code} 一年日线数据不足")
 
@@ -1106,6 +1442,7 @@ def fetch_limit_up_history(code: str) -> Dict[str, Any]:
         "sessionsSinceRecentLimit": (
             len(rows) - 1 - recent_limit_index if recent_limit_index is not None else None
         ),
+        "bars": rows,
     }
 
 
@@ -1121,7 +1458,268 @@ def get_limit_up_history(code: str) -> Dict[str, Any]:
     return payload
 
 
-def limit_up_candidate_score(quote: Dict[str, Any], sector_score: float, history_count: int = 0) -> Dict[str, int]:
+def filter_recent_limit_up_quotes(quotes: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    """Keep only stocks with at least one confirmed close-at-limit day in the past year."""
+    if not quotes:
+        return [], 0
+    histories: Dict[str, Dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=min(8, len(quotes))) as executor:
+        futures = {
+            executor.submit(get_limit_up_history, quote["code"]): quote["code"]
+            for quote in quotes
+            if not bse_code(quote["code"])
+        }
+        for future in as_completed(futures):
+            code = futures[future]
+            try:
+                histories[code] = future.result()
+            except MarketDataError:
+                histories[code] = {"available": False, "sealedCount": 0}
+
+    filtered_quotes: List[Dict[str, Any]] = []
+    excluded_count = 0
+    for quote in quotes:
+        if bse_code(quote["code"]):
+            quote["screener"]["limitUpHistory"] = {"available": False, "sealedCount": None, "notRequired": True}
+            filtered_quotes.append(quote)
+            continue
+        history = histories[quote["code"]]
+        quote["screener"]["limitUpHistory"] = history
+        if not history.get("available") or int(history.get("sealedCount") or 0) < 1:
+            excluded_count += 1
+            continue
+        filtered_quotes.append(quote)
+    return filtered_quotes, excluded_count
+
+
+def add_probability_models(quotes: List[Dict[str, Any]], sectors: List[Dict[str, Any]], trade_date: str) -> None:
+    """Display-only heuristic probabilities; they are not calibrated forecasts or trade advice."""
+    sector_by_name = {item["name"]: item for item in sectors}
+    auction_records = get_auction_snapshot(trade_date, capture_if_due=True).get("records") or {}
+    for quote in quotes:
+        sector = sector_by_name.get(quote.get("actualIndustry"), {})
+        history = quote.get("screener", {}).get("limitUpHistory") or {}
+        analysis = quote.get("screener", {}).get("downtrend") or {}
+        change = float(quote.get("changePct") or 0)
+        turnover = float(quote.get("screener", {}).get("turnover") or 0)
+        volume_ratio = float(quote.get("volumeRatio") or 0)
+        amount = float(quote.get("amount") or 0)
+        net_inflow = float(quote.get("netInflow") or 0)
+        float_cap = max(float(quote.get("floatMarketCap") or 1), 1)
+        auction = auction_records.get(quote["code"])
+        auction_score = auction_strength_score(auction, quote.get("floatMarketCap"))
+        sector_score = float(sector.get("strengthScore") or 50)
+        flow_ratio = net_inflow / max(amount, 1)
+        attack = clamp((change - 1) / 8.8 * 100)
+        today_probability = clamp(
+            12 + attack * .26 + min(volume_ratio, 4) / 4 * 16
+            + clamp(100 - abs(turnover - 9) * 7) * .12
+            + sector_score * .14 + clamp(flow_ratio * 500) * .12
+            + min(int(history.get("sealedCount") or 0) * 10, 100) * .10
+            + auction_score["score"] * .10
+        , 1, 95)
+        averages = quote.get("screener", {}).get("movingAverages") or {}
+        ma_bull = sum(
+            1 for key in ("ma5", "ma10", "ma20", "ma30")
+            if (averages.get(key) or {}).get("value") is not None and quote.get("price") is not None and quote["price"] >= averages[key]["value"]
+        )
+        pattern_score = float(analysis.get("patternScore") or 0)
+        risk = float(quote.get("base", {}).get("risk") or 50)
+        base_score = 34 + pattern_score + ma_bull * 5 + sector_score * .10 - risk * .14
+        if analysis.get("excluded"):
+            base_score -= 18
+        if float(analysis.get("drawdown20") or 0) >= 15:
+            base_score -= 8
+        quote["probability"] = {
+            "todayLimitUp": int(today_probability),
+            "followUp": int(clamp(base_score, 1, 90)),
+            "rawFollowUp": int(clamp(base_score, 1, 90)),
+            "signals": analysis.get("patternSignals") or [],
+            "auctionAvailable": auction_score["available"],
+            "netInflow": net_inflow,
+            "note": "模型参考，非历史回测胜率或投资建议。",
+        }
+
+
+def open_backtest_db() -> sqlite3.Connection:
+    BACKTEST_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(BACKTEST_DB_PATH)
+    connection.execute("""CREATE TABLE IF NOT EXISTS follow_up_observations (
+        code TEXT NOT NULL, signal_date TEXT NOT NULL, score INTEGER NOT NULL,
+        outcome INTEGER NOT NULL, source TEXT NOT NULL, PRIMARY KEY (code, signal_date, source)
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS follow_up_snapshots (
+        code TEXT NOT NULL, signal_date TEXT NOT NULL, score INTEGER NOT NULL,
+        settled INTEGER NOT NULL DEFAULT 0, outcome INTEGER, PRIMARY KEY (code, signal_date)
+    )""")
+    return connection
+
+
+def historical_follow_up_score(bars: List[Dict[str, Any]], index: int) -> int:
+    window = bars[index - BACKTEST_LOOKBACK_DAYS + 1:index + 1]
+    analysis = analyze_steady_decline(window)
+    latest = float(bars[index]["close"])
+    averages = analysis.get("movingAverages") or {}
+    ma_bull = sum(1 for value in averages.values() if value is not None and latest >= value)
+    highs = [float(row.get("high") or row["close"]) for row in window]
+    lows = [float(row.get("low") or row["close"]) for row in window]
+    risk = clamp((max(highs) - min(lows)) / max(latest, 0.01) * 250)
+    score = 34 + float(analysis.get("patternScore") or 0) + ma_bull * 5 - risk * .14
+    if analysis.get("excluded"):
+        score -= 18
+    return int(clamp(score, 1, 90))
+
+
+def build_follow_up_calibration(quotes: List[Dict[str, Any]], trade_date: str) -> Dict[str, Any]:
+    """Backtest the K-line-only component against a +5% / next-10-session target."""
+    with _backtest_lock:
+        connection = open_backtest_db()
+        try:
+            bars_by_code: Dict[str, List[Dict[str, Any]]] = {}
+            for quote in quotes:
+                try:
+                    bars = get_limit_up_history(quote["code"]).get("bars") or []
+                except MarketDataError:
+                    continue
+                bars_by_code[quote["code"]] = bars
+                for index in range(BACKTEST_LOOKBACK_DAYS - 1, len(bars) - BACKTEST_HORIZON_DAYS):
+                    if bars[index].get("close") in (None, 0):
+                        continue
+                    future_high = max(float(row.get("high") or row.get("close") or 0) for row in bars[index + 1:index + 1 + BACKTEST_HORIZON_DAYS])
+                    outcome = int(future_high >= float(bars[index]["close"]) * (1 + BACKTEST_TARGET_RETURN))
+                    connection.execute(
+                        "INSERT OR REPLACE INTO follow_up_observations (code, signal_date, score, outcome, source) VALUES (?, ?, ?, ?, 'historical')",
+                        (quote["code"], bars[index].get("date"), historical_follow_up_score(bars, index), outcome),
+                    )
+            pending = connection.execute(
+                "SELECT code, signal_date, score FROM follow_up_snapshots WHERE settled = 0"
+            ).fetchall()
+            for code, signal_date, score in pending:
+                bars = bars_by_code.get(code)
+                if bars is None:
+                    try:
+                        bars = get_limit_up_history(code).get("bars") or []
+                    except MarketDataError:
+                        continue
+                signal_index = next((i for i, row in enumerate(bars) if row.get("date") == signal_date), None)
+                if signal_index is None:
+                    continue
+                future = bars[signal_index + 1:signal_index + 1 + BACKTEST_HORIZON_DAYS]
+                if len(future) < BACKTEST_HORIZON_DAYS or not bars[signal_index].get("close"):
+                    continue
+                future_high = max(float(row.get("high") or row.get("close") or 0) for row in future)
+                outcome = int(future_high >= float(bars[signal_index]["close"]) * (1 + BACKTEST_TARGET_RETURN))
+                connection.execute(
+                    "UPDATE follow_up_snapshots SET settled = 1, outcome = ? WHERE code = ? AND signal_date = ?",
+                    (outcome, code, signal_date),
+                )
+                connection.execute(
+                    "INSERT OR REPLACE INTO follow_up_observations (code, signal_date, score, outcome, source) VALUES (?, ?, ?, ?, 'live-snapshot')",
+                    (code, signal_date, score, outcome),
+                )
+            now = datetime.now(CHINA_TZ)
+            if now.weekday() < 5 and now.strftime("%Y-%m-%d") == trade_date and (now.hour, now.minute) >= (15, 0):
+                for quote in quotes:
+                    probability = quote.get("probability") or {}
+                    connection.execute(
+                        "INSERT OR IGNORE INTO follow_up_snapshots (code, signal_date, score) VALUES (?, ?, ?)",
+                        (quote["code"], trade_date, int(probability.get("rawFollowUp") or 0)),
+                    )
+            connection.commit()
+            rows = connection.execute("SELECT score, outcome FROM follow_up_observations").fetchall()
+        finally:
+            connection.close()
+    buckets: Dict[int, List[int]] = {}
+    for score, outcome in rows:
+        buckets.setdefault(int(score) // 10 * 10, []).append(int(outcome))
+    rates = {bucket: round((sum(values) + 2) / (len(values) + 4) * 100) for bucket, values in buckets.items()}
+    return {"samples": len(rows), "rates": rates, "updatedAt": datetime.now(CHINA_TZ).isoformat()}
+
+
+def apply_follow_up_calibration(quotes: List[Dict[str, Any]], calibration: Dict[str, Any]) -> None:
+    rates = calibration.get("rates") or {}
+    sample_count = int(calibration.get("samples") or 0)
+    for quote in quotes:
+        probability = quote.get("probability") or {}
+        raw = int(probability.get("rawFollowUp") or 0)
+        bucket = raw // 10 * 10
+        empirical = rates.get(bucket)
+        if empirical is not None and sample_count >= 30:
+            probability["followUp"] = int(round(raw * .35 + empirical * .65))
+        probability["backtestSamples"] = sample_count
+        probability["target"] = "未来 10 个交易日最高价较信号日收盘上涨至少 5%"
+
+
+def run_all_market_backtest() -> None:
+    """Build the K-line calibration set for the whole market in resumable batches."""
+    global _all_market_backtest_status
+    try:
+        rows, _ = fetch_market_rows("all")
+        codes = sorted({str(row.get("f12") or "") for row in rows if str(row.get("f12") or "").isdigit()})
+        connection = open_backtest_db()
+        completed = {
+            row[0] for row in connection.execute(
+                "SELECT DISTINCT code FROM follow_up_observations WHERE source = 'all-market'"
+            ).fetchall()
+        }
+        pending = [code for code in codes if code not in completed]
+        connection.close()
+        _all_market_backtest_status = {
+            "status": "running", "total": len(codes), "processed": len(completed),
+            "records": 0, "failed": 0, "startedAt": datetime.now(CHINA_TZ).isoformat(),
+        }
+
+        def build_rows(code: str) -> Tuple[str, List[Tuple[Any, ...]]]:
+            try:
+                bars = get_limit_up_history(code).get("bars") or []
+            except (MarketDataError, OSError, ValueError):
+                return code, []
+            observations: List[Tuple[Any, ...]] = []
+            for index in range(BACKTEST_LOOKBACK_DAYS - 1, len(bars) - BACKTEST_HORIZON_DAYS):
+                close = bars[index].get("close")
+                if close in (None, 0):
+                    continue
+                future = bars[index + 1:index + 1 + BACKTEST_HORIZON_DAYS]
+                future_high = max(float(row.get("high") or row.get("close") or 0) for row in future)
+                outcome = int(future_high >= float(close) * (1 + BACKTEST_TARGET_RETURN))
+                observations.append((code, bars[index].get("date"), historical_follow_up_score(bars, index), outcome))
+            return code, observations
+
+        for start in range(0, len(pending), 40):
+            batch = pending[start:start + 40]
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                results = list(executor.map(build_rows, batch))
+            connection = open_backtest_db()
+            try:
+                for code, observations in results:
+                    connection.executemany(
+                        "INSERT OR REPLACE INTO follow_up_observations (code, signal_date, score, outcome, source) VALUES (?, ?, ?, ?, 'all-market')",
+                        observations,
+                    )
+                connection.commit()
+            finally:
+                connection.close()
+            _all_market_backtest_status["processed"] += len(batch)
+            _all_market_backtest_status["records"] += sum(len(items) for _, items in results)
+            _all_market_backtest_status["failed"] += sum(1 for _, items in results if not items)
+            _all_market_backtest_status["updatedAt"] = datetime.now(CHINA_TZ).isoformat()
+        _all_market_backtest_status["status"] = "completed"
+        _all_market_backtest_status["completedAt"] = datetime.now(CHINA_TZ).isoformat()
+    except (MarketDataError, OSError, sqlite3.Error, ValueError) as exc:
+        _all_market_backtest_status.update({"status": "error", "message": str(exc)})
+        print(f"全市场历史回测失败: {exc}")
+
+
+def all_market_backtest_loop(stop_event: threading.Event) -> None:
+    """Run the initial full-market job once after service startup."""
+    if stop_event.wait(3):
+        return
+    run_all_market_backtest()
+
+
+def limit_up_candidate_score(
+    quote: Dict[str, Any], sector_score: float, history_count: int = 0, auction: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     change_pct = float(quote.get("changePct") or 0)
     amount = float(quote.get("amount") or 0)
     turnover = float(quote.get("screener", {}).get("turnover") or 0)
@@ -1134,14 +1732,16 @@ def limit_up_candidate_score(quote: Dict[str, Any], sector_score: float, history
     cap_score = clamp(100 - abs(math.log10(max(float_cap, 1)) - 10.5) * 38)
     stability = clamp(100 - max(0, amplitude - abs(change_pct) - 2) * 9)
     history_score = clamp(history_count * 12)
+    auction_score = auction_strength_score(auction, quote.get("floatMarketCap"))
     total = round(
-        sector_score * 0.25
-        + attack * 0.25
-        + activity * 0.15
-        + turnover_score * 0.10
-        + history_score * 0.10
-        + cap_score * 0.10
-        + stability * 0.05
+        sector_score * 0.20
+        + attack * 0.20
+        + activity * 0.12
+        + turnover_score * 0.08
+        + history_score * 0.08
+        + cap_score * 0.08
+        + stability * 0.04
+        + auction_score["score"] * 0.20
     )
     return {
         "total": total,
@@ -1152,6 +1752,7 @@ def limit_up_candidate_score(quote: Dict[str, Any], sector_score: float, history
         "history": history_score,
         "marketCap": cap_score,
         "stability": stability,
+        "auction": auction_score,
     }
 
 
@@ -1199,6 +1800,9 @@ def fetch_limit_up_candidates() -> Dict[str, Any]:
     sectors = aggregate_sector_strength(market_quotes)
     sector_scores = {item["name"]: item["strengthScore"] for item in sectors}
     sector_details = {item["name"]: item for item in sectors}
+    market_date = updated_at.strftime("%Y-%m-%d")
+    auction_snapshot = get_auction_snapshot(market_date, capture_if_due=True)
+    auction_records = auction_snapshot.get("records") or {}
     for quote in quotes:
         quote["limitUp"] = {
             "score": limit_up_candidate_score(quote, sector_scores.get(quote.get("actualIndustry"), 50), 0),
@@ -1243,6 +1847,7 @@ def fetch_limit_up_candidates() -> Dict[str, Any]:
             quote,
             sector_scores.get(quote.get("actualIndustry"), 50),
             history["sealedCount"],
+            auction_records.get(quote["code"]),
         )
         if status == "broken":
             score["total"] = max(0, score["total"] - 12)
@@ -1251,6 +1856,8 @@ def fetch_limit_up_candidates() -> Dict[str, Any]:
         volume_ratio = quote.get("volumeRatio")
         turnover = quote.get("screener", {}).get("turnover")
         float_cap = quote.get("floatMarketCap")
+        auction = score["auction"]
+        auction_record = auction_records.get(quote["code"])
         sessions_since_limit = history.get("sessionsSinceRecentLimit")
         signals = [
             {"key": "sector", "label": "板块前列", "met": sector.get("rank", 99) <= 9 and sector.get("risingCount", 0) >= 3},
@@ -1263,6 +1870,7 @@ def fetch_limit_up_candidates() -> Dict[str, Any]:
             {"key": "history", "label": "一年封板记录", "met": history["sealedCount"] >= 1},
             {"key": "recent", "label": "20–60日涨停记忆", "met": sessions_since_limit is not None and 20 <= sessions_since_limit <= 60},
             {"key": "open", "label": "开盘承接稳定", "met": open_gap is not None and open_gap <= 4 and (quote.get("price") or 0) >= (quote.get("open") or 0) and (quote.get("screener", {}).get("amplitude") or 0) <= 12},
+            {"key": "auction", "label": "9:25 委买强度", "met": auction["available"] and auction["score"] >= 60},
         ]
         quote["limitUp"] = {
             "limitPrice": limit_price,
@@ -1279,16 +1887,30 @@ def fetch_limit_up_candidates() -> Dict[str, Any]:
                 "memberCount": sector.get("memberCount"),
             },
             "openGapPct": round(open_gap, 2) if open_gap is not None else None,
+            "auction": {
+                "available": auction["available"],
+                "unmatchedBuyAmount": auction_record.get("unmatchedBuyAmount") if auction_record else None,
+                "auctionAmount": auction_record.get("auctionAmount") if auction_record else None,
+                "auctionVolume": auction_record.get("auctionVolume") if auction_record else None,
+                "strengthScore": auction["score"],
+                "capturedAt": auction_record.get("capturedAt") if auction_record else auction_snapshot.get("capturedAt"),
+            },
         }
         candidates.append(quote)
     candidates.sort(key=lambda item: (item["limitUp"]["score"]["total"], item["changePct"]), reverse=True)
     return {
-        "source": "东方财富沪深主板行情快照 + 新浪证券不复权日线",
-        "marketDate": updated_at.strftime("%Y-%m-%d"),
+        "source": "东方财富沪深主板行情快照 + 新浪证券不复权日线" + (" + 东方财富 EMT 09:25 竞价快照" if auction_snapshot.get("available") else ""),
+        "marketDate": market_date,
         "updatedAt": updated_at.isoformat(),
         "fetchedAt": datetime.now(CHINA_TZ).isoformat(),
         "scannedCount": totals,
         "candidateCount": len(candidates),
+        "auction": {
+            "available": auction_snapshot.get("available", False),
+            "status": auction_snapshot.get("status"),
+            "message": auction_snapshot.get("message"),
+            "capturedAt": auction_snapshot.get("capturedAt"),
+        },
         "quotes": candidates,
     }
 
@@ -1417,7 +2039,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_html()
             return
         if parsed.path == "/api/health":
-            self.send_json(200, {"status": "ok", "version": 10})
+            self.send_json(200, {"status": "ok", "version": 11, "allMarketBacktest": _all_market_backtest_status})
             return
         if parsed.path == "/api/sectors":
             self.send_json(
@@ -1463,6 +2085,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         min_change,
                         min_turnover,
                         limit,
+                        query.get("includeAll") == ["1"],
                         query.get("refresh") == ["1"],
                     ),
                 )
@@ -1550,13 +2173,24 @@ def main() -> None:
     args = parser.parse_args()
 
     server = ThreadingHTTPServer((args.host, args.port), AppHandler)
+    capture_stop = threading.Event()
+    threading.Thread(target=auction_capture_loop, args=(capture_stop,), name="auction-capture", daemon=True).start()
+    threading.Thread(target=follow_up_snapshot_loop, args=(capture_stop,), name="follow-up-snapshot", daemon=True).start()
+    threading.Thread(target=all_market_backtest_loop, args=(capture_stop,), name="all-market-backtest", daemon=True).start()
     print(f"TradingAgents 板块选股工作台已启动: http://{args.host}:{args.port}/")
+    if EMT_AUCTION_COMMAND:
+        print("EMT 竞价采集已配置：交易日 09:25 后将自动保存竞价快照")
+    else:
+        print("EMT 竞价采集未配置：涨停打板将把竞价委买因子标为待接入")
+    print("后续上涨模型将在交易日 15:05 后保存当日候选，并在满 10 个交易日后自动校准")
+    print("全市场历史回测已在后台启动：已完成股票将自动跳过，支持断点续跑")
     print("按 Ctrl+C 停止服务")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        capture_stop.set()
         server.server_close()
 
 
