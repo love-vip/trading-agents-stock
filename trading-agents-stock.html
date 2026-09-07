@@ -160,6 +160,9 @@
       font-size: 11px;
       text-align: right;
     }
+    .nav-index { color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .nav-index-change.positive { color: var(--red); }
+    .nav-index-change.negative { color: var(--green); }
 
     .nav-section-label {
       padding: 13px 10px 6px;
@@ -2788,6 +2791,7 @@
       marketUpdatedAt: null,
       marketRegime: { label: "常态", minScore: 70 },
       marketSource: null,
+      marketIndices: {},
       marketScope: "all",
       pageView: "screener",
       hotConcept: null,
@@ -3112,7 +3116,7 @@
       el.sectorTotal.textContent = secondary.length;
       el.sectorNav.innerHTML = secondary.map(([key, market]) => `
         <button class="nav-button${state.pageView === "screener" && state.marketScope === key ? " active" : ""}" type="button" data-market="${key}">
-          <span>${market.label}</span><span class="nav-count"></span>
+          <span>${market.label}</span><span class="nav-index"><span>${state.marketIndices[key]?.name || "指数"}</span> <span class="nav-index-change ${quoteClass(state.marketIndices[key]?.changePct)}">${hasNumber(state.marketIndices[key]?.changePct) ? formatPct(state.marketIndices[key].changePct) : "--"}</span></span>
         </button>
       `).join("");
       el.sectorNav.querySelectorAll("[data-market]").forEach((button) => {
@@ -3979,6 +3983,19 @@
         card.classList.toggle("active", isSelected);
         card.setAttribute("aria-pressed", String(isSelected));
       });
+    }
+
+    async function loadMarketIndices() {
+      try {
+        const response = await fetch("/api/market-indices", {cache: "no-store"});
+        const payload = await response.json();
+        if (response.ok) {
+          state.marketIndices = payload.indices || {};
+          renderSectorNavigation();
+        }
+      } catch (error) {
+        state.marketIndices = {};
+      }
     }
 
     function queueStockCardSelection(code) {
@@ -5016,6 +5033,7 @@
     applyTheme(savedTheme(), false);
     render();
     loadSectors();
+    loadMarketIndices();
   </script>
 </body>
 </html>

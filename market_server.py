@@ -12,6 +12,8 @@ import statistics
 import subprocess
 import threading
 import time
+import urllib.request
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -1749,6 +1751,56 @@ def get_dynamic_market_data(
     return payload
 
 
+MARKET_INDEX_CODES = {
+    "sh-main": ("上证指数", "s_sh000001"),
+    "sz-main": ("深证成指", "s_sz399001"),
+    "chinext": ("创业板指", "s_sz399006"),
+    "star": ("科创50", "s_sh000688"),
+}
+
+
+def _parse_index_payload(text: str, source: str) -> Dict[str, Dict[str, Any]]:
+    result: Dict[str, Dict[str, Any]] = {}
+    for line in text.splitlines():
+        if '="' not in line:
+            continue
+        symbol, raw = line.split('="', 1)
+        fields = raw.rstrip('";').split("~" if source == "tencent" else ",")
+        if source == "tencent":
+            code = symbol[2:] if symbol.startswith("v_") else ""
+            key = next((k for k, item in MARKET_INDEX_CODES.items() if item[1] == code), None)
+            values = (fields[1], fields[3], fields[4], fields[5]) if len(fields) > 5 else None
+        else:
+            code = symbol.replace("var hq_str_", "")
+            key = next((k for k, item in MARKET_INDEX_CODES.items() if item[1] == code), None)
+            values = (fields[0], fields[1], fields[2], fields[3]) if len(fields) > 3 else None
+        if key and values:
+            try:
+                result[key] = {"name": values[0], "price": float(values[1] or 0), "change": float(values[2] or 0), "changePct": float(values[3] or 0)}
+            except (TypeError, ValueError):
+                continue
+    return result
+
+
+def fetch_market_indices() -> Dict[str, Dict[str, Any]]:
+    symbols = ",".join(item[1] for item in MARKET_INDEX_CODES.values())
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"}
+    try:
+        request = urllib.request.Request(f"https://qt.gtimg.cn/q={symbols}", headers=headers)
+        with urllib.request.urlopen(request, timeout=5) as response:
+            parsed = _parse_index_payload(response.read().decode("gbk", errors="ignore"), "tencent")
+        if len(parsed) == len(MARKET_INDEX_CODES):
+            return parsed
+    except Exception:
+        pass
+    try:
+        request = urllib.request.Request(f"https://hq.sinajs.cn/list={symbols}", headers=headers)
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return _parse_index_payload(response.read().decode("gbk", errors="ignore"), "sina")
+    except Exception:
+        return {}
+
+
 def fetch_sector_strength_data(market_key: str) -> Dict[str, Any]:
     market = MARKET_SCOPES[market_key]
     rows, total = fetch_market_rows(market_key)
@@ -2939,6 +2991,9 @@ class AppHandler(BaseHTTPRequestHandler):
                     "sectors": [public_sector(key) for key in SECTOR_ORDER],
                 },
             )
+            return
+        if parsed.path == "/api/market-indices":
+            self.send_json(200, {"indices": fetch_market_indices(), "updatedAt": datetime.now(CHINA_TZ).isoformat()})
             return
         if parsed.path == "/api/hot-concept":
             concept_name = query.get("name", [""])[0].strip()
