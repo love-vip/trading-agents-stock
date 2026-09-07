@@ -50,6 +50,7 @@ DOWNTREND_CACHE_TTL_SECONDS = 300
 DOWNTREND_CANDIDATE_BUFFER = 20
 DOWNTREND_MAX_WORKERS = 8
 CONCEPT_CACHE_TTL_SECONDS = 600
+CONCEPT_DB_REFRESH_SECONDS = 7 * 24 * 60 * 60
 LIMIT_UP_CACHE_TTL_SECONDS = 25
 LIMIT_UP_HISTORY_CACHE_TTL_SECONDS = 12 * 60 * 60
 MIDTERM_ACTIVITY_CACHE_TTL_SECONDS = 12 * 60 * 60
@@ -59,6 +60,7 @@ LIMIT_UP_HISTORY_DAYS = 750
 LIMIT_UP_CANDIDATE_LIMIT = 36
 THS_POPULARITY_CACHE_TTL_SECONDS = 10 * 60
 REQUEST_TIMEOUT_SECONDS = 10
+SUPPLEMENT_REQUEST_TIMEOUT_SECONDS = 5
 MARKET_PAGE_SIZE = 100
 AUCTION_DATA_DIR = BASE_DIR / "data" / "auction"
 BACKTEST_DB_PATH = BASE_DIR / "data" / "backtest.sqlite"
@@ -827,7 +829,7 @@ def add_ths_popularity(quotes: List[Dict[str, Any]], trade_date: str) -> None:
     if not quotes:
         return
     results: Dict[str, Dict[str, Any]] = {}
-    with ThreadPoolExecutor(max_workers=min(6, len(quotes))) as executor:
+    with ThreadPoolExecutor(max_workers=min(12, len(quotes))) as executor:
         futures = {executor.submit(get_ths_popularity, quote["code"], trade_date): quote["code"] for quote in quotes}
         for future in as_completed(futures):
             code = futures[future]
@@ -844,7 +846,7 @@ def add_related_sectors(quotes: List[Dict[str, Any]]) -> None:
     if not quotes:
         return
     results: Dict[str, List[str]] = {}
-    with ThreadPoolExecutor(max_workers=min(6, len(quotes))) as executor:
+    with ThreadPoolExecutor(max_workers=min(12, len(quotes))) as executor:
         futures = {executor.submit(get_stock_concepts, quote["code"]): quote["code"] for quote in quotes}
         for future in as_completed(futures):
             code = futures[future]
@@ -1139,7 +1141,7 @@ def fetch_ths_stock_concepts(code: str) -> List[Dict[str, Any]]:
         THS_BASIC_STOCK_URL.format(code=code),
         headers={"User-Agent": "Mozilla/5.0", "Referer": "https://stock.10jqka.com.cn/"},
     )
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+    with urllib.request.urlopen(request, timeout=SUPPLEMENT_REQUEST_TIMEOUT_SECONDS) as response:
         page = response.read().decode("gbk", errors="ignore")
     start = page.find("概念行情贴合度")
     if start < 0:
@@ -1197,7 +1199,31 @@ def get_stock_concepts(code: str) -> List[Dict[str, Any]]:
         if cached and now - cached["created_at"] < CONCEPT_CACHE_TTL_SECONDS:
             return cached["payload"]
 
+    try:
+        with open_backtest_db() as connection:
+            row = connection.execute(
+                "SELECT concepts_json, fetched_at FROM stock_concept_cache WHERE code = ?",
+                (code,),
+            ).fetchone()
+        if row and time.time() - float(row[1]) < CONCEPT_DB_REFRESH_SECONDS:
+            concepts = json.loads(row[0])
+            if isinstance(concepts, list):
+                with _cache_lock:
+                    _concept_cache[code] = {"created_at": now, "payload": concepts}
+                return concepts
+    except (OSError, sqlite3.Error, TypeError, ValueError, json.JSONDecodeError):
+        pass
+
     concepts = fetch_stock_concepts(code)
+    try:
+        with open_backtest_db() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO stock_concept_cache (code, concepts_json, fetched_at, source) VALUES (?, ?, ?, ?)",
+                (code, json.dumps(concepts, ensure_ascii=False), time.time(), "同花顺优先/东方财富备用"),
+            )
+            connection.commit()
+    except sqlite3.Error:
+        pass
     with _cache_lock:
         _concept_cache[code] = {
             "created_at": time.monotonic(),
@@ -2212,6 +2238,12 @@ def open_backtest_db() -> sqlite3.Connection:
     connection.execute("""CREATE TABLE IF NOT EXISTS midterm_history_cache (
         code TEXT PRIMARY KEY, latest_date TEXT NOT NULL,
         bars_json TEXT NOT NULL, fetched_at TEXT NOT NULL
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS stock_concept_cache (
+        code TEXT PRIMARY KEY,
+        concepts_json TEXT NOT NULL,
+        fetched_at REAL NOT NULL,
+        source TEXT NOT NULL
     )""")
     return connection
 
