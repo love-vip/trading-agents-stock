@@ -1019,6 +1019,47 @@
     .money-flow { font-weight: 950 !important; }
     .money-flow.positive { color: #c51632 !important; }
     .money-flow.negative { color: #087a54 !important; }
+    .page-loading {
+      position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+      background: rgba(8, 15, 30, .32); backdrop-filter: blur(3px);
+    }
+    .page-loading[hidden] { display: none; }
+    .page-loading-card {
+      min-width: 250px; padding: 24px 28px; text-align: center;
+      border: 1px solid rgba(99, 175, 255, .3); border-radius: 14px;
+      background: rgba(17, 29, 50, .92); color: #dce9ff; box-shadow: 0 16px 45px rgba(0,0,0,.18);
+    }
+    .page-loading-spinner {
+      width: 30px; height: 30px; margin: 0 auto 12px; border: 3px solid rgba(255,255,255,.18);
+      border-top-color: #55b7ff; border-radius: 50%; animation: page-spin .8s linear infinite;
+    }
+    @keyframes page-spin { to { transform: rotate(360deg); } }
+    :root[data-theme="light"] .page-loading {
+      background: rgba(245, 249, 255, .38);
+    }
+    :root[data-theme="light"] .page-loading-card {
+      border-color: rgba(66, 126, 190, .25);
+      background: rgba(255, 255, 255, .94);
+      color: #243b5a;
+      box-shadow: 0 16px 45px rgba(47, 83, 125, .16);
+    }
+    :root[data-theme="light"] .page-loading-card p { color: #718198; }
+    :root[data-theme="light"] .page-loading-spinner { border-color: rgba(48, 104, 170, .16); border-top-color: #287ac1; }
+    .stock-card.has-recommendation { position: relative; overflow: hidden; }
+    .stock-card.has-recommendation::after {
+      content: attr(data-recommendation);
+      position: absolute; left: 50%; top: 50%; z-index: 0;
+      font-size: 36px; font-weight: 950; letter-spacing: 4px;
+      opacity: .16; pointer-events: none; white-space: nowrap;
+      transform: translate(-50%, -50%) rotate(-16deg);
+    }
+    .stock-card.recommend-buy::after { color: #c51632; }
+    .stock-card.recommend-watch::after { color: #087a54; }
+    .stock-card.recommend-caution::after { color: #c48719; opacity: .22; }
+    .stock-card.recommend-wait::after { color: #d08a20; opacity: .22; }
+    .stock-card.recommend-risk::after { color: #087a54; opacity: .22; }
+    .stock-card.recommend-limit::after { color: #c51632; opacity: .22; }
+    .stock-card > * { position: relative; z-index: 1; }
     .hot-concept-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 9px; border-radius: 6px; overflow: hidden; background: #e6edf6; }
     .hot-concept-fact { padding: 7px; background: #f8fafd; }
     .hot-concept-fact span { display: block; color: #8290a3; font-size: 9px; }
@@ -1182,15 +1223,14 @@
     }
 
     .order-flow-key {
-      border-radius: 3px;
-      padding: 1px 4px;
-      font-weight: 800;
+      color: #6f8096;
+      font-weight: 400;
     }
 
     .order-flow-key.inner,
-    .order-flow-key.outer { color: #6f8096; background: rgba(111, 128, 150, .10); }
-    .order-flow-value.inner,
-    .order-flow-value.outer { color: #17243a; font-weight: 900; }
+    .order-flow-key.outer { color: #6f8096; }
+    .order-flow-value.inner { color: #087a54; font-weight: 900; }
+    .order-flow-value.outer { color: #c51632; font-weight: 900; }
 
     .stock-card-metric .probability-value { position: relative; color: var(--amber); cursor: help; }
     .stock-card-metric .probability-value.follow-up { color: var(--cyan); }
@@ -1626,6 +1666,21 @@
       margin: 7px 0 0;
     }
 
+    .recommendation-note {
+      margin-top: 10px;
+      border: 1px dashed rgba(168, 114, 255, .38);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: var(--muted);
+      background: rgba(168, 114, 255, .06);
+      line-height: 1.6;
+      font-size: 13px;
+      box-shadow: none;
+    }
+    .recommendation-note .model-note-head strong { color: var(--text); }
+    .recommendation-note .model-note-head span { display: none; }
+    .recommendation-note p { margin: 7px 0 0; }
+
     .empty {
       padding: 22px;
       text-align: center;
@@ -1936,6 +1991,27 @@
       border-color: #a7cfee;
       background: #f1f8ff;
     }
+    :root[data-theme="light"] .recommendation-note {
+      border-color: #c7a9ee;
+      color: #6f6680;
+      background: #faf7ff;
+    }
+    :root[data-theme="light"] .recommendation-note .model-note-head strong { color: #55367f; }
+    :root[data-theme="light"] .recommendation-note .model-note-head span { display: none; }
+    .buy-principles {
+      margin-top: 12px;
+      border: 1px dashed rgba(168, 114, 255, .34);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: var(--muted);
+      background: rgba(168, 114, 255, .055);
+      line-height: 1.65;
+      font-size: 12px;
+    }
+    .buy-principles .model-note-head strong { color: #b995ed; }
+    .buy-principles p { margin: 7px 0 0; }
+    :root[data-theme="light"] .buy-principles { border-color: #c7a9ee; background: #faf7ff; color: #6f6680; }
+    :root[data-theme="light"] .buy-principles .model-note-head strong { color: #67428f; }
 
     :root[data-theme="light"] .chart-modal-backdrop {
       background: rgba(31, 41, 55, 0.34);
@@ -2186,6 +2262,9 @@
   </style>
 </head>
 <body>
+  <div class="page-loading" id="pageLoading" role="status" aria-live="polite">
+    <div class="page-loading-card"><div class="page-loading-spinner"></div><strong id="pageLoadingText">正在加载行情数据</strong><p>首次加载可能需要几秒，请稍候</p></div>
+  </div>
   <div class="app-layout">
     <aside class="nav-rail" aria-label="选股页面导航">
       <div class="nav-brand">
@@ -2260,7 +2339,7 @@
         </select>
       </div>
       <div class="field">
-        <label for="scoreRange">最低综合分：<span id="scoreValue">60</span></label>
+        <label for="scoreRange">最低综合分：<span id="scoreValue">70</span></label>
         <input id="scoreRange" type="range" min="60" max="90" value="60">
       </div>
       <div class="field">
@@ -2372,6 +2451,10 @@
           <div class="model-note" aria-live="polite">
             <div class="model-note-head"><strong>入选原因</strong><span id="selectionReasonScore">等待筛选</span></div>
             <p id="selectionReason">等待当前市场的实时筛选结果。</p>
+          </div>
+          <div class="recommendation-note" aria-live="polite">
+            <div class="model-note-head"><strong id="recommendationReasonTitle">推荐理由</strong><span id="recommendationReasonScore"></span></div>
+            <p id="recommendationReason">选择个股后，这里会结合评分、涨幅、板块和资金数据生成说明。</p>
           </div>
         </div>
       </aside>
@@ -2692,10 +2775,10 @@
       sector: "overview",
       sectors: [],
       overview: null,
-      sortBy: "todayLimitUp",
-      minScore: 60,
+      sortBy: "score",
+      minScore: 70,
       listPage: 1,
-      listPageSize: 100,
+      listPageSize: 50,
       search: "",
       selectedCode: null,
       reviewed: false,
@@ -2703,6 +2786,7 @@
       marketMessage: "正在获取最新行情",
       marketDate: null,
       marketUpdatedAt: null,
+      marketRegime: { label: "常态", minScore: 70 },
       marketSource: null,
       marketScope: "all",
       pageView: "screener",
@@ -2746,6 +2830,8 @@
       minChange: document.getElementById("minChange"),
       minTurnover: document.getElementById("minTurnover"),
       dynamicStatus: document.getElementById("dynamicStatus"),
+      pageLoading: document.getElementById("pageLoading"),
+      pageLoadingText: document.getElementById("pageLoadingText"),
       scoreRange: document.getElementById("scoreRange"),
       scoreValue: document.getElementById("scoreValue"),
       search: document.getElementById("search"),
@@ -2779,6 +2865,9 @@
       strategyTag: document.getElementById("strategyTag"),
       selectionReason: document.getElementById("selectionReason"),
       selectionReasonScore: document.getElementById("selectionReasonScore"),
+      recommendationReason: document.getElementById("recommendationReason"),
+      recommendationReasonScore: document.getElementById("recommendationReasonScore"),
+      recommendationReasonTitle: document.getElementById("recommendationReasonTitle"),
       resultTag: document.getElementById("resultTag"),
       stockList: document.getElementById("stockList"),
       detailContent: document.getElementById("detailContent"),
@@ -2958,15 +3047,13 @@
     function syncDynamicControls() {
       const market = currentMarketScope();
       const refreshNote = screenerRefreshStatusText();
-      el.scoreRange.min = state.pageView === "hot-concept" ? "0" : "60";
+      el.scoreRange.min = state.pageView === "hot-concept" ? "0" : String(state.marketRegime?.minScore ?? 70);
       el.scoreRange.value = String(state.minScore);
       if (hasNumber(state.scannedCount)) {
         const downtrendNote = state.downtrendExcludedCount
           ? `；候选池已排除阴跌结构 ${state.downtrendExcludedCount.toLocaleString("zh-CN")} 只`
           : "";
-        const limitUpNote = state.limitUpExcludedCount
-          ? `；近一年无封板或历史不可确认 ${state.limitUpExcludedCount.toLocaleString("zh-CN")} 只`
-          : "";
+        const limitUpNote = "";
         const marketCapNote = state.marketCapExcludedCount
           ? `；总市值低于 30 亿 ${state.marketCapExcludedCount.toLocaleString("zh-CN")} 只`
           : "";
@@ -3145,7 +3232,7 @@
       state.marketCapExcludedCount = null;
       state.marketScope = marketKey;
       state.pageView = "screener";
-      state.minScore = Math.max(60, state.minScore);
+      state.minScore = Math.max(state.marketRegime?.minScore ?? 70, state.minScore);
       el.marketScope.value = marketKey;
       state.selectedCode = null;
       state.reviewed = false;
@@ -3501,6 +3588,8 @@
       state.downtrendExcludedCount = payload.downtrendExcludedCount ?? null;
       state.limitUpExcludedCount = payload.limitUpExcludedCount ?? null;
       state.marketCapExcludedCount = payload.marketCapExcludedCount ?? null;
+      state.marketRegime = payload.marketRegime || {label: "常态", minScore: 70};
+      state.minScore = state.marketRegime.minScore === 60 ? Math.min(state.minScore, 60) : Math.max(state.minScore, 70);
       state.sectorStrength = Array.isArray(payload.sectorStrength) ? payload.sectorStrength : [];
       state.marketMessage = `${currentMarketScope().label}已扫描 ${payload.scannedCount?.toLocaleString("zh-CN") || "--"} 只，命中 ${payload.matchedCount?.toLocaleString("zh-CN") || 0} 只`;
       state.marketDate = payload.marketDate;
@@ -3530,7 +3619,7 @@
           minAmount: String(state.dynamicFilters.minAmount),
           minChange: String(state.dynamicFilters.minChange),
           minTurnover: String(state.dynamicFilters.minTurnover),
-          limit: "100",
+          limit: "50",
           includeAll: "0"
         });
         if (forceRefresh) query.set("refresh", "1");
@@ -3779,7 +3868,7 @@
       const query = state.search.trim().toLowerCase();
       return stocks
         .map((stock) => ({ ...stock, score: weightedScore(stock) }))
-        .filter((stock) => stock.score >= (state.pageView === "hot-concept" ? state.minScore : Math.max(60, state.minScore)))
+        .filter((stock) => stock.score >= (state.pageView === "hot-concept" ? state.minScore : Math.max(state.marketRegime?.minScore ?? 70, state.minScore)))
         .filter((stock) => {
           if (!query) return true;
           const text = `${stock.code} ${stock.name} ${stock.industry} ${stock.theme} ${stock.reason} ${stock.tags.join(" ")}`.toLowerCase();
@@ -3827,10 +3916,41 @@
       if (!stock) {
         el.selectionReasonScore.textContent = "暂无候选";
         el.selectionReason.textContent = "当前条件下暂无符合要求的股票，可调整筛选条件后重试。";
+        el.recommendationReasonScore.textContent = "暂无候选";
+        el.recommendationReasonTitle.textContent = "推荐理由";
+        el.recommendationReason.textContent = "选择个股后，这里会结合评分、涨幅、板块和资金数据生成说明。";
         return;
       }
       el.selectionReasonScore.textContent = `${stock.name} · 综合分 ${stock.score}`;
       el.selectionReason.textContent = stock.reason || "该股票符合当前市场范围与实时行情筛选条件。";
+      const flowText = hasNumber(stock.netInflow)
+        ? `资金净流入${stock.netInflow >= 0 ? "为正" : "为负"}（${formatAmount(stock.netInflow)}）`
+        : "资金流数据暂不可用";
+      const sectorText = stock.actualIndustry || currentMarketScope().label;
+      const volumeText = hasNumber(stock.volumeRatio) ? `量比 ${stock.volumeRatio.toFixed(2)}` : "量比待确认";
+      const turnoverText = hasNumber(stock.screener?.turnover) ? `换手率 ${stock.screener.turnover.toFixed(2)}%` : "换手率待确认";
+      const reasonParts = [
+        `综合评分 ${stock.score} 分，当前涨幅 ${formatPct(stock.change)}，处于盘中强势区间`,
+        `所属板块为${sectorText}`,
+        flowText,
+        `${volumeText}、${turnoverText}`,
+      ];
+      const recommendation = stock.screener?.recommendation;
+      el.recommendationReasonTitle.textContent = ["推荐买入", "谨慎追高", "已涨停", "等待回落", "冲高回落风险"].includes(recommendation) ? recommendation : "推荐理由";
+      el.recommendationReasonScore.textContent = recommendation || "综合观察";
+      el.recommendationReason.textContent = recommendation === "推荐买入"
+        ? `${reasonParts.join("；")}。评分、涨幅与量价表现形成共振，且现价位于当日均价上方，短线承接相对积极，故给出推荐买入提示。请结合实时盘口变化控制仓位。`
+        : recommendation === "已涨停"
+          ? `${reasonParts.join("；")}。个股已经涨停，强势特征明确，但当前不宜追高，建议关注封单稳定性与次日承接。`
+          : recommendation === "等待回落"
+            ? `${reasonParts.join("；")}。短线涨速和成交活跃度偏快，价格接近日内高点，当前不宜追涨，建议等待回落至均价附近并观察承接。`
+          : recommendation === "冲高回落风险"
+            ? `${reasonParts.join("；")}。个股出现冲高后回落，现价已低于当日均价，短线承接转弱，建议暂不追入，等待重新站回均价。`
+          : recommendation === "谨慎追高"
+            ? `${reasonParts.join("；")}。当前涨幅已超过8%，短线价格弹性较强但追高风险明显，容易出现冲高回落，故标记为谨慎追高。`
+          : recommendation === "推荐观望"
+            ? `${reasonParts.join("；")}。虽然评分和涨幅达到关注条件，但现价低于当日均价，盘中承接仍需确认，因此给出推荐观望提示。`
+            : `${reasonParts.join("；")}。当前数据仍在观察区间，尚未同时满足推荐买入的评分、涨幅和均价条件。`;
     }
 
     function clearPendingStockClick() {
@@ -3915,7 +4035,7 @@
         <p>概念成分股实时观察榜 · 默认按今日涨停概率由高到低</p>
         <div class="hot-concept-summary"><span>成分股 ${list.length} 只</span><span>上涨 ${rising} 只</span><span class="sector-change down">下跌 ${falling} 只</span><span class="sector-change${hasNumber(state.hotConceptChange) && state.hotConceptChange < 0 ? " down" : ""}">板块平均涨跌 ${formatPct(state.hotConceptChange)}</span><span>平均涨停概率 ${averageToday}%</span></div>
       </section><div class="hot-concept-stock-grid">${cards}</div>
-      <div class="stock-pagination"><label>每页<select data-page-size aria-label="每页展示数量">${[20, 50, 100, 200].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}</select>只</label>
+      <div class="stock-pagination"><label>每页<select data-page-size aria-label="每页展示数量">${[20, 50].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}</select>只</label>
       <button class="btn" data-page="first" ${state.listPage === 1 ? "disabled" : ""}>首页</button><button class="btn" data-page="prev" ${state.listPage === 1 ? "disabled" : ""}>上一页</button><span>第 ${state.listPage} / ${pageCount} 页</span><button class="btn" data-page="next" ${state.listPage === pageCount ? "disabled" : ""}>下一页</button><button class="btn" data-page="last" ${state.listPage === pageCount ? "disabled" : ""}>末页</button></div>`;
       el.stockList.querySelectorAll(".hot-concept-card").forEach((card) => {
         card.addEventListener("click", () => queueStockCardSelection(card.dataset.code));
@@ -4018,7 +4138,7 @@
           return `<span class="stock-moving-average${colorClass}" title="${tooltip}">${period}日线 ${formatPrice(value)}</span>`;
         }).join("");
         return `
-          <button class="stock-card${active}" type="button" data-code="${stock.code}" aria-pressed="${stock.code === state.selectedCode}" aria-label="选择 ${stock.name}，双击查看日 K 线" title="单击选择，双击查看日 K 线">
+          <button class="stock-card${active}${stock.screener?.recommendation ? ` has-recommendation ${stock.screener.recommendation === "推荐买入" ? "recommend-buy" : stock.screener.recommendation === "已涨停" ? "recommend-limit" : stock.screener.recommendation === "谨慎追高" ? "recommend-caution" : stock.screener.recommendation === "等待回落" ? "recommend-wait" : stock.screener.recommendation === "冲高回落风险" ? "recommend-risk" : "recommend-watch"}` : ""}" type="button" data-code="${stock.code}" data-recommendation="${stock.screener?.recommendation || ""}" aria-pressed="${stock.code === state.selectedCode}" aria-label="选择 ${stock.name}，双击查看日 K 线" title="单击选择，双击查看日 K 线">
             <div class="stock-top">
               <div>
                 <div class="stock-name">${stock.name}<span class="code">${stock.code}</span>${popularityMarkup}${infoBadges}</div>
@@ -4038,6 +4158,8 @@
               <div class="stock-card-metric"><span>量比 / 换手率</span><strong>${hasNumber(stock.volumeRatio) ? stock.volumeRatio.toFixed(2) : "--"} / ${hasNumber(stock.screener?.turnover) ? `${stock.screener.turnover.toFixed(2)}%` : "--"}</strong></div>
               <div class="stock-card-metric"><span>资金净流入</span><strong class="money-flow ${(stock.netInflow ?? 0) < 0 ? "negative" : "positive"}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</strong></div>
               <div class="stock-card-metric"><span class="order-flow-label"><i class="order-flow-key inner">内盘</i> / <i class="order-flow-key outer">外盘</i></span><strong tabindex="0" data-tooltip="${escapeHtml(orderFlowTitle)}" title="${escapeHtml(orderFlowTitle)}"><i class="order-flow-value inner">${formatVolume(orderFlow.innerVolume)}</i> / <i class="order-flow-value outer">${formatVolume(orderFlow.outerVolume)}</i></strong></div>
+              <div class="stock-card-metric"><span>进入时间（60分 / 70分）</span><strong>${stock.screener?.scoreThresholdTimes?.["60"] || "--"} / ${stock.screener?.scoreThresholdTimes?.["70"] || "--"}</strong></div>
+              <div class="stock-card-metric"><span>进入时间（3% / 9%）</span><strong>${stock.screener?.changeThresholdTimes?.["3"] || "--"} / ${stock.screener?.changeThresholdTimes?.["9"] || "--"}</strong></div>
             </div>
             <div class="mini-bars" role="img" aria-label="评分指标：趋势 ${stock.base.trend} 分，动量 ${stock.base.momentum} 分，流动性 ${stock.base.liquidity} 分，强弱 ${stock.base.strength} 分，稳定性 ${stock.base.stability} 分">
               <span class="mini-bar" data-tooltip="趋势 ${stock.base.trend} 分" title="趋势：${stock.base.trend} 分"><span style="--v:${stock.base.trend}%; --c:var(--cyan)"></span></span>
@@ -4051,7 +4173,7 @@
       }).join("") + `<div class="stock-pagination" aria-label="候选分页">
         <label>每页
           <select data-page-size aria-label="每页展示数量">
-            ${[20, 50, 100, 200].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}
+            ${[20, 50].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}
           </select>
           只
         </label>
@@ -4613,6 +4735,10 @@
           <code>{"ticker":"${stock.code}","sector":"${state.sector}","provider":"deepseek","agents":["trend","momentum","liquidity","risk"],"mode":"${state.strategy}"}</code>
           <button class="btn primary" type="button" id="copyPayload">复制请求</button>
         </div>
+        <div class="buy-principles">
+          <div class="model-note-head"><strong>推荐买入原则</strong></div>
+          <p>只有在综合评分≥70、涨幅约3%～8%、现价站上当日均价且没有明显冲高回落时，才考虑推荐买入；同时要求资金净流入为正、量比不过度爆量、换手处于合理区间，并结合所属板块表现和个股量价联动确认。急拉接近日内高点时显示“等待回落”，跌破均价且冲高回落时显示“冲高回落风险”，涨幅超过8%显示“谨慎追高”，涨停显示“已涨停”，避免追高买在回落途中。</p>
+        </div>
       `;
 
       const copyBtn = document.getElementById("copyPayload");
@@ -4644,6 +4770,9 @@
     }
 
     function render() {
+      const showLoading = state.marketStatus === "loading" && !stocks.length;
+      el.pageLoading.hidden = !showLoading;
+      if (showLoading) el.pageLoadingText.textContent = state.marketMessage || "正在加载行情数据";
       updatePageMeta();
       el.screenerView.classList.toggle("hot-concept-mode", state.pageView === "hot-concept");
       el.screenerView.classList.toggle("concept-down", state.pageView === "hot-concept" && hasNumber(state.hotConceptChange) && state.hotConceptChange < 0);
@@ -4696,10 +4825,10 @@
     el.resetBtn.addEventListener("click", () => {
       clearPendingStockClick();
       state.strategy = "balanced";
-      state.sortBy = "todayLimitUp";
-      state.minScore = 60;
+      state.sortBy = "score";
+      state.minScore = 70;
       state.listPage = 1;
-      state.listPageSize = 100;
+      state.listPageSize = 50;
       state.search = "";
       state.marketScope = "all";
       state.dynamicFilters = { minAmount: 0, minChange: -20, minTurnover: 0 };

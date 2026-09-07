@@ -273,6 +273,8 @@ _midterm_scan_status: Dict[str, Any] = {
     "status": "idle", "total": 0, "processed": 0, "added": 0, "failed": 0,
 }
 _midterm_quote_cache: Dict[str, Any] = {"created_at": 0.0, "rows": {}}
+_score_threshold_times: Dict[Tuple[str, str, int], str] = {}
+_change_threshold_times: Dict[Tuple[str, str, int], str] = {}
 
 
 class MarketDataError(RuntimeError):
@@ -1195,6 +1197,7 @@ def dynamic_snapshot(
         return None
 
     net_inflow = number(row.get("f62"))
+    volume_ratio = number(row.get("f10"))
     factors = dynamic_factors(change_pct, amount, turnover, amplitude, net_inflow)
     score = round(
         factors["trend"] * 0.22
@@ -1204,6 +1207,41 @@ def dynamic_snapshot(
         + factors["stability"] * 0.1
         - factors["risk"] * 0.1
     )
+    trade_date = updated_at.astimezone(CHINA_TZ).strftime("%Y-%m-%d")
+    score_time = updated_at.astimezone(CHINA_TZ).strftime("%H:%M:%S")
+    with _cache_lock:
+        for threshold in (60, 70):
+            key = (trade_date, code, threshold)
+            if score >= threshold and key not in _score_threshold_times:
+                _score_threshold_times[key] = score_time
+        for threshold in (3, 9):
+            key = (trade_date, code, threshold)
+            if change_pct >= threshold and key not in _change_threshold_times:
+                _change_threshold_times[key] = score_time
+        day_average = statistics.mean(
+            value for value in (number(row.get("f17")), number(row.get("f15")), number(row.get("f16")), price)
+            if value is not None
+        )
+        recommendation = None
+        limit_rate = .20 if code.startswith(("300", "301", "688", "689")) else (.30 if code.startswith(("4", "8", "92")) else .10)
+        if previous_close and price >= previous_close * (1 + limit_rate) - .01:
+            recommendation = "已涨停"
+        elif change_pct >= 6 and number(row.get("f15")) and price >= number(row.get("f15")) * .985 and (volume_ratio or 0) >= 2:
+            recommendation = "等待回落"
+        elif change_pct >= 5 and day_average and price < day_average and number(row.get("f15")) and price < number(row.get("f15")) * .97:
+            recommendation = "冲高回落风险"
+        elif change_pct > 8:
+            recommendation = "谨慎追高"
+        elif score >= 70 and 3 <= change_pct <= 8 and day_average:
+            flow_ratio = (net_inflow / amount * 100) if net_inflow is not None and amount > 0 else None
+            near_high = number(row.get("f15")) is not None and price >= number(row.get("f15")) * .975
+            stable_intraday = price >= day_average and price >= number(row.get("f17") or price)
+            reasonable_volume = volume_ratio is None or 1.2 <= volume_ratio <= 4.5
+            healthy_flow = flow_ratio is not None and flow_ratio > 0
+            if stable_intraday and not near_high and reasonable_volume and healthy_flow:
+                recommendation = "推荐买入"
+            else:
+                recommendation = "推荐观望"
     movement = f"{change_pct:+.2f}%"
     return {
         "code": code,
@@ -1234,6 +1272,16 @@ def dynamic_snapshot(
             "turnover": turnover,
             "amplitude": amplitude,
             "snapshotScore": score,
+            "scoreThresholdTimes": {
+                "60": _score_threshold_times.get((trade_date, code, 60)),
+                "70": _score_threshold_times.get((trade_date, code, 70)),
+            },
+            "changeThresholdTimes": {
+                "3": _change_threshold_times.get((trade_date, code, 3)),
+                "9": _change_threshold_times.get((trade_date, code, 9)),
+            },
+            "dayAverage": day_average,
+            "recommendation": recommendation,
         },
         "tags": [f"{market['label']}动态", f"换手 {turnover:.2f}%", f"振幅 {amplitude:.2f}%"],
         "reason": f"{market['label']}实时扫描：当日 {movement}，换手 {turnover:.2f}%，成交额 {amount / 100_000_000:.2f} 亿。",
@@ -1618,25 +1666,30 @@ def fetch_dynamic_market_data(
             continue
         quotes.append(quote)
 
+    # 以综合评分优先，避免涨停股因涨幅排序占满候选池，导致评分达标但未涨停的股票进不来。
     quotes.sort(
-        key=lambda item: (item["changePct"], item["screener"]["snapshotScore"]),
+        key=lambda item: (item["screener"]["snapshotScore"], item["changePct"]),
         reverse=True,
     )
+    # 首屏仍限制历史筛选规模，但扩大到默认展示量附近，兼顾响应速度和候选覆盖面。
     screening_pool_size = len(quotes) if include_all else min(
-        len(quotes), min(150, limit + DOWNTREND_CANDIDATE_BUFFER)
+        len(quotes), min(120, limit + 20)
     )
     screened_quotes, downtrend_excluded_count = filter_steady_decline_quotes(
         quotes[:screening_pool_size]
     )
-    screened_quotes, limit_up_excluded_count = filter_recent_limit_up_quotes(screened_quotes)
+    # 盘中选股不再要求过去一年有涨停记录；历史涨停统计仍保留在涨停打板页面。
+    limit_up_excluded_count = 0
     final_quotes = screened_quotes if include_all else screened_quotes[:limit]
     sector_strength = aggregate_sector_strength(market_quotes)
+    market_changes = [quote["changePct"] for quote in market_quotes if quote.get("changePct") is not None]
+    average_market_change = sum(market_changes) / len(market_changes) if market_changes else None
+    market_regime = "超跌" if average_market_change is not None and average_market_change <= -1.5 else "常态"
     if not include_all:
         add_order_flow_factors(final_quotes, sector_strength)
     add_probability_models(final_quotes, sector_strength, updated_at.strftime("%Y-%m-%d"))
     calibration = {"samples": 0, "updatedAt": datetime.now(CHINA_TZ).isoformat()}
-    if not include_all:
-        calibration = build_follow_up_calibration(final_quotes, updated_at.strftime("%Y-%m-%d"))
+    # 回测写入在后台任务中进行，不阻塞盘中实时行情首屏。
     apply_follow_up_calibration(final_quotes, calibration)
     add_ths_popularity(final_quotes, updated_at.strftime("%Y-%m-%d"))
     add_related_sectors(final_quotes)
@@ -1658,6 +1711,12 @@ def fetch_dynamic_market_data(
         "downtrendExcludedCount": downtrend_excluded_count,
         "limitUpExcludedCount": limit_up_excluded_count,
         "sectorStrength": sector_strength,
+        "marketRegime": {
+            "label": market_regime,
+            "averageChangePct": round(average_market_change, 2) if average_market_change is not None else None,
+            "minScore": 60 if market_regime == "超跌" else 70,
+            "rule": "大盘平均涨跌幅≤-1.5%视为超跌，否则最低综合分70。",
+        },
         "followUpBacktest": {
             "samples": calibration["samples"],
             "target": "未来 10 个交易日最高价较信号日收盘上涨至少 5%",
