@@ -3,9 +3,11 @@
 
 import argparse
 import difflib
+import html
 import json
 import math
 import os
+import re
 import shlex
 import sqlite3
 import statistics
@@ -13,7 +15,7 @@ import subprocess
 import threading
 import time
 import urllib.request
-import urllib.request
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -35,6 +37,7 @@ EASTMONEY_SEARCH_URL = "https://searchapi.eastmoney.com/api/suggest/get"
 SOHU_HISTORY_URL = "https://q.stock.sohu.com/hisHq"
 SINA_DAILY_KLINE_URL = "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
 THS_HOT_RANK_URL = "https://eq.10jqka.com.cn/earlyInterpret/index.php"
+THS_BASIC_STOCK_URL = "https://basic.10jqka.com.cn/{code}/"
 CHINA_TZ = timezone(timedelta(hours=8))
 HISTORY_DAYS = 400
 CACHE_TTL_SECONDS = 20
@@ -1131,7 +1134,35 @@ def filter_steady_decline_quotes(quotes: List[Dict[str, Any]]) -> Tuple[List[Dic
     return filtered_quotes, excluded_count
 
 
+def fetch_ths_stock_concepts(code: str) -> List[Dict[str, Any]]:
+    request = urllib.request.Request(
+        THS_BASIC_STOCK_URL.format(code=code),
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://stock.10jqka.com.cn/"},
+    )
+    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        page = response.read().decode("gbk", errors="ignore")
+    start = page.find("概念行情贴合度")
+    if start < 0:
+        raise MarketDataError(f"{code} 同花顺概念数据不可用")
+    section = page[start:start + 12000]
+    names: List[str] = []
+    for match in re.finditer(r"<a[^>]*newtaid[^>]*>(.*?)</a>", section, re.I | re.S):
+        name = html.unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip(" \t\r\n，,")
+        if name and name not in names and len(name) <= 30:
+            names.append(name)
+    if not names:
+        raise MarketDataError(f"{code} 同花顺概念数据不可用")
+    return [{"name": name, "heat": len(names) - index, "source": "同花顺"} for index, name in enumerate(names[:5])]
+
+
 def fetch_stock_concepts(code: str) -> List[Dict[str, Any]]:
+    try:
+        ths_concepts = fetch_ths_stock_concepts(code)
+        if ths_concepts:
+            return ths_concepts
+    except (OSError, urllib.error.URLError, TimeoutError, MarketDataError, ValueError):
+        pass
+
     payload = request_json_post(
         EASTMONEY_HOT_CONCEPT_URL,
         {
@@ -1152,6 +1183,7 @@ def fetch_stock_concepts(code: str) -> List[Dict[str, Any]]:
             {
                 "name": name,
                 "heat": int(number(row.get("hitCount")) or 0),
+                "source": "东方财富",
             }
         )
     concepts.sort(key=lambda item: item["heat"], reverse=True)
@@ -1756,6 +1788,7 @@ MARKET_INDEX_CODES = {
     "sz-main": ("深证成指", "s_sz399001"),
     "chinext": ("创业板指", "s_sz399006"),
     "star": ("科创50", "s_sh000688"),
+    "bse": ("北证50", "s_bj899050"),
 }
 
 
@@ -1785,6 +1818,7 @@ def _parse_index_payload(text: str, source: str) -> Dict[str, Dict[str, Any]]:
 def fetch_market_indices() -> Dict[str, Dict[str, Any]]:
     symbols = ",".join(item[1] for item in MARKET_INDEX_CODES.values())
     headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"}
+    parsed: Dict[str, Dict[str, Any]] = {}
     try:
         request = urllib.request.Request(f"https://qt.gtimg.cn/q={symbols}", headers=headers)
         with urllib.request.urlopen(request, timeout=5) as response:
@@ -1796,7 +1830,9 @@ def fetch_market_indices() -> Dict[str, Dict[str, Any]]:
     try:
         request = urllib.request.Request(f"https://hq.sinajs.cn/list={symbols}", headers=headers)
         with urllib.request.urlopen(request, timeout=5) as response:
-            return _parse_index_payload(response.read().decode("gbk", errors="ignore"), "sina")
+            fallback = _parse_index_payload(response.read().decode("gbk", errors="ignore"), "sina")
+            parsed.update(fallback)
+            return parsed
     except Exception:
         return {}
 

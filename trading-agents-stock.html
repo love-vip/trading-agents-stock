@@ -395,6 +395,9 @@
     }
 
     .control-deck {
+      position: sticky;
+      top: 0;
+      z-index: 18;
       display: grid;
       grid-template-columns: repeat(4, minmax(120px, 1fr)) minmax(210px, 1.25fr);
       gap: 8px;
@@ -717,6 +720,10 @@
     .detail {
       padding: 14px;
       min-width: 0;
+      position: sticky;
+      top: 14px;
+      max-height: calc(100vh - 28px);
+      overflow-y: auto;
     }
 
     .section-head {
@@ -2184,6 +2191,13 @@
         grid-template-columns: 1fr 1fr;
       }
 
+      .control-deck,
+      .detail {
+        position: static;
+        max-height: none;
+        overflow: visible;
+      }
+
       .sector-strength-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -3323,6 +3337,8 @@
     async function loadMidtermPool(forceScan = false) {
       if (midtermPollTimer !== null) window.clearTimeout(midtermPollTimer);
       midtermPollTimer = null;
+      state.midtermScan = { ...(state.midtermScan || {}), status: "loading", message: forceScan ? "正在重新扫描中期选股池" : "正在加载中期选股池" };
+      if (state.pageView === "midterm") render();
       try {
         const response = await fetch(`/api/midterm${forceScan ? "?refresh=1" : ""}`, {cache: "no-store"});
         const payload = await response.json();
@@ -4787,9 +4803,12 @@
     }
 
     function render() {
-      const showLoading = state.marketStatus === "loading" && !stocks.length;
+      const showLoading = (state.marketStatus === "loading" && !stocks.length)
+        || (state.pageView === "midterm" && ["loading", "running"].includes(state.midtermScan?.status) && !state.midtermCandidates.length);
       el.pageLoading.hidden = !showLoading;
-      if (showLoading) el.pageLoadingText.textContent = state.marketMessage || "正在加载行情数据";
+      if (showLoading) el.pageLoadingText.textContent = state.pageView === "midterm"
+        ? (state.midtermScan?.message || "正在加载中期选股池")
+        : (state.marketMessage || "正在加载行情数据");
       updatePageMeta();
       el.screenerView.classList.toggle("hot-concept-mode", state.pageView === "hot-concept");
       el.screenerView.classList.toggle("concept-down", state.pageView === "hot-concept" && hasNumber(state.hotConceptChange) && state.hotConceptChange < 0);
