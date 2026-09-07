@@ -236,6 +236,18 @@
       color: #13795b;
       background: #e6f6ef;
     }
+    .hot-sector-concept.concept-up-1 { background: rgba(244, 114, 182, .08); }
+    .hot-sector-concept.concept-up-2 { background: rgba(244, 114, 182, .14); }
+    .hot-sector-concept.concept-up-3 { background: rgba(244, 114, 182, .21); }
+    .hot-sector-concept.concept-up-4 { background: rgba(225, 67, 133, .28); color: #a51e54; }
+    .hot-sector-concept.concept-up-5 { background: rgba(225, 67, 133, .36); color: #8f1747; }
+    .hot-sector-concept.concept-up-6 { background: rgba(199, 45, 88, .46); color: #7c123c; }
+    .hot-sector-concept.concept-down-1 { background: rgba(52, 211, 153, .08); }
+    .hot-sector-concept.concept-down-2 { background: rgba(52, 211, 153, .14); }
+    .hot-sector-concept.concept-down-3 { background: rgba(52, 211, 153, .21); }
+    .hot-sector-concept.concept-down-4 { background: rgba(22, 135, 101, .28); color: #0b6b4d; }
+    .hot-sector-concept.concept-down-5 { background: rgba(22, 135, 101, .36); color: #075f43; }
+    .hot-sector-concept.concept-down-6 { background: rgba(7, 95, 67, .46); color: #034831; }
     .hot-sector-concept.active.concept-down {
       border-color: #348e6b;
       color: #075f43;
@@ -993,7 +1005,7 @@
     .hot-concept-summary span { border-radius: 999px; padding: 5px 10px; background: rgba(201, 21, 50, .08); color: #a5152e; font-size: 11px; font-weight: 750; }
     .hot-concept-summary .sector-change.down { border: 1px solid #9fd2bd; color: #13795b; background: #e6f6ef; }
 
-    .hot-concept-stock-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .hot-concept-stock-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .hot-concept-card {
       border: 1px solid #dce5f0;
       border-radius: 10px;
@@ -3010,6 +3022,11 @@
       })[character]);
     }
 
+    function displayConceptName(name) {
+      const value = String(name || "").trim();
+      return value === "共封装光学(CPO)" || value === "共封装光学（CPO）" ? "CPO" : value;
+    }
+
     function renderRelatedConcepts(stock) {
       if (state.conceptLoadingCode === stock.code) {
         return `<span class="concept-empty">概念加载中...</span>`;
@@ -3144,7 +3161,9 @@
               const selected = state.pageView === "hot-concept" && state.hotConcept === concept;
               const conceptChange = state.hotConceptChanges[concept];
               const down = hasNumber(conceptChange) && conceptChange < 0;
-              return `<button type="button" class="hot-sector-concept${selected ? " active" : ""}${down ? " concept-down" : ""}" data-hot-group="${escapeHtml(group)}" data-hot-concept="${escapeHtml(concept)}">${escapeHtml(concept)}</button>`;
+              const level = hasNumber(conceptChange) && Math.abs(conceptChange) >= 1 ? Math.min(6, Math.ceil(Math.abs(conceptChange))) : 0;
+              const intensity = level ? ` ${down ? "concept-down" : "concept-up"}-${level}` : "";
+              return `<button type="button" class="hot-sector-concept${selected ? " active" : ""}${down ? " concept-down" : ""}${intensity}" data-hot-group="${escapeHtml(group)}" data-hot-concept="${escapeHtml(concept)}">${escapeHtml(concept)}</button>`;
             }).join("")}
           </div>
         </div>
@@ -4062,12 +4081,13 @@
           <div class="hot-concept-tags">${sectors.slice(0, 4).map((name) => `<span>${escapeHtml(name)}</span>`).join("")}${patterns.map((name) => `<span class="pattern">${escapeHtml(name)}</span>`).join("")}</div>
         </button>`;
       }).join("");
-      el.stockList.innerHTML = `<section class="hot-concept-hero">
+      const hotConceptHero = `<section class="hot-concept-hero">
         <div class="hot-concept-kicker">热门概念 · ${escapeHtml(state.hotConceptGroup || "市场热点")}</div>
         <h3>${escapeHtml(state.hotConcept)}</h3>
         <p>概念成分股实时观察榜 · 默认按今日涨停概率由高到低</p>
         <div class="hot-concept-summary"><span>成分股 ${list.length} 只</span><span>上涨 ${rising} 只</span><span class="sector-change down">下跌 ${falling} 只</span><span class="sector-change${hasNumber(state.hotConceptChange) && state.hotConceptChange < 0 ? " down" : ""}">板块平均涨跌 ${formatPct(state.hotConceptChange)}</span><span>平均涨停概率 ${averageToday}%</span></div>
-      </section><div class="hot-concept-stock-grid">${cards}</div>
+      </section>`;
+      el.stockList.innerHTML = `${hotConceptHero}<div class="hot-concept-stock-grid">${cards}</div>
       <div class="stock-pagination"><label>每页<select data-page-size aria-label="每页展示数量">${[20, 50].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}</select>只</label>
       <button class="btn" data-page="first" ${state.listPage === 1 ? "disabled" : ""}>首页</button><button class="btn" data-page="prev" ${state.listPage === 1 ? "disabled" : ""}>上一页</button><span>第 ${state.listPage} / ${pageCount} 页</span><button class="btn" data-page="next" ${state.listPage === pageCount ? "disabled" : ""}>下一页</button><button class="btn" data-page="last" ${state.listPage === pageCount ? "disabled" : ""}>末页</button></div>`;
       el.stockList.querySelectorAll(".hot-concept-card").forEach((card) => {
@@ -4118,7 +4138,7 @@
         const limitPrice = hasNumber(stock.previousClose)
           ? Math.round(stock.previousClose * (1 + limitRate) * 100) / 100
           : null;
-        const movingAverages = stock.screener?.movingAverages || {};
+        const movingAverages = stock.screener?.movingAverages || stock.movingAverages || {};
         const popularity = stock.popularity || {};
         const popularityLevel = !popularity.available ? "unavailable" : popularity.rank <= 10 ? "hot" : popularity.rank <= 50 ? "warm" : "normal";
         const popularityTooltip = popularity.available
@@ -4126,7 +4146,7 @@
           : "同花顺人气排名暂时不可用。";
         const popularityMarkup = `<span class="popularity-badge" data-level="${popularityLevel}" title="${escapeHtml(popularityTooltip)}">人气 <strong>${popularity.available ? `#${popularity.rank}` : "--"}</strong></span>`;
         const primaryTopic = stock.actualIndustry || "--";
-        const relatedSectors = Array.isArray(stock.relatedSectors) ? stock.relatedSectors.slice(0, 5) : [];
+        const relatedSectors = Array.isArray(stock.relatedSectors) ? stock.relatedSectors.slice(0, 5).map(displayConceptName) : [];
         const secondaryTopic = relatedSectors[0] || "--";
         const topicBadge = `<span class="stock-info-badge" title="一级 / 二级题材：${escapeHtml(primaryTopic)} / ${escapeHtml(secondaryTopic)}"><span class="stock-info-badge-value">${escapeHtml(primaryTopic)} / ${escapeHtml(secondaryTopic)}</span></span>`;
         const extraSectors = relatedSectors.slice(1, 5);

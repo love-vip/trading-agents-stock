@@ -1118,7 +1118,7 @@ def filter_steady_decline_quotes(quotes: List[Dict[str, Any]]) -> Tuple[List[Dic
     excluded_count = 0
     for quote in quotes:
         analysis = analyses[quote["code"]]
-        averages = quote.get("screener", {}).get("movingAverages") or {}
+        averages = analysis.get("movingAverages") or quote.get("screener", {}).get("movingAverages") or quote.get("movingAverages") or {}
         quote["screener"]["movingAverages"] = {
             key: {
                 "value": value,
@@ -1725,8 +1725,12 @@ def fetch_dynamic_market_data(
     calibration = {"samples": 0, "updatedAt": datetime.now(CHINA_TZ).isoformat()}
     # 回测写入在后台任务中进行，不阻塞盘中实时行情首屏。
     apply_follow_up_calibration(final_quotes, calibration)
-    add_ths_popularity(final_quotes, updated_at.strftime("%Y-%m-%d"))
-    add_related_sectors(final_quotes)
+    # 人气与关联概念互不依赖，合并并发请求，全部完成后再一次性返回页面。
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        popularity_future = executor.submit(add_ths_popularity, final_quotes, updated_at.strftime("%Y-%m-%d"))
+        related_future = executor.submit(add_related_sectors, final_quotes)
+        popularity_future.result()
+        related_future.result()
     return {
         "source": f"东方财富{market['label']}行情快照",
         "sector": {
