@@ -1738,7 +1738,7 @@ def fetch_dynamic_market_data(
     screened_quotes, downtrend_excluded_count = filter_steady_decline_quotes(
         quotes[:screening_pool_size]
     )
-    # 盘中选股不再要求过去一年有涨停记录；历史涨停统计仍保留在涨停打板页面。
+    # 盘中选股不再要求过去一年有涨停记录；历史涨停统计仍保留在涨停复盘页面。
     limit_up_excluded_count = 0
     final_quotes = screened_quotes if include_all else screened_quotes[:limit]
     sector_strength = aggregate_sector_strength(market_quotes)
@@ -1968,6 +1968,7 @@ def fetch_limit_up_history(code: str, datalen: Optional[int] = None) -> Dict[str
             sealed += 1
             recent_limit_date = current["date"]
             recent_limit_index = index
+    current_streak = summarize_current_limit_streak(rows)
     return {
         "available": True,
         "sealedCount": sealed,
@@ -1977,6 +1978,7 @@ def fetch_limit_up_history(code: str, datalen: Optional[int] = None) -> Dict[str
         "sessionsSinceRecentLimit": (
             len(rows) - 1 - recent_limit_index if recent_limit_index is not None else None
         ),
+        "currentStreak": current_streak,
         "bars": rows,
     }
 
@@ -2051,7 +2053,19 @@ def summarize_limit_up_history(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"available": True, "sealedCount": sealed, "touchedCount": touched,
             "brokenCount": max(0, touched - sealed), "recentLimitDate": recent_limit_date,
             "sessionsSinceRecentLimit": len(rows) - 1 - recent_limit_index if recent_limit_index is not None else None,
+            "currentStreak": summarize_current_limit_streak(rows),
             "bars": rows}
+
+
+def summarize_current_limit_streak(rows: List[Dict[str, Any]]) -> int:
+    streak = 0
+    for index in range(len(rows) - 1, 0, -1):
+        previous_close = rows[index - 1].get("close")
+        close = rows[index].get("close")
+        if previous_close in (None, 0) or close is None or close < normal_limit_price(previous_close) - 0.001:
+            break
+        streak += 1
+    return streak
 
 
 def fetch_midterm_activity_history(code: str, signal_year: int) -> List[Dict[str, Any]]:
@@ -3221,7 +3235,7 @@ def main() -> None:
     if EMT_AUCTION_COMMAND:
         print("EMT 竞价采集已配置：交易日 09:25 后将自动保存竞价快照")
     else:
-        print("EMT 竞价采集未配置：涨停打板将把竞价委买因子标为待接入")
+        print("EMT 竞价采集未配置：涨停复盘将把竞价委买因子标为待接入")
     print("后续上涨模型将在交易日 15:05 后保存当日候选，并在满 10 个交易日后自动校准")
     print("全市场历史回测已在后台启动：已完成股票将自动跳过，支持断点续跑")
     print("按 Ctrl+C 停止服务")
