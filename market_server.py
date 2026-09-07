@@ -44,7 +44,7 @@ CACHE_TTL_SECONDS = 20
 INTRADAY_CACHE_TTL_SECONDS = 300
 DYNAMIC_CACHE_TTL_SECONDS = 30
 STOCK_CACHE_TTL_SECONDS = 300
-DOWNTREND_HISTORY_DAYS = 30
+DOWNTREND_HISTORY_DAYS = 90
 DOWNTREND_MIN_HISTORY_DAYS = 25
 DOWNTREND_CACHE_TTL_SECONDS = 300
 DOWNTREND_CANDIDATE_BUFFER = 20
@@ -658,11 +658,59 @@ def enrich_stock(quote: Dict[str, Any]) -> Dict[str, Any]:
 
 def fetch_stock(code: str) -> Dict[str, Any]:
     symbol = stock_symbol(code)
-    payload = request_json(QUOTE_URL, {"param": f"{symbol},day,,,{HISTORY_DAYS},qfq"})
-    data = (payload.get("data") or {}).get(symbol) or {}
-    quote = ((data.get("qt") or {}).get(symbol) or [])
-    if payload.get("code") != 0 or len(quote) < 38:
-        raise MarketDataError(f"{code} 行情数据不完整")
+    try:
+        payload = request_json(QUOTE_URL, {"param": f"{symbol},day,,,{HISTORY_DAYS},qfq"})
+        data = (payload.get("data") or {}).get(symbol) or {}
+        quote = ((data.get("qt") or {}).get(symbol) or [])
+        if payload.get("code") != 0 or len(quote) < 38:
+            raise MarketDataError(f"{code} 行情数据不完整")
+    except MarketDataError as primary_error:
+        # 腾讯复权接口偶发返回 502/空数据时，使用新浪日线保证个股详情和 K 线仍可打开。
+        fallback = request_json(
+            SINA_DAILY_KLINE_URL,
+            {"symbol": symbol, "scale": 240, "ma": "no", "datalen": HISTORY_DAYS},
+        )
+        rows = []
+        for item in fallback if isinstance(fallback, list) else []:
+            if not isinstance(item, dict):
+                continue
+            close = number(item.get("close"))
+            if close is None:
+                continue
+            rows.append({
+                "date": str(item.get("day") or ""),
+                "open": number(item.get("open")),
+                "close": close,
+                "high": number(item.get("high")),
+                "low": number(item.get("low")),
+                "volume": number(item.get("volume")) or 0.0,
+                "changePct": None,
+                "changeAmount": None,
+            })
+        if not rows:
+            raise MarketDataError(f"{code} 行情接口均不可用：{primary_error}") from primary_error
+        previous = None
+        for row in rows:
+            row["changePct"] = return_pct(previous, row["close"]) if previous else None
+            row["changeAmount"] = row["close"] - previous if previous is not None else None
+            previous = row["close"]
+        add_moving_averages(rows)
+        latest = rows[-1]
+        return enrich_stock({
+            "code": code,
+            "name": code,
+            "price": latest["close"],
+            "changePct": latest.get("changePct"),
+            "changeAmount": latest.get("changeAmount"),
+            "volume": latest.get("volume") or 0.0,
+            "amount": (latest.get("volume") or 0.0) * latest["close"],
+            "high": latest.get("high"),
+            "low": latest.get("low"),
+            "open": latest.get("open"),
+            "previousClose": rows[-2]["close"] if len(rows) > 1 else None,
+            "updatedAt": None,
+            "history": rows,
+        })
 
     rows = []
     previous_close = None
@@ -913,6 +961,37 @@ def get_downtrend_history(code: str) -> List[Dict[str, Any]]:
     return history
 
 
+def calculate_macd(closes: List[float]) -> Dict[str, Any]:
+    if len(closes) < 26:
+        return {"available": False, "dif": None, "dea": None, "histogram": None, "signal": "数据不足", "bars": []}
+    def ema(values: List[float], period: int) -> List[float]:
+        result = [values[0]]
+        alpha = 2 / (period + 1)
+        for value in values[1:]:
+            result.append(value * alpha + result[-1] * (1 - alpha))
+        return result
+    fast = ema(closes, 12)
+    slow = ema(closes, 26)
+    diffs = [a - b for a, b in zip(fast, slow)]
+    deas = ema(diffs, 9)
+    histograms = [(dif - dea) * 2 for dif, dea in zip(diffs, deas)]
+    histogram = histograms[-1]
+    previous = histograms[-2]
+    if diffs[-1] > deas[-1] and diffs[-2] <= deas[-2]:
+        signal = "金叉"
+    elif diffs[-1] < deas[-1] and diffs[-2] >= deas[-2]:
+        signal = "死叉"
+    elif histogram > 0 and histogram >= previous:
+        signal = "多头增强"
+    elif histogram > 0:
+        signal = "多头收敛"
+    elif histogram <= previous:
+        signal = "空头增强"
+    else:
+        signal = "空头收敛"
+    return {"available": True, "dif": round(diffs[-1], 4), "dea": round(deas[-1], 4), "histogram": round(histogram, 4), "signal": signal, "bars": [round(value, 4) for value in histograms[-90:]]}
+
+
 def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Identify sustained weak price structures without excluding normal pullbacks."""
     closes = [row["close"] for row in history if row.get("close") not in (None, 0)]
@@ -930,6 +1009,7 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         f"ma{period}": round(sum(closes[-period:]) / period, 2) if len(closes) >= period else None
         for period in (5, 10, 20, 30)
     }
+    macd = calculate_macd(closes)
     ma10 = sum(closes[-10:]) / 10
     ma20 = sum(closes[-20:]) / 20
     ma10_previous = sum(closes[-15:-5]) / 10
@@ -1088,6 +1168,7 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         "return20": round(return_20, 2),
         "drawdown20": round(drawdown_20, 2),
         "movingAverages": moving_averages,
+        "macd": macd,
         "patternSignals": pattern_signals,
         "patternScore": min(40, pattern_score),
     }
@@ -1867,6 +1948,46 @@ def fetch_market_indices() -> Dict[str, Dict[str, Any]]:
         return {}
 
 
+def fetch_index_analysis() -> Dict[str, Any]:
+    rows, _ = fetch_market_rows("all")
+    changes = []
+    amounts = 0.0
+    limit_up = limit_down = 0
+    for row in rows:
+        change = number(row.get("f3"))
+        amount = number(row.get("f6"))
+        if change is None:
+            continue
+        changes.append(float(change))
+        amounts += float(amount or 0)
+        if change >= 9.5:
+            limit_up += 1
+        if change <= -9.5:
+            limit_down += 1
+    rising = sum(value > 0 for value in changes)
+    falling = sum(value < 0 for value in changes)
+    flat = len(changes) - rising - falling
+    breadth = rising / len(changes) * 100 if changes else None
+    average = statistics.fmean(changes) if changes else None
+    median = statistics.median(changes) if changes else None
+    if breadth is not None and breadth >= 65 and (average or 0) > 0:
+        strategy = "市场广度偏强：优先关注强势板块中的回踩承接，避免盲目追逐高开个股。"
+        mood = "普涨偏强"
+    elif breadth is not None and breadth <= 35 and (average or 0) < 0:
+        strategy = "市场广度偏弱：控制仓位，优先观察防守板块和超跌修复，不宜追涨。"
+        mood = "普跌偏弱"
+    else:
+        strategy = "指数与市场广度存在分化：降低追涨仓位，等待板块联动和成交额同步确认。"
+        mood = "结构分化"
+    return {
+        "indices": fetch_market_indices(),
+        "total": len(changes), "rising": rising, "falling": falling, "flat": flat,
+        "limitUp": limit_up, "limitDown": limit_down, "breadth": breadth,
+        "averageChange": average, "medianChange": median, "amount": amounts,
+        "mood": mood, "strategy": strategy, "updatedAt": datetime.now(CHINA_TZ).isoformat(),
+    }
+
+
 def fetch_sector_strength_data(market_key: str) -> Dict[str, Any]:
     market = MARKET_SCOPES[market_key]
     rows, total = fetch_market_rows(market_key)
@@ -2218,8 +2339,40 @@ def add_probability_models(quotes: List[Dict[str, Any]], sectors: List[Dict[str,
             if (averages.get(key) or {}).get("value") is not None and quote.get("price") is not None and quote["price"] >= averages[key]["value"]
         )
         pattern_score = float(analysis.get("patternScore") or 0)
+        macd = analysis.get("macd") or {}
+        macd_signal = str(macd.get("signal") or "")
+        macd_bars = [float(value) for value in (macd.get("bars") or []) if isinstance(value, (int, float))]
+        macd_score = 50.0
+        if macd_signal == "金叉":
+            macd_score += 22
+        elif macd_signal == "多头增强":
+            macd_score += 18
+        elif macd_signal == "多头收敛":
+            macd_score += 7
+        elif macd_signal == "死叉":
+            macd_score -= 22
+        elif macd_signal == "空头增强":
+            macd_score -= 22
+        elif macd_signal == "空头收敛":
+            macd_score -= 8
+        if macd_bars:
+            recent_bars = macd_bars[-5:]
+            if len(recent_bars) >= 3 and recent_bars[-1] > recent_bars[0]:
+                macd_score += 10
+            elif len(recent_bars) >= 3 and recent_bars[-1] < recent_bars[0]:
+                macd_score -= 10
+        # 高位金叉可能只是加速末端，限制 MACD 对评分的正向贡献，避免追高。
+        if change >= 8 and macd_score > 50:
+            macd_score = 50 + (macd_score - 50) * .5
+        macd_score = max(0.0, min(100.0, macd_score))
+        macd_adjustment = round((macd_score - 50) * .30, 1)
+        macd_today_adjustment = round((macd_score - 50) * .06, 1)
+        today_probability = clamp(today_probability + macd_today_adjustment, 1, 95)
         risk = float(quote.get("base", {}).get("risk") or 50)
-        base_score = 34 + pattern_score + ma_bull * 5 + sector_score * .10 - risk * .14
+        non_macd_score = 34 + pattern_score + ma_bull * 5 + sector_score * .10 - risk * .14
+        # 综合评分中 MACD 占 15%，后续上涨概率中 MACD 占 25%。
+        composite_score = non_macd_score * .85 + macd_score * .15
+        base_score = non_macd_score * .75 + macd_score * .25
         if analysis.get("excluded"):
             base_score -= 18
         if float(analysis.get("drawdown20") or 0) >= 15:
@@ -2228,11 +2381,16 @@ def add_probability_models(quotes: List[Dict[str, Any]], sectors: List[Dict[str,
             "todayLimitUp": int(today_probability),
             "followUp": int(clamp(base_score, 1, 90)),
             "rawFollowUp": int(clamp(base_score, 1, 90)),
+            "compositeScore": int(clamp(composite_score, 1, 100)),
             "signals": analysis.get("patternSignals") or [],
             "auctionAvailable": auction_score["available"],
             "orderFlowAvailable": bool(order_flow.get("available")),
             "orderFlowScore": order_flow.get("score") if order_flow.get("available") else None,
             "orderFlowAdjustment": round(order_flow_adjustment, 1),
+            "macdSignal": macd.get("signal"),
+            "macdScore": round(macd_score),
+            "macdAdjustment": macd_adjustment,
+            "macdTodayAdjustment": macd_today_adjustment,
             "netInflow": net_inflow,
             "note": "今日概率以经委比、位置、量能、K线、均线和板块联动确认后的内外盘作小幅修正；模型参考，非历史回测胜率或投资建议。",
         }
@@ -3080,6 +3238,9 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/market-indices":
             self.send_json(200, {"indices": fetch_market_indices(), "updatedAt": datetime.now(CHINA_TZ).isoformat()})
+            return
+        if parsed.path == "/api/index-analysis":
+            self.send_json(200, fetch_index_analysis())
             return
         if parsed.path == "/api/hot-concept":
             concept_name = query.get("name", [""])[0].strip()

@@ -727,6 +727,22 @@
     .limit-up-stat { padding: 10px 12px; border: 1px solid rgba(255, 196, 42, .30); border-radius: 7px; background: rgba(9, 15, 23, .82); }
     .limit-up-stat span { display: block; color: #a99d7a; font-size: 10px; }
     .limit-up-stat strong { display: block; margin-top: 3px; color: #ffd447; font-size: 22px; }
+    .index-analysis-indices { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+    .index-analysis-index { padding: 12px; border: 1px solid rgba(255,196,42,.28); border-radius: 7px; background: rgba(255,255,255,.04); }
+    .index-analysis-index span { display:block; color: #a99d7a; font-size: 11px; }
+    .index-analysis-index strong { display:block; margin-top: 5px; color: #f8f0d0; font-size: 20px; }
+    .index-analysis-strategy { padding: 16px; border-left: 4px solid #ffd447; background: rgba(255,196,42,.08); color: #f8f0d0; line-height: 1.7; }
+    #indexAnalysisView { background: var(--panel); color: var(--text); border-color: var(--line); }
+    #indexAnalysisView h2 { color: var(--text); }
+    #indexAnalysisView .limit-up-stat { border-color: var(--line); background: var(--panel-2); }
+    #indexAnalysisView .limit-up-stat span { color: var(--muted); }
+    #indexAnalysisView .limit-up-stat strong { color: var(--text); }
+    #indexAnalysisView .index-analysis-index { border-color: var(--line); background: var(--panel-2); }
+    #indexAnalysisView .index-analysis-index span { color: var(--muted); }
+    #indexAnalysisView .index-analysis-index strong { color: var(--text); }
+    #indexAnalysisView .index-analysis-strategy { border-left-color: var(--blue); background: rgba(59, 130, 246, .10); color: var(--text); }
+    :root[data-theme="light"] #indexAnalysisView .index-analysis-strategy { background: #eef6ff; }
+    @media (max-width: 820px) { .index-analysis-indices { grid-template-columns: repeat(2, minmax(0,1fr)); } }
     :root[data-theme="light"] .limit-up-stat { border-color: #e2c77e; background: rgba(255, 255, 255, .78); }
     :root[data-theme="light"] .limit-up-stat span { color: #8a7441; }
     @media (max-width: 820px) { .limit-up-stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -806,6 +822,7 @@
       top: 14px;
       max-height: calc(100vh - 28px);
       overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .section-head {
@@ -855,12 +872,61 @@
     }
 
     .factor-row {
+      position: relative;
       display: grid;
-      grid-template-columns: 72px minmax(0, 1fr) 38px;
+      grid-template-columns: 72px minmax(0, 1fr) 48px;
       gap: 8px;
       align-items: center;
       color: var(--muted);
       font-size: 12px;
+      cursor: help;
+      padding-right: 18px;
+    }
+
+    .factor-row::after {
+      content: "?";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      border: 1px solid var(--muted-2);
+      border-radius: 50%;
+      color: var(--muted-2);
+      font-size: 10px;
+      line-height: 13px;
+      text-align: center;
+      transform: translateY(-50%);
+    }
+
+    .factor-row::before {
+      content: attr(data-tip);
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      top: calc(100% + 8px);
+      width: 220px;
+      height: auto;
+      padding: 11px 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel-strong);
+      box-shadow: 0 10px 28px rgba(0,0,0,.28);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.65;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+
+    .factor-row:hover::before,
+    .factor-row:focus-within::before {
+      opacity: 1;
+      transform: translateY(0);
     }
 
     .track {
@@ -1141,7 +1207,7 @@
     .stock-card.has-recommendation::after {
       content: attr(data-recommendation);
       position: absolute; left: 50%; top: 50%; z-index: 0;
-      font-size: 36px; font-weight: 950; letter-spacing: 4px;
+      font-size: 44px; font-weight: 950; letter-spacing: 10px;
       opacity: .16; pointer-events: none; white-space: nowrap;
       transform: translate(-50%, -50%) rotate(-16deg);
     }
@@ -1277,6 +1343,11 @@
       color: var(--green);
       background: rgba(52, 211, 153, .08);
     }
+    .stock-macd { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--muted-2); font-size: 9px; }
+    .stock-macd-bars { display: inline-flex; align-items: center; gap: 1px; height: 22px; max-width: 340px; overflow: hidden; padding: 0 4px; border-bottom: 1px solid var(--line); }
+    .stock-macd-bars i { display: block; flex: 0 0 3px; width: 3px; border-radius: 1px; background: var(--red); }
+    .stock-macd-bars i.negative { background: var(--green); }
+    .stock-macd-signal { color: var(--text); font-weight: 750; }
 
     .stock-card-metric {
       padding: 4px 6px;
@@ -1631,11 +1702,11 @@
 
     .kline-box {
       grid-column: 1 / -1;
-      min-height: 292px;
+      min-height: 390px;
     }
 
     .kline-box svg {
-      height: 246px;
+      height: 344px;
     }
 
     .chart-wrap > .chart-box:not(.kline-box) {
@@ -2385,6 +2456,9 @@
         <button class="nav-button" id="sectorStrengthNav" type="button">
           <span>板块强度</span><span class="nav-count">今日</span>
         </button>
+        <button class="nav-button" id="indexAnalysisNav" type="button">
+          <span>指数分析</span><span class="nav-count">实时</span>
+        </button>
       </nav>
       <div class="nav-foot">每次仅扫描所选市场的实时快照。入选候选在打开图表时按需加载历史 K 线。</div>
     </aside>
@@ -2427,7 +2501,7 @@
         <select id="sortBy">
           <option value="todayLimitUp">今日涨停概率</option>
           <option value="followUp">后续上涨概率</option>
-          <option value="score">综合评分</option>
+          <option value="score" selected>综合评分</option>
           <option value="change">当日涨幅</option>
           <option value="trend">趋势强度</option>
           <option value="price">股票价格</option>
@@ -2534,16 +2608,6 @@
             <div class="small-title">当前评分公式</div>
             <div class="factor-stack" id="weightRows"></div>
           </div>
-          <div>
-            <div class="small-title">数据规则</div>
-            <div class="check-list">
-              <label class="check"><input type="checkbox" checked disabled>候选范围与动态条件由服务端统一管理</label>
-              <label class="check"><input type="checkbox" checked disabled>成交额自动转换为流动性评分</label>
-              <label class="check"><input type="checkbox" checked disabled>近 12 日波动触发风险扣分</label>
-              <label class="check"><input type="checkbox" checked disabled>确认阴跌结构的股票不进入候选</label>
-              <label class="check"><input type="checkbox" checked disabled>行情缺失时明确提示，不使用旧报价</label>
-            </div>
-          </div>
           <div class="model-note" aria-live="polite">
             <div class="model-note-head"><strong>入选原因</strong><span id="selectionReasonScore">等待筛选</span></div>
             <p id="selectionReason">等待当前市场的实时筛选结果。</p>
@@ -2619,6 +2683,12 @@
       </div>
       <div class="limit-up-summary" id="limitUpSummary"></div>
       <div class="limit-up-grid" id="limitUpGrid" aria-live="polite"></div>
+    </section>
+    <section class="panel limit-up-view" id="indexAnalysisView" aria-label="指数分析" hidden>
+      <div class="section-head"><div><h2>指数分析</h2><span class="sector-strength-note">指数表现与市场广度结合分析，数据随盘中行情刷新</span></div><span class="tag" id="indexAnalysisUpdated">更新时间：--</span></div>
+      <div class="limit-up-stat-strip" id="indexAnalysisStats"></div>
+      <div class="index-analysis-indices" id="indexAnalysisIndices"></div>
+      <div class="index-analysis-strategy" id="indexAnalysisStrategy">正在加载指数分析...</div>
     </section>
     </main>
   </div>
@@ -2835,7 +2905,19 @@
       liquidity: "流动性",
       strength: "强弱",
       stability: "稳定性",
-      risk: "风险扣分"
+      risk: "风险扣分",
+      macd: "MACD"
+    };
+
+    const factorTips = {
+      trend: "趋势评分：基准 50 分；近 6 日收益每增加 1%，约加 1.4 分，近阶段累计收益每增加 1%，约加 1.6 分。再结合均线方向和价格是否站上 5/10/20/30 日均线校验，结果限制在 0～100 分。",
+      momentum: "动量评分：基准 50 分；短周期收益每增加 1%，约加 2.8 分，当日涨幅每增加 1%，约加 2 分。涨幅、涨速和量价同步时加分，冲高过快或动能衰减时由风险项限制。",
+      liquidity: "流动性评分：以成交额为核心，基准约 35 分；成交额相对 1 亿元的数量级每提升一个数量级，约增加 30 分。成交额越充足，越能承载资金进出。",
+      strength: "强弱评分：基准 50 分；当日涨幅每增加 1%，约加 5 分，并结合板块强度、板块内上涨家数和个股相对排名修正。单独上涨、缺少板块联动时不会拿满分。",
+      stability: "稳定性评分：基准约 96 分，再根据近期日收益波动扣分，波动率越高扣分越多。振幅过大、冲高回落或价格剧烈跳动时，稳定性下降。",
+      risk: "风险扣分：由近期波动风险、异常涨幅和回撤共同构成。基础风险约为 100 减稳定性分；当日涨幅超过 5% 后，超出部分还会增加风险扣分，阴跌和均线破位会进一步降低最终分数。",
+      orderFlow: "盘口确认：结合内盘/外盘、委比、价格位置、成交量、K 线形态和板块联动判断盘口真实性。盘口与价格背离时自动降权，最高占 8%。",
+      macd: "MACD评分计算：基准分 50 分；金叉 +22，多头增强 +18，多头收敛 +7，空头增强 -22，空头收敛 -8，死叉 -22。再比较近 5 日 MACD 柱体：柱体扩大 +10，柱体缩短 -10。若当日涨幅达到 8% 且处于高位金叉或多头状态，正向加分减半。最终分数限制在 0～100 分，再按 15% 折算进入综合评分；同时对今日涨停概率做小幅修正。"
     };
 
     const colors = {
@@ -2844,7 +2926,8 @@
       liquidity: "var(--blue)",
       strength: "var(--amber)",
       stability: "var(--pink)",
-      risk: "var(--red)"
+      risk: "var(--red)",
+      macd: "var(--amber)"
     };
 
     const marketScopes = {
@@ -2891,6 +2974,7 @@
       marketIndices: {},
       marketScope: "all",
       pageView: "screener",
+      indexAnalysis: null,
       hotConcept: null,
       hotConceptGroup: null,
       hotConceptChange: null,
@@ -2957,6 +3041,12 @@
       screenerView: document.getElementById("screenerView"),
       sectorStrengthView: document.getElementById("sectorStrengthView"),
       limitUpView: document.getElementById("limitUpView"),
+      indexAnalysisNav: document.getElementById("indexAnalysisNav"),
+      indexAnalysisView: document.getElementById("indexAnalysisView"),
+      indexAnalysisStats: document.getElementById("indexAnalysisStats"),
+      indexAnalysisIndices: document.getElementById("indexAnalysisIndices"),
+      indexAnalysisStrategy: document.getElementById("indexAnalysisStrategy"),
+      indexAnalysisUpdated: document.getElementById("indexAnalysisUpdated"),
       midtermView: document.getElementById("midtermView"),
       midtermNav: document.getElementById("midtermNav"),
       midtermGrid: document.getElementById("midtermGrid"),
@@ -3199,6 +3289,13 @@
         document.title = `TradingAgents ${state.hotConcept}概念板块`;
         return;
       }
+      if (state.pageView === "index-analysis") {
+        el.pageTitle.textContent = "指数分析";
+        el.pageDescription.textContent = "综合指数、市场广度、涨停跌停和成交额，生成盘中操作参考。";
+        el.sectorMode.textContent = "指数分析：实时";
+        document.title = "TradingAgents 指数分析";
+        return;
+      }
       const market = currentMarketScope();
       el.pageTitle.textContent = `${market.label}动态选股`;
       el.pageDescription.textContent = `${market.description} 基于实时成交、涨跌、换手与振幅生成候选，入选后可继续查看历史 K 线。`;
@@ -3211,6 +3308,7 @@
       const [primary, ...secondary] = entries;
       el.overviewNav?.classList.toggle("active", state.pageView === "screener" && state.marketScope === primary[0]);
       el.sectorStrengthNav.classList.toggle("active", state.pageView === "sector-strength");
+      el.indexAnalysisNav.classList.toggle("active", state.pageView === "index-analysis");
       el.midtermNav.classList.toggle("active", state.pageView === "midterm");
       el.hotSectorNav.classList.toggle("active", state.pageView === "hot-concept");
       el.limitUpNav?.classList.toggle("active", state.pageView === "limit-up");
@@ -3452,6 +3550,12 @@
       renderSectorNavigation(); render(); loadMidtermPool(forceScan);
     }
 
+    function openIndexAnalysis() {
+      clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
+      state.pageView = "index-analysis";
+      renderSectorNavigation(); render(); loadIndexAnalysis();
+    }
+
     function chinaMarketClock(date = new Date()) {
       const parts = new Intl.DateTimeFormat("en-US", {
         timeZone: "Asia/Shanghai",
@@ -3521,6 +3625,28 @@
       else if (limitUpRefreshInFlight) el.limitUpCountdown.textContent = "正在刷新...";
       else if (limitUpRefreshNextAt) el.limitUpCountdown.textContent = `下次刷新：${Math.max(0, Math.ceil((limitUpRefreshNextAt - Date.now()) / 1000))} 秒`;
       else el.limitUpCountdown.textContent = "等待自动刷新";
+    }
+
+    function renderIndexAnalysis() {
+      const data = state.indexAnalysis;
+      if (!data) return;
+      const pct = (value) => hasNumber(value) ? `${value >= 0 ? "+" : ""}${Number(value).toFixed(2)}%` : "--";
+      el.indexAnalysisStats.innerHTML = [["上涨家数", data.rising], ["下跌家数", data.falling], ["涨停家数", data.limitUp], ["跌停家数", data.limitDown], ["上涨比例", hasNumber(data.breadth) ? `${data.breadth.toFixed(1)}%` : "--"]].map(([label, value]) => `<div class="limit-up-stat"><span>${label}</span><strong>${value}</strong></div>`).join("");
+      el.indexAnalysisIndices.innerHTML = Object.values(data.indices || {}).map((item) => `<div class="index-analysis-index"><span>${escapeHtml(item.name)}</span><strong style="color:${item.changePct >= 0 ? "#ff5961" : "#49c99b"}">${formatPrice(item.price)} ${pct(item.changePct)}</strong></div>`).join("");
+      el.indexAnalysisStrategy.textContent = `市场状态：${data.mood}。${data.strategy} 等权平均涨跌 ${pct(data.averageChange)}，中位数涨跌 ${pct(data.medianChange)}，市场成交额 ${formatAmount(data.amount)}。`;
+      el.indexAnalysisUpdated.textContent = `更新时间：${formatUpdatedAt(data.updatedAt)}`;
+    }
+
+    async function loadIndexAnalysis() {
+      try {
+        const response = await fetch("/api/index-analysis", {cache: "no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        state.indexAnalysis = payload;
+        renderIndexAnalysis();
+      } catch (error) {
+        el.indexAnalysisStrategy.textContent = `指数分析暂不可用：${error.message || "数据请求失败"}`;
+      }
     }
 
     function renderLimitUpBoard(list) {
@@ -4003,9 +4129,13 @@
       const riskPenalty = b.risk * weights.risk;
       const baseScore = Math.max(0, Math.min(99, (positive - riskPenalty) / 90));
       const orderFlow = stock.orderFlow;
-      return Math.round(orderFlow?.available && hasNumber(orderFlow.score)
-        ? baseScore * 0.92 + orderFlow.score * 0.08
-        : baseScore);
+      const orderFlowScore = orderFlow?.available && hasNumber(orderFlow.score)
+        ? orderFlow.score
+        : baseScore;
+      const macdScore = hasNumber(stock.probability?.macdScore)
+        ? stock.probability.macdScore
+        : hasNumber(stock.screener?.downtrend?.macd?.histogram) ? 50 : 50;
+      return Math.round(baseScore * 0.77 + (orderFlow?.available && hasNumber(orderFlow.score) ? orderFlowScore * 0.08 : baseScore * 0.08) + macdScore * 0.15);
     }
 
     function dynamicScoreTooltip(stock) {
@@ -4017,7 +4147,8 @@
         ? `盘口确认分 ${stock.orderFlow.score}，以 8% 低权重计入；内外盘结合委比、价格位置、量能、K线形态、均线和板块联动判断，盘口背离会降权。`
         : "盘口数据不可用，本次不计入综合分，也不按 0 分处理。";
       const capitalText = hasNumber(b.capitalFlow) ? `资金流 ${b.capitalFlow}（按净流入/成交额标准化后并入流动性）` : "资金流数据不可用";
-      return `${strategies[state.strategy].label}：基础分 =（趋势×${weights.trend} + 动量×${weights.momentum} + 流动性×${weights.liquidity} + 强弱×${weights.strength} + 稳定×${weights.stability} − 风险×${weights.risk}）÷90。当前贡献：趋势 ${contribution("trend")}、动量 ${contribution("momentum")}、流动性 ${contribution("liquidity")}、强弱 ${contribution("strength")}、稳定 ${contribution("stability")}、风险扣 ${riskPenalty}。${capitalText}。${orderFlowText}`;
+      const macdScore = hasNumber(stock.probability?.macdScore) ? stock.probability.macdScore : 50;
+      return `${strategies[state.strategy].label}：基础因子合计 77%（趋势、动量、流动性、强弱、稳定性与风险按当前策略分配）；盘口确认 8%；MACD 15%。最终综合分 = 基础因子×77% + 盘口确认×8% + MACD×15%，总权重 100%。当前 MACD 评分 ${macdScore}，贡献 ${(macdScore * .15).toFixed(1)} 分。当前贡献：趋势 ${contribution("trend")}、动量 ${contribution("momentum")}、流动性 ${contribution("liquidity")}、强弱 ${contribution("strength")}、稳定 ${contribution("stability")}、风险扣 ${riskPenalty}。${capitalText}。${orderFlowText}`;
     }
 
     function filteredStocks() {
@@ -4044,13 +4175,27 @@
     function renderWeights() {
       const weights = strategies[state.strategy].weights;
       el.strategyTag.textContent = strategies[state.strategy].label;
-      el.weightRows.innerHTML = Object.entries(weights).map(([key, value]) => `
-        <div class="factor-row">
+      const entries = Object.entries(weights);
+      const roundedBase = entries.map(([key, value]) => [key, Math.round(value * .77)]);
+      const roundedTotal = roundedBase.reduce((sum, [, value]) => sum + value, 0);
+      if (roundedBase.length) roundedBase[roundedBase.length - 1][1] += 77 - roundedTotal;
+      el.weightRows.innerHTML = roundedBase.map(([key, effective]) => {
+        // 策略权重本身以百分数保存（例如 22），再按基础因子总权重 77% 折算。
+        return `
+        <div class="factor-row" data-tip="${factorTips[key] || "该因子的策略权重。"}">
           <span>${labels[key]}</span>
-          <span class="track"><span class="bar" style="--w:${value * 3}%; background:${colors[key]}"></span></span>
-          <span>${value}%</span>
+          <span class="track"><span class="bar" style="--w:${effective * 3}%; background:${colors[key]}"></span></span>
+          <span>${effective}%</span>
         </div>
-      `).join("");
+      `;
+      }).join("") + `
+        <div class="factor-row" data-tip="${factorTips.orderFlow}">
+          <span title="${factorTips.orderFlow}">盘口确认</span><span class="track"><span class="bar" style="--w:24%; background:var(--cyan)"></span></span><span>8%</span>
+        </div>
+        <div class="factor-row" data-tip="${factorTips.macd}">
+          <span title="${factorTips.macd}">MACD</span><span class="track"><span class="bar" style="--w:45%; background:${colors.macd || "var(--amber)"}"></span></span><span>15%</span>
+        </div>
+        `;
     }
 
     function renderStats(list) {
@@ -4256,6 +4401,11 @@
           ? Math.round(stock.previousClose * (1 + limitRate) * 100) / 100
           : null;
         const movingAverages = stock.screener?.movingAverages || stock.movingAverages || {};
+        const macd = stock.screener?.downtrend?.macd || {};
+        const macdValues = (macd.bars || []).map(Number).filter(Number.isFinite);
+        const macdScale = Math.max(...macdValues.map((bar) => Math.abs(bar)), 0.01);
+        const macdBars = macdValues.map((bar) => `<i class="${bar < 0 ? "negative" : ""}" style="height:${Math.max(3, Math.min(16, Math.abs(bar) / macdScale * 16))}px" title="${bar.toFixed(4)}"></i>`).join("");
+        const macdMarkup = macd.available ? `<div class="stock-macd"><span>MACD</span><span class="stock-macd-bars">${macdBars}</span><span class="stock-macd-signal">${escapeHtml(macd.signal || "--")}</span></div>` : "";
         const popularity = stock.popularity || {};
         const popularityLevel = !popularity.available ? "unavailable" : popularity.rank <= 10 ? "hot" : popularity.rank <= 50 ? "warm" : "normal";
         const popularityTooltip = popularity.available
@@ -4313,6 +4463,7 @@
               <div>
                 <div class="stock-name">${stock.name}<span class="code">${stock.code}</span>${popularityMarkup}${infoBadges}</div>
                 <div class="stock-moving-averages" aria-label="${escapeHtml(stock.name)}均线位置">${movingAverageMarkup}</div>
+                ${macdMarkup}
               </div>
               <div class="stock-quote ${pctClass}" aria-label="现价 ${formatPrice(stock.price)}，涨跌幅 ${formatPct(stock.change)}">
                 <div class="stock-price">${formatPrice(stock.price)}</div>
@@ -4330,13 +4481,6 @@
               <div class="stock-card-metric"><span class="order-flow-label"><i class="order-flow-key inner">内盘</i> / <i class="order-flow-key outer">外盘</i></span><strong tabindex="0" data-tooltip="${escapeHtml(orderFlowTitle)}" title="${escapeHtml(orderFlowTitle)}"><i class="order-flow-value inner">${formatVolume(orderFlow.innerVolume)}</i> / <i class="order-flow-value outer">${formatVolume(orderFlow.outerVolume)}</i></strong></div>
               <div class="stock-card-metric"><span>进入时间（60分 / 70分）</span><strong>${stock.screener?.scoreThresholdTimes?.["60"] || "--"} / ${stock.screener?.scoreThresholdTimes?.["70"] || "--"}</strong></div>
               <div class="stock-card-metric"><span>进入时间（3% / 9%）</span><strong>${stock.screener?.changeThresholdTimes?.["3"] || "--"} / ${stock.screener?.changeThresholdTimes?.["9"] || "--"}</strong></div>
-            </div>
-            <div class="mini-bars" role="img" aria-label="评分指标：趋势 ${stock.base.trend} 分，动量 ${stock.base.momentum} 分，流动性 ${stock.base.liquidity} 分，强弱 ${stock.base.strength} 分，稳定性 ${stock.base.stability} 分">
-              <span class="mini-bar" data-tooltip="趋势 ${stock.base.trend} 分" title="趋势：${stock.base.trend} 分"><span style="--v:${stock.base.trend}%; --c:var(--cyan)"></span></span>
-              <span class="mini-bar" data-tooltip="动量 ${stock.base.momentum} 分" title="动量：${stock.base.momentum} 分"><span style="--v:${stock.base.momentum}%; --c:var(--green)"></span></span>
-              <span class="mini-bar" data-tooltip="流动性 ${stock.base.liquidity} 分" title="流动性：${stock.base.liquidity} 分"><span style="--v:${stock.base.liquidity}%; --c:var(--blue)"></span></span>
-              <span class="mini-bar" data-tooltip="强弱 ${stock.base.strength} 分" title="强弱：${stock.base.strength} 分"><span style="--v:${stock.base.strength}%; --c:var(--amber)"></span></span>
-              <span class="mini-bar" data-tooltip="稳定性 ${stock.base.stability} 分" title="稳定性：${stock.base.stability} 分"><span style="--v:${stock.base.stability}%; --c:var(--pink)"></span></span>
             </div>
           </button>
         `;
@@ -4441,9 +4585,10 @@
       }
 
       const width = 1000;
-      const height = 468;
+      const height = 620;
       const plot = { left: 54, right: 74, top: 32, bottom: 300 };
       const volume = { top: 340, bottom: 410 };
+      const macd = { top: 450, bottom: 560 };
       const movingAverages = [
         { key: "ma10", label: "MA10", color: "var(--amber)" },
         { key: "ma20", label: "MA20", color: "var(--cyan)" },
@@ -4467,6 +4612,45 @@
       const maxVolume = Math.max(...volumes, 1);
       const yPrice = (price) => plot.bottom - ((price - minPrice) / priceSpan) * (plot.bottom - plot.top);
       const yVolume = (value) => volume.bottom - (value / maxVolume) * (volume.bottom - volume.top);
+      const closes = rows.map((row) => Number(row.close)).filter(Number.isFinite);
+      const ema = (period) => {
+        const multiplier = 2 / (period + 1);
+        const values = [];
+        let previous = closes[0];
+        closes.forEach((close, index) => {
+          previous = index === 0 ? close : (close - previous) * multiplier + previous;
+          values.push(previous);
+        });
+        return values;
+      };
+      const ema12 = ema(12);
+      const ema26 = ema(26);
+      const difValues = closes.map((_, index) => ema12[index] - ema26[index]);
+      const deaValues = [];
+      const deaMultiplier = 2 / 10;
+      difValues.forEach((value, index) => {
+        const previous = index === 0 ? value : deaValues[index - 1];
+        deaValues.push(index === 0 ? value : (value - previous) * deaMultiplier + previous);
+      });
+      const histValues = difValues.map((value, index) => (value - deaValues[index]) * 2);
+      const macdAbs = Math.max(
+        0.01,
+        ...histValues.filter(Number.isFinite).map((value) => Math.abs(value)),
+        ...difValues.filter(Number.isFinite).map((value) => Math.abs(value)),
+        ...deaValues.filter(Number.isFinite).map((value) => Math.abs(value))
+      );
+      const yMacd = (value) => macd.bottom / 2 - (value / macdAbs) * ((macd.bottom - macd.top) / 2 - 8);
+      const macdBars = histValues.map((value, index) => {
+        const x = plot.left + step * index + step / 2;
+        const zero = yMacd(0);
+        const y = Math.min(zero, yMacd(value));
+        const color = value >= 0 ? "var(--rising)" : "var(--falling)";
+        return `<rect x="${x - Math.max(2, candleWidth / 2)}" y="${y}" width="${Math.max(2, candleWidth)}" height="${Math.max(1, Math.abs(yMacd(value) - zero))}" fill="${color}" opacity=".72"><title>${rows[index].date} MACD柱 ${value.toFixed(3)}</title></rect>`;
+      }).join("");
+      const macdLine = (values, color) => {
+        const points = values.map((value, index) => `${plot.left + step * index + step / 2},${yMacd(value)}`).join(" ");
+        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+      };
       const priceGrid = Array.from({ length: 5 }, (_, index) => minPrice + (priceSpan * index) / 4);
       const grids = priceGrid.map((price) => {
         const y = yPrice(price);
@@ -4513,12 +4697,18 @@
         return `<text x="${x}" y="${height - 18}" text-anchor="middle" fill="var(--chart-axis)" font-size="12">${row.date.slice(5)}</text>`;
       }).join("");
       return `
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${stock.name} 近 ${rows.length} 个交易日日 K 线图">
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${stock.name} 近 ${rows.length} 个交易日日 K 线、成交量和 MACD 图">
           ${grids}
           <path d="M${plot.left} ${volume.top - 8} H${width - plot.right}" stroke="var(--chart-grid-strong)" stroke-width="1"/>
           <text x="${plot.left}" y="${volume.top - 14}" fill="var(--chart-caption)" font-size="12">成交量</text>
           ${candles}
           ${averageLines}
+          <path d="M${plot.left} ${macd.top - 10} H${width - plot.right}" stroke="var(--chart-grid-strong)" stroke-width="1"/>
+          <text x="${plot.left}" y="${macd.top - 16}" fill="var(--chart-caption)" font-size="12">MACD（DIF / DEA / 柱）</text>
+          <path d="M${plot.left} ${yMacd(0)} H${width - plot.right}" stroke="var(--chart-grid)" stroke-width="1" stroke-dasharray="4 4"/>
+          ${macdBars}
+          ${macdLine(difValues, "var(--rising)")}
+          ${macdLine(deaValues, "var(--amber)")}
           ${dateLabels}
         </svg>
       `;
@@ -4707,7 +4897,34 @@
       el.chartModal.hidden = false;
       document.body.classList.add("modal-open");
       renderChartModal();
+      if (!Array.isArray(stock.history) || stock.history.length < 2) {
+        loadChartHistory(stock);
+      }
       window.setTimeout(() => el.chartModalClose.focus(), 0);
+    }
+
+    async function loadChartHistory(stock) {
+      if (!stock || stock._chartHistoryLoading) return;
+      stock._chartHistoryLoading = true;
+      try {
+        const response = await fetch(`/api/stock?code=${encodeURIComponent(stock.code)}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok || !payload.quote) throw new Error(payload.error || `HTTP ${response.status}`);
+        const latest = stocks.find((item) => item.code === stock.code);
+        if (latest) {
+          latest.history = Array.isArray(payload.quote.history) ? payload.quote.history : [];
+          latest.price = payload.quote.price;
+          latest.changePct = payload.quote.changePct;
+          latest.updatedAt = payload.quote.updatedAt;
+        }
+      } catch (error) {
+        stock._chartHistoryError = error.message || "历史 K 线加载失败";
+      } finally {
+        stock._chartHistoryLoading = false;
+        if (state.chartOpen && state.chartCode === stock.code && state.chartTab === "daily") {
+          renderChartModal();
+        }
+      }
     }
 
     function closeChartModal() {
@@ -4953,6 +5170,7 @@
       el.midtermView.hidden = state.pageView !== "midterm";
       el.sectorStrengthView.hidden = state.pageView !== "sector-strength";
       el.limitUpView.hidden = state.pageView !== "limit-up";
+      el.indexAnalysisView.hidden = state.pageView !== "index-analysis";
       syncDynamicControls();
       el.scoreValue.textContent = state.minScore;
       renderMarketStatus();
@@ -4968,6 +5186,7 @@
         renderLimitUpStatus();
       }
       if (state.pageView === "midterm") renderMidtermPool();
+      if (state.pageView === "index-analysis") renderIndexAnalysis();
       renderList(list);
       if (state.pageView !== "hot-concept") {
         renderSelectionReason(list);
@@ -5037,6 +5256,7 @@
 
     el.sectorStrengthNav.addEventListener("click", () => openSectorStrength());
     el.midtermNav.addEventListener("click", () => openMidterm());
+    el.indexAnalysisNav.addEventListener("click", () => openIndexAnalysis());
     el.midtermRefresh.addEventListener("click", () => loadMidtermPool(true));
     el.hotSectorNav.addEventListener("click", () => {
       const expanded = el.hotSectorNav.getAttribute("aria-expanded") === "true";
@@ -5141,6 +5361,14 @@
       });
     });
 
+    // 切换策略时恢复该策略的默认排序：综合评分；用户随后仍可手动选择其他排序方式。
+    el.strategy.addEventListener("change", () => {
+      state.sortBy = "score";
+      el.sortBy.value = "score";
+      state.listPage = 1;
+      render();
+    });
+
     [el.minAmount, el.minChange, el.minTurnover].forEach((control) => {
       control.addEventListener("change", () => {
         clearPendingStockClick();
@@ -5182,6 +5410,11 @@
       } else if (state.pageView === "limit-up") {
         renderLimitUpStatus();
         if (marketSessionState().active && limitUpRefreshTimer === null && !limitUpRefreshInFlight) scheduleLimitUpRefresh();
+      } else if (state.pageView === "index-analysis") {
+        if (!window.indexAnalysisNextAt || Date.now() >= window.indexAnalysisNextAt) {
+          window.indexAnalysisNextAt = Date.now() + 30000;
+          loadIndexAnalysis();
+        }
       }
     }, 1000);
 
