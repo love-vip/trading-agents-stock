@@ -184,6 +184,68 @@
       font-size: 13px;
     }
 
+    .hot-sector-groups {
+      display: grid;
+      gap: 5px;
+      margin: 4px 0 8px 12px;
+      padding-left: 9px;
+      border-left: 1px solid var(--line);
+    }
+
+    .hot-sector-groups[hidden],
+    .hot-sector-concepts[hidden] {
+      display: none;
+    }
+
+    .hot-sector-group-title {
+      display: block;
+      padding: 5px 8px 3px;
+      color: var(--amber);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .hot-sector-concepts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 0 5px 3px;
+    }
+
+    .hot-sector-concept {
+      border: 1px solid rgba(244, 114, 182, .34);
+      border-radius: 4px;
+      color: var(--muted);
+      background: rgba(244, 114, 182, .05);
+      padding: 4px 6px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+
+    .hot-sector-concept:hover,
+    .hot-sector-concept.active {
+      border-color: rgba(244, 114, 182, .72);
+      color: #f9a8d4;
+      background: rgba(244, 114, 182, .14);
+    }
+    .hot-sector-concept.concept-down {
+      border-color: #8fcdb4;
+      color: #13795b;
+      background: #e6f6ef;
+    }
+    .hot-sector-concept.active.concept-down {
+      border-color: #348e6b;
+      color: #075f43;
+      background: #bfe9d7;
+      box-shadow: inset 0 0 0 1px rgba(7, 95, 67, .12), 0 0 10px rgba(22, 135, 101, .18);
+    }
+    .hot-sector-concept.active:not(.concept-down) {
+      border-color: #c72d58;
+      color: #9f163d;
+      background: #f6cddd;
+      box-shadow: inset 0 0 0 1px rgba(159, 22, 61, .10), 0 0 10px rgba(199, 45, 88, .16);
+    }
+
     .nav-foot {
       margin: 18px 9px 0;
       padding-top: 14px;
@@ -862,6 +924,114 @@
       white-space: nowrap;
     }
 
+    .stock-pattern-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border: 1px solid rgba(244, 114, 182, .72);
+      border-radius: 4px;
+      color: #f9a8d4;
+      background: rgba(244, 114, 182, .13);
+      box-shadow: inset 0 0 10px rgba(244, 114, 182, .06);
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    #screenerView.hot-concept-mode .main-grid { grid-template-columns: 1fr; }
+    #screenerView.hot-concept-mode .main-grid > .side,
+    #screenerView.hot-concept-mode .main-grid > .detail { display: none; }
+    #screenerView.hot-concept-mode .ranking {
+      background: #f5f8fd;
+      border-color: #d9e4f3;
+      color: #16233b;
+    }
+    #screenerView.hot-concept-mode.concept-down .ranking { border-color: #b8ddce; }
+    #screenerView.hot-concept-mode.concept-down .hot-concept-hero {
+      border-color: #a9d8c5;
+      background:
+        radial-gradient(circle at 85% 25%, rgba(22, 135, 101, .12), transparent 32%),
+        linear-gradient(135deg, #edf9f4 0%, #fff 54%, #f2fbf7 100%);
+    }
+    #screenerView.hot-concept-mode.concept-down .hot-concept-hero h3 { color: #168765; }
+    #screenerView.hot-concept-mode .ranking .section-head h2 { color: #174d92; }
+
+    .hot-concept-hero {
+      overflow: hidden;
+      position: relative;
+      border: 1px solid #dce7f4;
+      border-radius: 12px;
+      padding: 20px 22px;
+      background:
+        radial-gradient(circle at 85% 25%, rgba(220, 38, 38, .13), transparent 32%),
+        linear-gradient(135deg, #eef6ff 0%, #fff 52%, #fff3f4 100%);
+      box-shadow: 0 8px 24px rgba(25, 66, 119, .08);
+    }
+    .hot-concept-hero::after {
+      content: "◆";
+      position: absolute;
+      right: 24px;
+      top: 4px;
+      color: rgba(30, 91, 160, .10);
+      font-size: 108px;
+      transform: rotate(18deg);
+    }
+    .hot-concept-kicker { color: #1d5fa7; font-size: 13px; font-weight: 800; }
+    .hot-concept-hero h3 { margin: 7px 0 5px; color: #c91532; font-size: clamp(28px, 4vw, 48px); line-height: 1; }
+    .hot-concept-hero p { margin: 0; color: #53657d; font-size: 13px; }
+    .hot-concept-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .hot-concept-summary span { border-radius: 999px; padding: 5px 10px; background: rgba(201, 21, 50, .08); color: #a5152e; font-size: 11px; font-weight: 750; }
+    .hot-concept-summary .sector-change.down { border: 1px solid #9fd2bd; color: #13795b; background: #e6f6ef; }
+
+    .hot-concept-stock-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .hot-concept-card {
+      border: 1px solid #dce5f0;
+      border-radius: 10px;
+      padding: 13px;
+      color: #17243a;
+      background: #fff;
+      text-align: left;
+      box-shadow: 0 5px 15px rgba(31, 70, 116, .07);
+      transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+    }
+    .hot-concept-card:hover,
+    .hot-concept-card.active { transform: translateY(-2px); border-color: #8db4e2; box-shadow: 0 9px 24px rgba(31, 70, 116, .13); }
+    /* 中期选股按交易市场区分卡片底色 */
+    .hot-concept-card.market-main { background: #f1f7ff; border-color: #b9d4f2; }
+    .hot-concept-card.market-chinext { background: #fff7ec; border-color: #f1cf9c; }
+    .hot-concept-card.market-star { background: #f7f0ff; border-color: #d8bdf0; }
+    .hot-concept-card.market-bse { background: #edfaf5; border-color: #a9d9c5; }
+    .hot-concept-card-head { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; align-items: center; }
+    .hot-concept-rank { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: white; background: linear-gradient(145deg, #edb83d, #d98b16); font-size: 12px; font-weight: 900; }
+    .hot-concept-card:nth-child(n+4) .hot-concept-rank { background: linear-gradient(145deg, #3985ce, #225a9e); }
+    .hot-concept-name strong { display: block; color: #173c70; font-size: 16px; }
+    .hot-concept-name span { color: #8290a3; font-size: 11px; }
+    .hot-concept-quote { color: #c51632; text-align: right; font-size: 17px; font-weight: 900; }
+    .hot-concept-quote span { display: block; font-size: 12px; }
+    .hot-concept-panels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 11px; }
+    .hot-concept-panel { border-radius: 7px; padding: 8px; background: #edf5ff; }
+    .hot-concept-panel:nth-child(2) { background: #fff1f3; }
+    .hot-concept-panel:nth-child(3) { background: #f3efff; }
+    .hot-concept-panel span { display: block; color: #6f8096; font-size: 10px; }
+    .hot-concept-panel strong { display: block; margin-top: 3px; color: #1e5c9f; font-size: 15px; }
+    .hot-concept-panel:nth-child(2) strong { color: #c51632; }
+    .hot-concept-panel:nth-child(3) strong { color: #7048c8; }
+    .money-flow { font-weight: 950 !important; }
+    .money-flow.positive { color: #c51632 !important; }
+    .money-flow.negative { color: #087a54 !important; }
+    .hot-concept-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 9px; border-radius: 6px; overflow: hidden; background: #e6edf6; }
+    .hot-concept-fact { padding: 7px; background: #f8fafd; }
+    .hot-concept-fact span { display: block; color: #8290a3; font-size: 9px; }
+    .hot-concept-fact strong { color: #35465e; font-size: 11px; }
+    .hot-concept-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }
+    .hot-concept-tags span { border-radius: 3px; padding: 3px 5px; background: #eef3fa; color: #48627f; font-size: 9px; }
+    .hot-concept-tags .pattern { background: #fff0f4; color: #bd2442; font-weight: 750; }
+
+    @media (max-width: 820px) {
+      .hot-concept-stock-grid { grid-template-columns: 1fr; }
+      .hot-concept-panels, .hot-concept-facts { grid-template-columns: repeat(3, minmax(90px, 1fr)); }
+    }
+
     .code {
       color: var(--muted);
       font-size: 12px;
@@ -999,6 +1169,28 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    .stock-card-metric .order-flow-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .order-flow-key,
+    .order-flow-value {
+      font-style: normal;
+    }
+
+    .order-flow-key {
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-weight: 800;
+    }
+
+    .order-flow-key.inner,
+    .order-flow-key.outer { color: #6f8096; background: rgba(111, 128, 150, .10); }
+    .order-flow-value.inner,
+    .order-flow-value.outer { color: #17243a; font-weight: 900; }
 
     .stock-card-metric .probability-value { position: relative; color: var(--amber); cursor: help; }
     .stock-card-metric .probability-value.follow-up { color: var(--cyan); }
@@ -2001,16 +2193,20 @@
         <span>A股板块研究台</span>
       </div>
       <nav class="nav-list" aria-label="市场范围导航">
-        <button class="nav-button active" id="overviewNav" type="button" data-market="all">
-          <span>全部类型</span><span class="nav-count" id="overviewCount"></span>
+        <button class="nav-button" id="midtermNav" type="button">
+          <span>中期选股</span><span class="nav-count">全市场</span>
         </button>
         <button class="nav-button" id="sectorToggle" type="button" aria-expanded="true" aria-controls="sectorNav">
-          <span>市场切换</span><span class="nav-count" id="sectorTotal">5</span>
+          <span>盘中选股</span><span class="nav-count" id="sectorTotal">5</span>
         </button>
         <div class="nav-submenu" id="sectorNav"></div>
         <button class="nav-button" id="sectorStrengthNav" type="button">
           <span>板块强度</span><span class="nav-count">今日</span>
         </button>
+        <button class="nav-button" id="hotSectorNav" type="button" aria-expanded="false" aria-controls="hotSectorGroups">
+          <span>热门板块</span><span class="nav-count">概念</span>
+        </button>
+        <div class="hot-sector-groups" id="hotSectorGroups" hidden></div>
         <button class="nav-button" id="limitUpNav" type="button">
           <span>涨停打板</span><span class="nav-count">主板</span>
         </button>
@@ -2054,13 +2250,13 @@
       <div class="field">
         <label for="sortBy">排序方式</label>
         <select id="sortBy">
+          <option value="todayLimitUp">今日涨停概率</option>
+          <option value="followUp">后续上涨概率</option>
           <option value="score">综合评分</option>
           <option value="change">当日涨幅</option>
           <option value="trend">趋势强度</option>
           <option value="price">股票价格</option>
           <option value="amount">成交额</option>
-          <option value="todayLimitUp">今日涨停概率</option>
-          <option value="followUp">后续上涨概率</option>
         </select>
       </div>
       <div class="field">
@@ -2193,6 +2389,20 @@
       </section>
     </section>
     </div>
+
+    <section class="panel limit-up-view" id="midtermView" aria-label="中期选股池" hidden>
+      <div class="section-head">
+        <div>
+          <h2>中期选股池</h2>
+          <span class="sector-strength-note">扫描全市场 A 股；主板/北交所按低位反弹与均线筛选，创业板/科创板按7月新低、8月反弹筛选</span>
+        </div>
+        <div class="limit-up-actions">
+          <span class="tag" id="midtermStatus">等待扫描</span>
+          <button class="btn" id="midtermRefresh" type="button">检查新股</button>
+        </div>
+      </div>
+      <div class="hot-concept-stock-grid" id="midtermGrid" aria-live="polite"></div>
+    </section>
 
     <section class="panel sector-strength" id="sectorStrengthView" aria-label="今日板块强度" hidden>
       <div class="section-head">
@@ -2463,12 +2673,26 @@
       bse: { label: "北交所", description: "扫描北交所上市公司，排除新三板混合行情。" }
     };
 
+    const hotSectorGroups = {
+      "科技": ["液冷", "CPO", "PCB", "存储芯片"],
+      "AI": ["AI语料", "AI智能体"],
+      "有色金属": ["稀土永磁", "黄金", "小金属"],
+      "消费": ["大消费", "白酒", "饮料制造"],
+      "旅游": ["酒店", "景点运营", "免税店"],
+      "医药": ["创新药", "脑机接口", "医药商业"],
+      "粮食": ["农业种植"],
+      "军工": ["海工装备", "无人机"],
+      "金融科技": ["数字货币", "区块链", "互联网金融"],
+      "养殖": ["猪肉", "鸡肉概念", "水产养殖"],
+      "能源": ["煤炭", "石油", "天然气"]
+    };
+
     const state = {
       strategy: "balanced",
       sector: "overview",
       sectors: [],
       overview: null,
-      sortBy: "score",
+      sortBy: "todayLimitUp",
       minScore: 60,
       listPage: 1,
       listPageSize: 100,
@@ -2482,6 +2706,11 @@
       marketSource: null,
       marketScope: "all",
       pageView: "screener",
+      hotConcept: null,
+      hotConceptGroup: null,
+      hotConceptChange: null,
+      hotConceptChanges: {},
+      hotGroupLoading: null,
       dynamicFilters: { minAmount: 0, minChange: -20, minTurnover: 0 },
       scannedCount: null,
       matchedCount: null,
@@ -2494,6 +2723,10 @@
       limitUpScannedCount: null,
       limitUpError: null,
       limitUpAuction: null,
+      midtermCandidates: [],
+      midtermPoolCount: 0,
+      midtermEligibleCount: 0,
+      midtermScan: { status: "idle", total: 0, processed: 0, added: 0, failed: 0 },
       detailLoadingCode: null,
       conceptLoadingCode: null,
       stockClickTimer: null,
@@ -2537,6 +2770,11 @@
       screenerView: document.getElementById("screenerView"),
       sectorStrengthView: document.getElementById("sectorStrengthView"),
       limitUpView: document.getElementById("limitUpView"),
+      midtermView: document.getElementById("midtermView"),
+      midtermNav: document.getElementById("midtermNav"),
+      midtermGrid: document.getElementById("midtermGrid"),
+      midtermStatus: document.getElementById("midtermStatus"),
+      midtermRefresh: document.getElementById("midtermRefresh"),
       weightRows: document.getElementById("weightRows"),
       strategyTag: document.getElementById("strategyTag"),
       selectionReason: document.getElementById("selectionReason"),
@@ -2547,6 +2785,8 @@
       themeToggle: document.getElementById("themeToggle"),
       overviewNav: document.getElementById("overviewNav"),
       sectorStrengthNav: document.getElementById("sectorStrengthNav"),
+      hotSectorNav: document.getElementById("hotSectorNav"),
+      hotSectorGroups: document.getElementById("hotSectorGroups"),
       limitUpNav: document.getElementById("limitUpNav"),
       limitUpGrid: document.getElementById("limitUpGrid"),
       limitUpSummary: document.getElementById("limitUpSummary"),
@@ -2583,9 +2823,11 @@
     let sectorRefreshInFlight = false;
     let screenerRefreshTimer = null;
     let screenerRefreshNextAt = null;
+    let hotGroupRefreshTimer = null;
     let limitUpRefreshTimer = null;
     let limitUpRefreshNextAt = null;
     let limitUpRefreshInFlight = false;
+    let midtermPollTimer = null;
 
     function savedTheme() {
       try {
@@ -2631,6 +2873,12 @@
       if (Math.abs(value) >= 100000000) return `${(value / 100000000).toFixed(2)} 亿`;
       if (Math.abs(value) >= 10000) return `${(value / 10000).toFixed(2)} 万`;
       return value.toLocaleString("zh-CN");
+    }
+
+    function formatVolume(value) {
+      if (!hasNumber(value)) return "--";
+      if (Math.abs(value) >= 10000) return `${(value / 10000).toFixed(2)} 万`;
+      return Math.round(value).toLocaleString("zh-CN");
     }
 
     function formatRatio(value) {
@@ -2710,7 +2958,7 @@
     function syncDynamicControls() {
       const market = currentMarketScope();
       const refreshNote = screenerRefreshStatusText();
-      el.scoreRange.min = "60";
+      el.scoreRange.min = state.pageView === "hot-concept" ? "0" : "60";
       el.scoreRange.value = String(state.minScore);
       if (hasNumber(state.scannedCount)) {
         const downtrendNote = state.downtrendExcludedCount
@@ -2722,13 +2970,21 @@
         const marketCapNote = state.marketCapExcludedCount
           ? `；总市值低于 30 亿 ${state.marketCapExcludedCount.toLocaleString("zh-CN")} 只`
           : "";
-        el.dynamicStatus.textContent = `${market.label}已扫描 ${state.scannedCount.toLocaleString("zh-CN")} 只，实时条件命中 ${(state.matchedCount || 0).toLocaleString("zh-CN")} 只${marketCapNote}${downtrendNote}${limitUpNote}。${refreshNote}`;
+        const scopeName = state.pageView === "hot-concept" ? state.hotConcept : market.label;
+        el.dynamicStatus.textContent = `${scopeName}已扫描 ${state.scannedCount.toLocaleString("zh-CN")} 只，展示 ${(state.matchedCount || 0).toLocaleString("zh-CN")} 只${marketCapNote}${downtrendNote}${limitUpNote}。${state.pageView === "hot-concept" ? "" : refreshNote}`;
       } else {
         el.dynamicStatus.textContent = `${market.label}实时扫描已就绪；调整条件后点击筛选更新候选。${refreshNote}`;
       }
     }
 
     function updatePageMeta() {
+      if (state.pageView === "midterm") {
+        el.pageTitle.textContent = "中期选股";
+        el.pageDescription.textContent = "全市场 A 股低位反弹形态池";
+        el.sectorMode.textContent = "范围：全市场 A 股";
+        document.title = "TradingAgents 中期选股";
+        return;
+      }
       if (state.pageView === "limit-up") {
         el.pageTitle.textContent = "涨停打板";
         el.pageDescription.textContent = "仅关注沪深主板，以板块共振、盘中攻击性和一年涨停记录筛选短线候选。";
@@ -2743,6 +2999,13 @@
         document.title = "TradingAgents 今日板块强度";
         return;
       }
+      if (state.pageView === "hot-concept") {
+        el.pageTitle.textContent = `${state.hotConcept}概念板块`;
+        el.pageDescription.textContent = `${state.hotConceptGroup} · ${state.hotConcept}，展示概念成分股的实时行情、评分、概率、题材与 K 线形态。`;
+        el.sectorMode.textContent = `热门板块：${state.hotConceptGroup} / ${state.hotConcept}`;
+        document.title = `TradingAgents ${state.hotConcept}概念板块`;
+        return;
+      }
       const market = currentMarketScope();
       el.pageTitle.textContent = `${market.label}动态选股`;
       el.pageDescription.textContent = `${market.description} 基于实时成交、涨跌、换手与振幅生成候选，入选后可继续查看历史 K 线。`;
@@ -2753,10 +3016,12 @@
     function renderSectorNavigation() {
       const entries = Object.entries(marketScopes);
       const [primary, ...secondary] = entries;
-      el.overviewNav.classList.toggle("active", state.pageView === "screener" && state.marketScope === primary[0]);
+      el.overviewNav?.classList.toggle("active", state.pageView === "screener" && state.marketScope === primary[0]);
       el.sectorStrengthNav.classList.toggle("active", state.pageView === "sector-strength");
+      el.midtermNav.classList.toggle("active", state.pageView === "midterm");
+      el.hotSectorNav.classList.toggle("active", state.pageView === "hot-concept");
       el.limitUpNav.classList.toggle("active", state.pageView === "limit-up");
-      el.overviewCount.textContent = "";
+      if (el.overviewCount) el.overviewCount.textContent = "";
       el.sectorTotal.textContent = secondary.length;
       el.sectorNav.innerHTML = secondary.map(([key, market]) => `
         <button class="nav-button${state.pageView === "screener" && state.marketScope === key ? " active" : ""}" type="button" data-market="${key}">
@@ -2766,7 +3031,103 @@
       el.sectorNav.querySelectorAll("[data-market]").forEach((button) => {
         button.addEventListener("click", () => navigateMarket(button.dataset.market));
       });
+      el.hotSectorGroups.innerHTML = Object.entries(hotSectorGroups).map(([group, concepts]) => `
+        <div class="hot-sector-group">
+          <span class="hot-sector-group-title">${escapeHtml(group)}${state.hotGroupLoading === group ? " · 加载中" : ""}</span>
+          <div class="hot-sector-concepts">
+            ${concepts.map((concept) => {
+              const selected = state.pageView === "hot-concept" && state.hotConcept === concept;
+              const conceptChange = state.hotConceptChanges[concept];
+              const down = hasNumber(conceptChange) && conceptChange < 0;
+              return `<button type="button" class="hot-sector-concept${selected ? " active" : ""}${down ? " concept-down" : ""}" data-hot-group="${escapeHtml(group)}" data-hot-concept="${escapeHtml(concept)}">${escapeHtml(concept)}</button>`;
+            }).join("")}
+          </div>
+        </div>
+      `).join("");
+      el.hotSectorGroups.querySelectorAll("[data-hot-concept]").forEach((button) => button.addEventListener("click", () => openHotConcept(button.dataset.hotConcept, button.dataset.hotGroup)));
       updatePageMeta();
+    }
+
+    function scheduleHotGroupRefresh() {
+      if (hotGroupRefreshTimer !== null) window.clearTimeout(hotGroupRefreshTimer);
+      hotGroupRefreshTimer = null;
+      if (el.hotSectorGroups.hidden) return;
+      const delay = document.hidden ? 90000 : 30000;
+      hotGroupRefreshTimer = window.setTimeout(() => loadHotSectorSummaries(true), delay);
+    }
+
+    async function loadHotGroupSummary(group, forceRefresh = false) {
+      const concepts = hotSectorGroups[group];
+      if (!concepts) return;
+      state.hotGroupLoading = group;
+      renderSectorNavigation();
+      try {
+        const query = new URLSearchParams({ names: concepts.join(",") });
+        if (forceRefresh) query.set("refresh", "1");
+        const response = await fetch(`/api/hot-concept-summary?${query}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        (payload.concepts || []).forEach((item) => {
+          if (item.available && hasNumber(item.averageChangePct)) state.hotConceptChanges[item.concept] = item.averageChangePct;
+        });
+      } catch (error) {
+        console.warn("热门板块强度加载失败", error);
+      }
+      state.hotGroupLoading = null;
+      renderSectorNavigation();
+    }
+
+    async function loadHotSectorSummaries(forceRefresh = false) {
+      if (el.hotSectorGroups.hidden || state.hotGroupLoading) return;
+      for (const group of Object.keys(hotSectorGroups)) {
+        if (el.hotSectorGroups.hidden) break;
+        await loadHotGroupSummary(group, forceRefresh);
+      }
+      scheduleHotGroupRefresh();
+    }
+
+    async function openHotConcept(concept, group, forceRefresh = false) {
+      clearPendingStockClick();
+      clearSectorRefreshTimer();
+      clearScreenerRefreshTimer();
+      clearLimitUpRefreshTimer();
+      state.pageView = "hot-concept";
+      state.hotConcept = concept;
+      state.hotConceptGroup = group;
+      state.hotConceptChange = null;
+      state.minScore = 0;
+      state.marketStatus = "loading";
+      state.marketMessage = `正在加载${concept}概念成分股`;
+      state.selectedCode = null;
+      state.listPage = 1;
+      stocks = [];
+      renderSectorNavigation();
+      render();
+      try {
+        const query = new URLSearchParams({ name: concept });
+        if (forceRefresh) query.set("refresh", "1");
+        const response = await fetch(`/api/hot-concept?${query}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        stocks = (payload.quotes || []).map((quote) => ({ ...quote, change: quote.changePct }));
+        state.scannedCount = payload.scannedCount ?? stocks.length;
+        state.matchedCount = stocks.length;
+        state.downtrendExcludedCount = 0;
+        state.limitUpExcludedCount = 0;
+        state.marketCapExcludedCount = 0;
+        state.marketDate = payload.marketDate;
+        state.marketUpdatedAt = payload.updatedAt;
+        state.marketSource = payload.source;
+        state.hotConceptChange = payload.averageChangePct ?? null;
+        state.hotConceptChanges[concept] = state.hotConceptChange;
+        state.marketStatus = "ready";
+        state.marketMessage = `${concept}概念已加载 ${stocks.length} 只`;
+      } catch (error) {
+        state.marketStatus = "error";
+        state.marketMessage = error.message || `${concept}概念加载失败`;
+      }
+      renderSectorNavigation();
+      render();
     }
 
     function navigateMarket(marketKey, forceReload = false) {
@@ -2784,6 +3145,7 @@
       state.marketCapExcludedCount = null;
       state.marketScope = marketKey;
       state.pageView = "screener";
+      state.minScore = Math.max(60, state.minScore);
       el.marketScope.value = marketKey;
       state.selectedCode = null;
       state.reviewed = false;
@@ -2830,6 +3192,67 @@
       render();
       if (enteringView || !state.limitUpCandidates.length || forceRefresh) refreshLimitUpNow(forceRefresh);
       else scheduleLimitUpRefresh();
+    }
+
+    function renderMidtermPool() {
+      const scan = state.midtermScan || {};
+      const progress = scan.total ? `${scan.processed || 0}/${scan.total}` : "准备中";
+      el.midtermStatus.textContent = scan.status === "running"
+        ? `扫描 ${progress}`
+        : scan.status === "completed" ? `今日完成 · 候选 ${state.midtermEligibleCount}`
+        : scan.status === "error" ? `扫描失败：${scan.message || "未知错误"}` : "等待扫描";
+      el.midtermRefresh.disabled = scan.status === "running";
+      const candidates = (state.midtermCandidates || []).filter((stock) => stock.tStrategy?.eligible);
+      if (!candidates.length) {
+        el.midtermGrid.innerHTML = `<div class="sector-strength-empty">${scan.status === "running" ? `正在扫描全市场 A 股（${progress}）。` : "当前没有符合中期策略的候选，原始入池记录仍保留。"}</div>`;
+        return;
+      }
+      el.midtermGrid.innerHTML = candidates.map((stock, index) => {
+        const signal = stock.signal || {};
+        const quote = stock.quote || {};
+        const tStrategy = stock.tStrategy || {};
+        const broken = stock.status === "broken" || signal.broken;
+        const slopes = signal.maSlopes || {};
+        const marketClass = stock.code.startsWith("300") || stock.code.startsWith("301")
+          ? "market-chinext"
+          : stock.code.startsWith("688") || stock.code.startsWith("689")
+            ? "market-star"
+            : stock.code.startsWith("4") || stock.code.startsWith("8") || stock.code.startsWith("92")
+              ? "market-bse"
+              : "market-main";
+        return `<article class="hot-concept-card ${marketClass}${broken ? " concept-down" : ""}">
+          <div class="hot-concept-card-head"><span class="hot-concept-rank">${index + 1}</span><span class="hot-concept-name"><strong>${escapeHtml(stock.name)}</strong><span>${stock.code} · 入池 ${stock.entryDate}</span></span><span class="hot-concept-quote" style="color:${hasNumber(quote.changePct) && quote.changePct < 0 ? "#087a54" : "#c51632"}"><strong>${formatPrice(quote.price)}</strong><span>${hasNumber(quote.changePct) ? formatPct(quote.changePct) : "--"}</span></span>${broken ? `<span class="hot-concept-quote" style="color:#087a54"><strong>⚠ 形态走坏</strong></span>` : ""}</div>
+          <div class="hot-concept-panels"><div class="hot-concept-panel"><span>🎯 进入次数</span><strong>${stock.entryCount || 0} 次</strong></div><div class="hot-concept-panel"><span>📈 8月反弹</span><strong>${hasNumber(signal.augustReboundPct) ? formatPct(signal.augustReboundPct) : "--"}</strong></div><div class="hot-concept-panel"><span>资金净流入</span><strong class="money-flow ${hasNumber(quote.netInflow) && quote.netInflow < 0 ? "negative" : "positive"}">${hasNumber(quote.netInflow) ? formatAmount(quote.netInflow) : "--"}</strong></div></div>
+          <div class="hot-concept-facts"><div class="hot-concept-fact"><span>7月最低</span><strong>${formatPrice(signal.julyLow)}</strong></div><div class="hot-concept-fact"><span>此前1年最低</span><strong>${formatPrice(signal.prior1yLow)}</strong></div><div class="hot-concept-fact"><span>此前2年最低</span><strong>${formatPrice(signal.prior2yLow)}</strong></div></div>
+          <div class="hot-concept-tags">${[5,10,20,30].map((period) => `<span class="${slopes[`ma${period}`] ? "pattern" : ""}">MA${period} ${slopes[`ma${period}`] ? "向上" : "未向上"}</span>`).join("")}</div>
+        </article>`;
+      }).join("");
+    }
+
+    async function loadMidtermPool(forceScan = false) {
+      if (midtermPollTimer !== null) window.clearTimeout(midtermPollTimer);
+      midtermPollTimer = null;
+      try {
+        const response = await fetch(`/api/midterm${forceScan ? "?refresh=1" : ""}`, {cache: "no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        state.midtermCandidates = payload.candidates || [];
+        state.midtermPoolCount = payload.poolCount ?? state.midtermCandidates.length;
+        state.midtermEligibleCount = payload.tEligibleCount ?? state.midtermCandidates.filter((stock) => stock.tStrategy?.eligible).length;
+        state.midtermScan = payload.scan || {};
+      } catch (error) {
+        state.midtermScan = {status: "error", message: error.message};
+      }
+      renderMidtermPool();
+      if (state.pageView === "midterm" && state.midtermScan.status === "running") {
+        midtermPollTimer = window.setTimeout(() => loadMidtermPool(), 5000);
+      }
+    }
+
+    function openMidterm(forceScan = false) {
+      clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
+      state.pageView = "midterm";
+      renderSectorNavigation(); render(); loadMidtermPool(forceScan);
     }
 
     function chinaMarketClock(date = new Date()) {
@@ -3333,7 +3756,11 @@
         b.strength * weights.strength +
         b.stability * weights.stability;
       const riskPenalty = b.risk * weights.risk;
-      return Math.max(0, Math.min(99, Math.round((positive - riskPenalty) / 90)));
+      const baseScore = Math.max(0, Math.min(99, (positive - riskPenalty) / 90));
+      const orderFlow = stock.orderFlow;
+      return Math.round(orderFlow?.available && hasNumber(orderFlow.score)
+        ? baseScore * 0.92 + orderFlow.score * 0.08
+        : baseScore);
     }
 
     function dynamicScoreTooltip(stock) {
@@ -3341,14 +3768,18 @@
       const b = stock.base;
       const contribution = (key) => ((b[key] || 0) * weights[key] / 90).toFixed(1);
       const riskPenalty = ((b.risk || 0) * weights.risk / 90).toFixed(1);
-      return `${strategies[state.strategy].label}：综合分 =（趋势×${weights.trend} + 动量×${weights.momentum} + 流动性×${weights.liquidity} + 强弱×${weights.strength} + 稳定×${weights.stability} − 风险×${weights.risk}）÷90。当前贡献：趋势 ${contribution("trend")}、动量 ${contribution("momentum")}、流动性 ${contribution("liquidity")}、强弱 ${contribution("strength")}、稳定 ${contribution("stability")}、风险扣 ${riskPenalty}。`;
+      const orderFlowText = stock.orderFlow?.available
+        ? `盘口确认分 ${stock.orderFlow.score}，以 8% 低权重计入；内外盘结合委比、价格位置、量能、K线形态、均线和板块联动判断，盘口背离会降权。`
+        : "盘口数据不可用，本次不计入综合分，也不按 0 分处理。";
+      const capitalText = hasNumber(b.capitalFlow) ? `资金流 ${b.capitalFlow}（按净流入/成交额标准化后并入流动性）` : "资金流数据不可用";
+      return `${strategies[state.strategy].label}：基础分 =（趋势×${weights.trend} + 动量×${weights.momentum} + 流动性×${weights.liquidity} + 强弱×${weights.strength} + 稳定×${weights.stability} − 风险×${weights.risk}）÷90。当前贡献：趋势 ${contribution("trend")}、动量 ${contribution("momentum")}、流动性 ${contribution("liquidity")}、强弱 ${contribution("strength")}、稳定 ${contribution("stability")}、风险扣 ${riskPenalty}。${capitalText}。${orderFlowText}`;
     }
 
     function filteredStocks() {
       const query = state.search.trim().toLowerCase();
       return stocks
         .map((stock) => ({ ...stock, score: weightedScore(stock) }))
-        .filter((stock) => stock.score >= Math.max(60, state.minScore))
+        .filter((stock) => stock.score >= (state.pageView === "hot-concept" ? state.minScore : Math.max(60, state.minScore)))
         .filter((stock) => {
           if (!query) return true;
           const text = `${stock.code} ${stock.name} ${stock.industry} ${stock.theme} ${stock.reason} ${stock.tags.join(" ")}`.toLowerCase();
@@ -3423,7 +3854,7 @@
 
     function markStockCardSelected(code) {
       state.selectedCode = code;
-      document.querySelectorAll(".stock-card").forEach((card) => {
+      document.querySelectorAll(".stock-card, .hot-concept-card").forEach((card) => {
         const isSelected = card.dataset.code === code;
         card.classList.toggle("active", isSelected);
         card.setAttribute("aria-pressed", String(isSelected));
@@ -3439,7 +3870,72 @@
       }, 220);
     }
 
+    function renderHotConceptList(list) {
+      if (!list.length) {
+        el.stockList.innerHTML = `<div class="empty">当前概念暂无达到最低分要求的个股，可调整最低综合分后重试。</div>`;
+        return;
+      }
+      const pageSize = state.listPageSize;
+      const pageCount = Math.max(1, Math.ceil(list.length / pageSize));
+      state.listPage = Math.min(Math.max(1, state.listPage), pageCount);
+      const start = (state.listPage - 1) * pageSize;
+      const pageItems = list.slice(start, start + pageSize);
+      if (!state.selectedCode || !pageItems.some((stock) => stock.code === state.selectedCode)) state.selectedCode = pageItems[0].code;
+      const averageToday = Math.round(list.reduce((sum, stock) => sum + (stock.probability?.todayLimitUp || 0), 0) / list.length);
+      const rising = list.filter((stock) => (stock.change || 0) > 0).length;
+      const falling = list.filter((stock) => (stock.change || 0) < 0).length;
+      const cards = pageItems.map((stock, index) => {
+        const probability = stock.probability || {};
+        const patterns = stock.screener?.downtrend?.patternSignals || [];
+        const sectors = stock.relatedSectors || [];
+        const changeColor = (stock.change || 0) >= 0 ? "#c51632" : "#168765";
+        return `<button class="hot-concept-card${stock.code === state.selectedCode ? " active" : ""}" type="button" data-code="${stock.code}" aria-pressed="${stock.code === state.selectedCode}">
+          <div class="hot-concept-card-head">
+            <span class="hot-concept-rank">${start + index + 1}</span>
+            <span class="hot-concept-name"><strong>${escapeHtml(stock.name)}</strong><span>${stock.code} · ${escapeHtml(stock.actualIndustry || "--")}</span></span>
+            <span class="hot-concept-quote" style="color:${changeColor}">${formatPrice(stock.price)}<span>${formatPct(stock.change)}</span></span>
+          </div>
+          <div class="hot-concept-panels">
+            <div class="hot-concept-panel"><span>🏆 综合评分</span><strong>${stock.score}</strong></div>
+            <div class="hot-concept-panel"><span>🔥 今日涨停概率</span><strong>${hasNumber(probability.todayLimitUp) ? `${probability.todayLimitUp}%` : "--"}</strong></div>
+            <div class="hot-concept-panel"><span>📈 后续上涨概率</span><strong>${hasNumber(probability.followUp) ? `${probability.followUp}%` : "--"}</strong></div>
+          </div>
+          <div class="hot-concept-facts">
+            <div class="hot-concept-fact"><span>成交额</span><strong>${formatAmount(stock.amount)}</strong></div>
+            <div class="hot-concept-fact"><span>量比 / 换手</span><strong>${hasNumber(stock.volumeRatio) ? stock.volumeRatio.toFixed(2) : "--"} / ${hasNumber(stock.screener?.turnover) ? `${stock.screener.turnover.toFixed(2)}%` : "--"}</strong></div>
+            <div class="hot-concept-fact"><span>总市值 / 流通</span><strong>${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}</strong></div>
+            <div class="hot-concept-fact"><span>资金净流入</span><strong class="money-flow ${(stock.netInflow ?? 0) < 0 ? "negative" : "positive"}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</strong></div>
+          </div>
+          <div class="hot-concept-tags">${sectors.slice(0, 4).map((name) => `<span>${escapeHtml(name)}</span>`).join("")}${patterns.map((name) => `<span class="pattern">${escapeHtml(name)}</span>`).join("")}</div>
+        </button>`;
+      }).join("");
+      el.stockList.innerHTML = `<section class="hot-concept-hero">
+        <div class="hot-concept-kicker">热门概念 · ${escapeHtml(state.hotConceptGroup || "市场热点")}</div>
+        <h3>${escapeHtml(state.hotConcept)}</h3>
+        <p>概念成分股实时观察榜 · 默认按今日涨停概率由高到低</p>
+        <div class="hot-concept-summary"><span>成分股 ${list.length} 只</span><span>上涨 ${rising} 只</span><span class="sector-change down">下跌 ${falling} 只</span><span class="sector-change${hasNumber(state.hotConceptChange) && state.hotConceptChange < 0 ? " down" : ""}">板块平均涨跌 ${formatPct(state.hotConceptChange)}</span><span>平均涨停概率 ${averageToday}%</span></div>
+      </section><div class="hot-concept-stock-grid">${cards}</div>
+      <div class="stock-pagination"><label>每页<select data-page-size aria-label="每页展示数量">${[20, 50, 100, 200].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size}</option>`).join("")}</select>只</label>
+      <button class="btn" data-page="first" ${state.listPage === 1 ? "disabled" : ""}>首页</button><button class="btn" data-page="prev" ${state.listPage === 1 ? "disabled" : ""}>上一页</button><span>第 ${state.listPage} / ${pageCount} 页</span><button class="btn" data-page="next" ${state.listPage === pageCount ? "disabled" : ""}>下一页</button><button class="btn" data-page="last" ${state.listPage === pageCount ? "disabled" : ""}>末页</button></div>`;
+      el.stockList.querySelectorAll(".hot-concept-card").forEach((card) => {
+        card.addEventListener("click", () => queueStockCardSelection(card.dataset.code));
+        card.addEventListener("dblclick", () => selectStockCard(card.dataset.code, true));
+      });
+      el.stockList.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => {
+        const action = button.dataset.page;
+        state.listPage = action === "first" ? 1 : action === "last" ? pageCount : state.listPage + (action === "next" ? 1 : -1);
+        render();
+      }));
+      el.stockList.querySelector("[data-page-size]")?.addEventListener("change", (event) => {
+        state.listPageSize = Number(event.target.value); state.listPage = 1; render();
+      });
+    }
+
     function renderList(list) {
+      if (state.pageView === "hot-concept") {
+        renderHotConceptList(list);
+        return;
+      }
       if (!list.length) {
         el.stockList.innerHTML = `<div class="empty">当前板块没有匹配候选。可降低最低分，或从左侧切换板块。</div>`;
         el.detailContent.innerHTML = emptyDetail();
@@ -3484,10 +3980,32 @@
         const sectorBadges = extraSectors.length
           ? extraSectors.map((sector) => `<span class="stock-concept-badge" title="关联板块：${escapeHtml(sector)}">${escapeHtml(sector)}</span>`).join("")
           : "";
-        const infoBadges = `${topicBadge}${sectorBadges}`;
+        const patternDescriptions = {
+          "锤子线": "下跌后出现小实体、长下影和极短上影，表示下方承接增强。",
+          "启明星": "大阴线、小星线、大阳线组成的三 K 见底结构。",
+          "看涨吞没": "后一根阳线实体包裹前一根阴线实体，表示多头反攻。",
+          "双底": "两次探至相近低位，并已向上突破中间颈线。",
+          "圆弧底": "价格缓慢探底并逐步抬升，形成圆弧式磨底结构。",
+          "金针探底": "长下影刺穿近期低位后收回，表示低位抛压受到承接。",
+          "红三兵": "连续三根阳线逐步抬升；当前仅按 K 线价格结构识别。",
+          "上升三部曲": "大阳线后短暂整理，随后阳线突破前高。",
+          "多方炮": "两阳夹一阴，中间回调较小且未破支撑。",
+          "旗形上涨": "快速上涨后小幅整理，当前价格突破整理区上沿。",
+          "上升三角形": "高点接近同一压力位、低点抬高，并出现向上突破。"
+        };
+        const patternSignals = stock.screener?.downtrend?.patternSignals || [];
+        const patternBadges = patternSignals
+          .filter((name) => patternDescriptions[name])
+          .map((name) => `<span class="stock-pattern-badge" title="${escapeHtml(patternDescriptions[name])}">${escapeHtml(name)}</span>`)
+          .join("");
+        const infoBadges = `${topicBadge}${sectorBadges}${patternBadges}`;
         const probability = stock.probability || {};
-        const todayProbabilityTitle = `今日涨停概率：综合当日攻击强度、量比、换手、主力净流入、板块强度、历史封板与已接入时的竞价委买。${probability.note || "模型参考，非投资建议。"}`;
+        const todayProbabilityTitle = `今日涨停概率：综合当日攻击强度、量比、换手、主力净流入、板块强度、历史封板、已接入时的竞价委买，以及经委比、价格位置、量能、K线、均线和板块联动确认后的内外盘。盘口确认分 ${hasNumber(probability.orderFlowScore) ? probability.orderFlowScore : "--"}，本次概率修正 ${hasNumber(probability.orderFlowAdjustment) ? `${probability.orderFlowAdjustment > 0 ? "+" : ""}${probability.orderFlowAdjustment.toFixed(1)}` : "--"} 个百分点。${probability.note || "模型参考，非投资建议。"}`;
         const followProbabilityTitle = `后续上涨概率：目标为${probability.target || "未来 10 个交易日最高价较信号日收盘上涨至少 5%"}。综合近 30 日日 K、筑底与均线/布林结构、识别到的形态和风险；已按历史日线样本校准（当前样本 ${hasNumber(probability.backtestSamples) ? probability.backtestSamples : "--"} 条）。形态：${(probability.signals || []).join("、") || "未识别明显形态"}。${probability.note || "模型参考，非投资建议。"}`;
+        const orderFlow = stock.orderFlow || {};
+        const orderFlowTitle = orderFlow.available
+          ? `内盘 ${formatVolume(orderFlow.innerVolume)}，外盘 ${formatVolume(orderFlow.outerVolume)}，委比 ${formatPct(orderFlow.commissionRatio)}，盘口确认分 ${orderFlow.score}。${orderFlow.note}`
+          : "内盘/外盘暂不可用；缺失数据不参与综合评分。";
         const movingAverageMarkup = [5, 10, 20, 30].map((period) => {
           const average = movingAverages[`ma${period}`];
           const value = average?.value;
@@ -3515,10 +4033,11 @@
             <div class="stock-card-metrics" aria-label="${escapeHtml(stock.name)}行情指标">
               <div class="stock-card-metric"><span>总市值 / 流通市值</span><strong>${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}</strong></div>
               <div class="stock-card-metric"><span>昨收价格 / 涨停价</span><strong>${formatPrice(stock.previousClose)} / ${formatPrice(limitPrice)}</strong></div>
-              <div class="stock-card-metric"><span>今日涨停概率</span><strong class="probability-value${probability.todayLimitUp >= 90 ? " today-hot" : ""}" tabindex="0" data-tooltip="${escapeHtml(todayProbabilityTitle)}" title="${escapeHtml(todayProbabilityTitle)}">${hasNumber(probability.todayLimitUp) ? `${probability.todayLimitUp}%` : "--"}</strong></div>
+              <div class="stock-card-metric"><span>今日涨停概率 / 后续上涨概率</span><strong class="probability-value${probability.todayLimitUp >= 90 ? " today-hot" : probability.followUp >= 50 ? " follow-hot" : ""}" tabindex="0" data-tooltip="${escapeHtml(`${todayProbabilityTitle} ${followProbabilityTitle}`)}" title="${escapeHtml(`${todayProbabilityTitle} ${followProbabilityTitle}`)}">${hasNumber(probability.todayLimitUp) ? `${probability.todayLimitUp}%` : "--"} / ${hasNumber(probability.followUp) ? `${probability.followUp}%` : "--"}</strong></div>
               <div class="stock-card-metric"><span>竞价涨幅 / 最低涨幅</span><strong class="${quoteClass(lowChange)}">${formatPct(auctionChange)} / ${formatPct(lowChange)}</strong></div>
               <div class="stock-card-metric"><span>量比 / 换手率</span><strong>${hasNumber(stock.volumeRatio) ? stock.volumeRatio.toFixed(2) : "--"} / ${hasNumber(stock.screener?.turnover) ? `${stock.screener.turnover.toFixed(2)}%` : "--"}</strong></div>
-              <div class="stock-card-metric"><span>后续上涨概率</span><strong class="probability-value follow-up${probability.followUp >= 50 ? " follow-hot" : ""}" tabindex="0" data-tooltip="${escapeHtml(followProbabilityTitle)}" title="${escapeHtml(followProbabilityTitle)}">${hasNumber(probability.followUp) ? `${probability.followUp}%` : "--"}</strong></div>
+              <div class="stock-card-metric"><span>资金净流入</span><strong class="money-flow ${(stock.netInflow ?? 0) < 0 ? "negative" : "positive"}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</strong></div>
+              <div class="stock-card-metric"><span class="order-flow-label"><i class="order-flow-key inner">内盘</i> / <i class="order-flow-key outer">外盘</i></span><strong tabindex="0" data-tooltip="${escapeHtml(orderFlowTitle)}" title="${escapeHtml(orderFlowTitle)}"><i class="order-flow-value inner">${formatVolume(orderFlow.innerVolume)}</i> / <i class="order-flow-value outer">${formatVolume(orderFlow.outerVolume)}</i></strong></div>
             </div>
             <div class="mini-bars" role="img" aria-label="评分指标：趋势 ${stock.base.trend} 分，动量 ${stock.base.momentum} 分，流动性 ${stock.base.liquidity} 分，强弱 ${stock.base.strength} 分，稳定性 ${stock.base.stability} 分">
               <span class="mini-bar" data-tooltip="趋势 ${stock.base.trend} 分" title="趋势：${stock.base.trend} 分"><span style="--v:${stock.base.trend}%; --c:var(--cyan)"></span></span>
@@ -4126,7 +4645,10 @@
 
     function render() {
       updatePageMeta();
-      el.screenerView.hidden = state.pageView !== "screener";
+      el.screenerView.classList.toggle("hot-concept-mode", state.pageView === "hot-concept");
+      el.screenerView.classList.toggle("concept-down", state.pageView === "hot-concept" && hasNumber(state.hotConceptChange) && state.hotConceptChange < 0);
+      el.screenerView.hidden = !["screener", "hot-concept"].includes(state.pageView);
+      el.midtermView.hidden = state.pageView !== "midterm";
       el.sectorStrengthView.hidden = state.pageView !== "sector-strength";
       el.limitUpView.hidden = state.pageView !== "limit-up";
       syncDynamicControls();
@@ -4143,9 +4665,12 @@
         renderLimitUpCandidates();
         renderLimitUpStatus();
       }
+      if (state.pageView === "midterm") renderMidtermPool();
       renderList(list);
-      renderSelectionReason(list);
-      renderDetail(list);
+      if (state.pageView !== "hot-concept") {
+        renderSelectionReason(list);
+        renderDetail(list);
+      }
       if (state.chartOpen) renderChartModal();
     }
 
@@ -4171,7 +4696,7 @@
     el.resetBtn.addEventListener("click", () => {
       clearPendingStockClick();
       state.strategy = "balanced";
-      state.sortBy = "score";
+      state.sortBy = "todayLimitUp";
       state.minScore = 60;
       state.listPage = 1;
       state.listPageSize = 100;
@@ -4197,7 +4722,8 @@
     });
 
     el.refreshBtn.addEventListener("click", () => {
-      loadMarketData(true);
+      if (state.pageView === "hot-concept") openHotConcept(state.hotConcept, state.hotConceptGroup, true);
+      else loadMarketData(true);
     });
 
     el.themeToggle.addEventListener("click", () => {
@@ -4205,9 +4731,22 @@
       applyTheme(nextTheme);
     });
 
-    el.overviewNav.addEventListener("click", () => navigateMarket("all"));
+    el.overviewNav?.addEventListener("click", () => navigateMarket("all"));
 
     el.sectorStrengthNav.addEventListener("click", () => openSectorStrength());
+    el.midtermNav.addEventListener("click", () => openMidterm());
+    el.midtermRefresh.addEventListener("click", () => loadMidtermPool(true));
+    el.hotSectorNav.addEventListener("click", () => {
+      const expanded = el.hotSectorNav.getAttribute("aria-expanded") === "true";
+      el.hotSectorNav.setAttribute("aria-expanded", String(!expanded));
+      el.hotSectorGroups.hidden = expanded;
+      if (expanded) {
+        if (hotGroupRefreshTimer !== null) window.clearTimeout(hotGroupRefreshTimer);
+        hotGroupRefreshTimer = null;
+      } else {
+        loadHotSectorSummaries();
+      }
+    });
     el.sectorStrengthRefresh.addEventListener("click", () => refreshSectorStrengthNow(true));
     el.limitUpNav.addEventListener("click", () => openLimitUp());
     el.limitUpRefresh.addEventListener("click", () => refreshLimitUpNow(true));
@@ -4325,6 +4864,7 @@
       if (state.pageView === "sector-strength") scheduleSectorRefresh();
       if (state.pageView === "screener") scheduleScreenerRefresh();
       if (state.pageView === "limit-up") scheduleLimitUpRefresh();
+      if (!el.hotSectorGroups.hidden) scheduleHotGroupRefresh();
     });
 
     window.setInterval(() => {

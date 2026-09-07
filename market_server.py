@@ -2,6 +2,7 @@
 """Serve a sector-based TradingAgents stock selector with live A-share quotes."""
 
 import argparse
+import difflib
 import json
 import math
 import os
@@ -23,9 +24,13 @@ from urllib.parse import parse_qs, urlencode, urlparse
 BASE_DIR = Path(__file__).resolve().parent
 HTML_FILE = BASE_DIR / "trading-agents-stock.html"
 QUOTE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+TENCENT_BATCH_QUOTE_URL = "https://qt.gtimg.cn/q="
 EASTMONEY_LIST_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
 EASTMONEY_MINUTE_KLINE_URL = "https://push2delay.eastmoney.com/api/qt/stock/kline/get"
+EASTMONEY_DAILY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 EASTMONEY_HOT_CONCEPT_URL = "https://emappdata.eastmoney.com/stockrank/getHotStockRankList"
+EASTMONEY_SEARCH_URL = "https://searchapi.eastmoney.com/api/suggest/get"
+SOHU_HISTORY_URL = "https://q.stock.sohu.com/hisHq"
 SINA_DAILY_KLINE_URL = "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
 THS_HOT_RANK_URL = "https://eq.10jqka.com.cn/earlyInterpret/index.php"
 CHINA_TZ = timezone(timedelta(hours=8))
@@ -42,6 +47,7 @@ DOWNTREND_MAX_WORKERS = 8
 CONCEPT_CACHE_TTL_SECONDS = 600
 LIMIT_UP_CACHE_TTL_SECONDS = 25
 LIMIT_UP_HISTORY_CACHE_TTL_SECONDS = 12 * 60 * 60
+MIDTERM_ACTIVITY_CACHE_TTL_SECONDS = 12 * 60 * 60
 # Keep roughly three years of trading sessions for the follow-up model's
 # historical calibration. Limit-up counts themselves still use a one-year cutoff.
 LIMIT_UP_HISTORY_DAYS = 750
@@ -54,6 +60,52 @@ BACKTEST_DB_PATH = BASE_DIR / "data" / "backtest.sqlite"
 BACKTEST_LOOKBACK_DAYS = 30
 BACKTEST_HORIZON_DAYS = 10
 BACKTEST_TARGET_RETURN = 0.05
+HOT_CONCEPT_ALIASES: Dict[str, Tuple[str, ...]] = {
+    "液冷": ("液冷服务器", "液冷服务器概念"),
+    "CPO": ("CPO概念", "光模块"),
+    "PCB": ("PCB概念", "印制电路板"),
+    "存储芯片": ("存储芯片概念", "存储器", "半导体存储器"),
+    "半导体": ("半导体概念", "存储芯片"),
+    "AI视频": ("AI视频概念", "文生视频", "Sora概念"),
+    "AI语料": ("AI语料概念", "语料库", "数据要素"),
+    "AI应用": ("AI应用概念", "人工智能应用"),
+    "AI智能体": ("AI智能体概念", "智能体", "AI Agent"),
+    "稀土": ("稀土永磁", "稀土概念"),
+    "稀土永磁": ("稀土永磁概念", "稀土"),
+    "黄金": ("黄金概念", "贵金属"),
+    "小金属": ("小金属概念", "小金属行业"),
+    "酒店": ("酒店餐饮",),
+    "景点运营": ("旅游及景区", "旅游景点"),
+    "免税店": ("免税概念",),
+    "白酒": ("白酒概念",),
+    "大消费": ("消费风格", "新消费"),
+    "啤酒": ("啤酒概念",),
+    "预制菜": ("预制菜概念",),
+    "乳业": ("乳业概念",),
+    "饮料制造": ("饮料乳品", "软饮料"),
+    "零售": ("商业百货", "零售业"),
+    "商业百货": ("零售业", "商业零售"),
+    "创新药": ("创新药概念", "化学制药"),
+    "医药商业": ("医药商业行业", "医药流通"),
+    "农业种植": ("种植业", "农业种植概念"),
+    "化肥": ("化肥行业",),
+    "海工装备": ("海工装备概念", "海洋工程装备"),
+    "兵装重组": ("兵装重组概念", "中国兵器装备集团"),
+    "数字货币": ("数字货币概念",),
+    "互联网金融": ("互联网金融概念", "金融科技"),
+    "猪肉": ("猪肉概念", "生猪养殖"),
+    "养鸡": ("鸡肉概念", "家禽养殖"),
+    "渔业": ("水产养殖", "渔业概念"),
+    "鸡肉概念": ("养鸡", "家禽养殖"),
+    "水产养殖": ("渔业", "渔业概念"),
+    "石油": ("石油行业", "油气开采"),
+    "天然气": ("天然气概念",),
+}
+HOT_CONCEPT_FIXED_BOARDS: Dict[str, Tuple[str, str]] = {
+    # Eastmoney's suggestion API currently returns index 980138 first, while
+    # the constituent-bearing concept board uses BK1137.
+    "存储芯片": ("BK1137", "存储芯片"),
+}
 # This command is deliberately supplied through the local environment, never code.
 # It must print an EMT get_open_call_auction JSON result for the whole A-share universe.
 # Example: EMT_AUCTION_COMMAND='python3 /path/to/export_emt_auction.py --date {date}'
@@ -205,14 +257,22 @@ _sector_strength_cache: Dict[str, Dict[str, Any]] = {}
 _stock_cache: Dict[str, Dict[str, Any]] = {}
 _downtrend_history_cache: Dict[str, Dict[str, Any]] = {}
 _concept_cache: Dict[str, Dict[str, Any]] = {}
+_hot_concept_cache: Dict[str, Dict[str, Any]] = {}
+_hot_concept_summary_cache: Dict[str, Dict[str, Any]] = {}
 _limit_up_cache: Dict[str, Any] = {}
 _limit_up_history_cache: Dict[str, Dict[str, Any]] = {}
+_midterm_activity_cache: Dict[str, Dict[str, Any]] = {}
 _ths_popularity_cache: Dict[str, Dict[str, Any]] = {}
 _auction_capture_attempts: Dict[str, float] = {}
 _backtest_lock = threading.Lock()
+_midterm_lock = threading.Lock()
 _all_market_backtest_status: Dict[str, Any] = {
     "status": "idle", "total": 0, "processed": 0, "records": 0, "failed": 0,
 }
+_midterm_scan_status: Dict[str, Any] = {
+    "status": "idle", "total": 0, "processed": 0, "added": 0, "failed": 0,
+}
+_midterm_quote_cache: Dict[str, Any] = {"created_at": 0.0, "rows": {}}
 
 
 class MarketDataError(RuntimeError):
@@ -240,6 +300,16 @@ def main_board_code(code: str) -> bool:
 
 def bse_code(code: str) -> bool:
     return code.startswith(MARKET_SCOPES["bse"]["prefixes"])
+
+
+def midterm_required_ma_count(code: str) -> int:
+    """All markets require at least three rising moving averages."""
+    return 3
+
+
+def midterm_simplified_market(code: str) -> bool:
+    """创业板、科创板使用7月新低+8月反弹的简化规则。"""
+    return str(code or "").startswith(("300", "301", "688", "689"))
 
 
 def normal_limit_price(previous_close: float) -> float:
@@ -697,10 +767,13 @@ def get_market_data(sector_key: str, force_refresh: bool = False) -> Dict[str, A
 
 
 def dynamic_factors(
-    change_pct: float, amount: float, turnover: float, amplitude: float
+    change_pct: float, amount: float, turnover: float, amplitude: float, net_inflow: Optional[float] = None
 ) -> Dict[str, int]:
     """Score a full-market snapshot without inventing unavailable daily history."""
-    liquidity = clamp(35 + math.log10(max(amount, 1) / 100_000_000) * 28)
+    liquidity_base = clamp(35 + math.log10(max(amount, 1) / 100_000_000) * 28)
+    flow_ratio = (net_inflow / amount * 100) if net_inflow is not None and amount > 0 else 0
+    capital_flow = clamp(50 + flow_ratio * 8)
+    liquidity = clamp(liquidity_base * .7 + capital_flow * .3)
     strength = clamp(50 + change_pct * 4.2)
     momentum = clamp(50 + change_pct * 3.1 + min(turnover, 15) * 1.1)
     trend = clamp(50 + change_pct * 2.3 + min(turnover, 12) * 0.8)
@@ -710,6 +783,7 @@ def dynamic_factors(
         "trend": trend,
         "momentum": momentum,
         "liquidity": liquidity,
+        "capitalFlow": capital_flow,
         "strength": strength,
         "stability": stability,
         "risk": risk,
@@ -863,6 +937,38 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
     recent_rows = [row for row in history if row.get("close") not in (None, 0)][-22:]
     pattern_signals: List[str] = []
     pattern_score = 0
+    valid_ohlc = all(
+        row.get(key) is not None
+        for row in recent_rows
+        for key in ("open", "high", "low", "close")
+    )
+    if valid_ohlc and len(recent_rows) >= 8:
+        current = recent_rows[-1]
+        body = abs(current["close"] - current["open"])
+        candle_range = max(current["high"] - current["low"], 0.01)
+        lower_shadow = min(current["open"], current["close"]) - current["low"]
+        upper_shadow = current["high"] - max(current["open"], current["close"])
+        prior_decline = recent_rows[-7]["close"] > recent_rows[-2]["close"]
+        hammer_shape = body <= candle_range * .32 and lower_shadow >= max(body * 2, candle_range * .48) and upper_shadow <= candle_range * .18
+        if prior_decline and hammer_shape:
+            pattern_signals.append("锤子线")
+            pattern_score += 8
+        prior_low = min(row["low"] for row in recent_rows[-8:-1])
+        if prior_decline and hammer_shape and current["low"] <= prior_low and current["close"] >= current["low"] + candle_range * .62:
+            pattern_signals.append("金针探底")
+            pattern_score += 9
+    if valid_ohlc and len(recent_rows) >= 6:
+        first, star, third = recent_rows[-3:]
+        first_body = first["open"] - first["close"]
+        star_body = abs(star["close"] - star["open"])
+        third_body = third["close"] - third["open"]
+        if first_body > 0 and third_body > 0 and star_body <= first_body * .55 and third["close"] >= first["close"] + first_body * .55 and recent_rows[-6]["close"] > first["close"]:
+            pattern_signals.append("启明星")
+            pattern_score += 12
+        previous, current = recent_rows[-2:]
+        if recent_rows[-6]["close"] > previous["close"] and previous["close"] < previous["open"] and current["close"] > current["open"] and current["open"] <= previous["close"] and current["close"] >= previous["open"]:
+            pattern_signals.append("看涨吞没")
+            pattern_score += 11
     if len(recent_rows) >= 5 and all(row.get("open") is not None for row in recent_rows[-5:]):
         small_yang = sum(row["close"] > row["open"] and return_pct(row["open"], row["close"]) <= 3.5 for row in recent_rows[-5:])
         if small_yang >= 4 and closes[-1] > closes[-5]:
@@ -873,6 +979,17 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         if all(row["close"] > row["open"] for row in last_three) and last_three[0]["close"] < last_three[1]["close"] < last_three[2]["close"]:
             pattern_signals.append("红三兵")
             pattern_score += 12
+        first, middle, last = last_three
+        if first["close"] > first["open"] and middle["close"] < middle["open"] and last["close"] > last["open"] and abs(first["close"] - first["open"]) > abs(middle["close"] - middle["open"]) and abs(last["close"] - last["open"]) > abs(middle["close"] - middle["open"]) and middle["low"] >= min(first["open"], first["close"]) * .97 and last["close"] > first["close"]:
+            pattern_signals.append("多方炮")
+            pattern_score += 10
+    if valid_ohlc and len(recent_rows) >= 5:
+        five = recent_rows[-5:]
+        first, *middle, last = five
+        first_body = first["close"] - first["open"]
+        if first_body > 0 and last["close"] > last["open"] and last["close"] > first["close"] and all(row["high"] <= first["high"] * 1.01 and row["low"] >= first["low"] * .99 for row in middle):
+            pattern_signals.append("上升三部曲")
+            pattern_score += 11
     if len(recent_rows) >= 4 and all(row.get("open") is not None for row in recent_rows[-4:]):
         previous = recent_rows[-4:-1]
         current = recent_rows[-1]
@@ -884,6 +1001,35 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         if 5 <= low_index <= 14 and closes[-1] > sum(closes[-5:]) / 5 > min(closes[-20:]):
             pattern_signals.append("圆弧底")
             pattern_score += 10
+        if valid_ohlc:
+            twenty = recent_rows[-20:]
+            local_lows = [i for i in range(1, len(twenty) - 1) if twenty[i]["low"] <= twenty[i - 1]["low"] and twenty[i]["low"] <= twenty[i + 1]["low"]]
+            double_bottom = False
+            for left in local_lows:
+                for right in local_lows:
+                    if right - left < 4:
+                        continue
+                    low_a, low_b = twenty[left]["low"], twenty[right]["low"]
+                    neckline = max(row["high"] for row in twenty[left:right + 1])
+                    if abs(low_a - low_b) / max(low_a, low_b, .01) <= .035 and latest >= neckline:
+                        double_bottom = True
+                        break
+                if double_bottom:
+                    break
+            if double_bottom:
+                pattern_signals.append("双底")
+                pattern_score += 13
+            impulse = return_pct(twenty[-12]["close"], twenty[-6]["close"])
+            consolidation = twenty[-6:-1]
+            if impulse >= 8 and consolidation[-1]["high"] <= consolidation[0]["high"] * 1.02 and latest > max(row["high"] for row in consolidation):
+                pattern_signals.append("旗形上涨")
+                pattern_score += 10
+            recent_15 = twenty[-15:]
+            resistance = max(row["high"] for row in recent_15[:-1])
+            high_band = [row["high"] for row in recent_15[:-1] if row["high"] >= resistance * .97]
+            if len(high_band) >= 2 and min(row["low"] for row in recent_15[-5:]) > min(row["low"] for row in recent_15[:5]) * 1.02 and latest >= resistance * .995:
+                pattern_signals.append("上升三角形")
+                pattern_score += 11
         boll_mid = sum(closes[-20:]) / 20
         boll_std = statistics.pstdev(closes[-20:])
         if latest > boll_mid + 2 * boll_std and moving_averages["ma5"] > moving_averages["ma10"] > moving_averages["ma20"]:
@@ -1048,7 +1194,8 @@ def dynamic_snapshot(
     ):
         return None
 
-    factors = dynamic_factors(change_pct, amount, turnover, amplitude)
+    net_inflow = number(row.get("f62"))
+    factors = dynamic_factors(change_pct, amount, turnover, amplitude, net_inflow)
     score = round(
         factors["trend"] * 0.22
         + factors["momentum"] * 0.28
@@ -1080,7 +1227,7 @@ def dynamic_snapshot(
         "floatMarketCap": number(row.get("f21")),
         "peTtm": number(row.get("f9")),
         "volumeRatio": number(row.get("f10")),
-        "netInflow": number(row.get("f62")),
+        "netInflow": net_inflow,
         "pb": number(row.get("f23")),
         "base": factors,
         "screener": {
@@ -1098,6 +1245,78 @@ def dynamic_snapshot(
             "risk": f"振幅 {amplitude:.2f}% 与当日波动对应风险分 {factors['risk']}。",
         },
     }
+
+
+def tencent_quote_symbol(code: str) -> str:
+    return ("sh" if code.startswith(("5", "6", "9")) else "sz") + code
+
+
+def add_order_flow_factors(quotes: List[Dict[str, Any]], sectors: List[Dict[str, Any]]) -> None:
+    """Attach Tencent inner/outer volume and a context-confirmed, low-weight order-flow score."""
+    if not quotes:
+        return
+    sector_by_name = {item["name"]: item for item in sectors}
+    rows_by_code: Dict[str, List[str]] = {}
+    for start in range(0, len(quotes), 60):
+        symbols = ",".join(tencent_quote_symbol(item["code"]) for item in quotes[start:start + 60])
+        try:
+            result = subprocess.run(
+                ["curl", "-fsSL", "--max-time", str(REQUEST_TIMEOUT_SECONDS), f"{TENCENT_BATCH_QUOTE_URL}{symbols}"],
+                check=True, capture_output=True, timeout=REQUEST_TIMEOUT_SECONDS + 2,
+            )
+            content = result.stdout.decode("gb18030", errors="replace")
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            continue
+        for line in content.splitlines():
+            if '="' not in line:
+                continue
+            fields = line.split('="', 1)[1].rstrip('";').split("~")
+            if len(fields) > 51 and len(fields[2]) == 6:
+                rows_by_code[fields[2]] = fields
+
+    for quote in quotes:
+        fields = rows_by_code.get(quote["code"])
+        if not fields:
+            quote["orderFlow"] = {"available": False, "source": "腾讯盘口暂不可用"}
+            continue
+        outer = number(fields[7])
+        inner = number(fields[8])
+        bid_volumes = [number(fields[index]) or 0 for index in (10, 12, 14, 16, 18)]
+        ask_volumes = [number(fields[index]) or 0 for index in (20, 22, 24, 26, 28)]
+        total_flow = float(outer or 0) + float(inner or 0)
+        total_orders = sum(bid_volumes) + sum(ask_volumes)
+        if total_flow <= 0:
+            quote["orderFlow"] = {"available": False, "source": "腾讯盘口无有效内外盘"}
+            continue
+        commission_ratio = ((sum(bid_volumes) - sum(ask_volumes)) / total_orders * 100) if total_orders else None
+        flow_score = clamp(50 + (float(outer or 0) - float(inner or 0)) / total_flow * 50)
+        book_score = clamp(50 + float(commission_ratio or 0) / 2) if commission_ratio is not None else 50
+        high, low, price = quote.get("high"), quote.get("low"), quote.get("price")
+        position_score = clamp((float(price) - float(low)) / (float(high) - float(low)) * 100) if None not in (high, low, price) and high != low else 50
+        volume_score = clamp(float(quote.get("volumeRatio") or 0) / 3 * 100)
+        analysis = quote.get("screener", {}).get("downtrend") or {}
+        pattern_score = clamp(float(analysis.get("patternScore") or 0) * 2)
+        averages = quote.get("screener", {}).get("movingAverages") or {}
+        ma_bull = sum(1 for key in ("ma5", "ma10", "ma20", "ma30") if (averages.get(key) or {}).get("above"))
+        ma_score = ma_bull / 4 * 100
+        sector_score = float(sector_by_name.get(quote.get("actualIndustry"), {}).get("strengthScore") or 50)
+        divergence = abs(flow_score - book_score)
+        confirmed_score = clamp(
+            flow_score * .25 + book_score * .15 + volume_score * .15 + position_score * .10
+            + pattern_score * .10 + ma_score * .10 + sector_score * .15
+            - max(0, divergence - 35) * .35
+        )
+        quote["orderFlow"] = {
+            "available": True,
+            "source": "腾讯实时盘口",
+            "innerVolume": int(inner or 0),
+            "outerVolume": int(outer or 0),
+            "commissionRatio": round(commission_ratio, 2) if commission_ratio is not None else None,
+            "score": confirmed_score,
+            "divergence": round(divergence),
+            "note": "内外盘仅作低权重确认，并结合委比、价格位置、量比、K线形态、均线和板块强度；盘口背离时已降权。",
+        }
+        quote["base"]["orderFlow"] = confirmed_score
 
 
 def aggregate_sector_strength(quotes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1226,6 +1445,143 @@ def fetch_market_rows(market_key: str) -> Tuple[List[Dict[str, Any]], int]:
     return rows, total
 
 
+def normalize_concept_name(name: str) -> str:
+    normalized = str(name or "").strip().upper()
+    for suffix in ("概念板块", "概念", "板块", "行业"):
+        normalized = normalized.replace(suffix, "")
+    return normalized.replace(" ", "")
+
+
+def resolve_hot_concept(concept_name: str) -> Tuple[Dict[str, Any], str]:
+    requested = normalize_concept_name(concept_name)
+    fixed = HOT_CONCEPT_FIXED_BOARDS.get(concept_name)
+    if fixed:
+        return {"Code": fixed[0], "Name": fixed[1]}, "fixed"
+    best: Optional[Tuple[float, Dict[str, Any], str]] = None
+    search_names = (concept_name,) + HOT_CONCEPT_ALIASES.get(concept_name, ())
+    for index, search_name in enumerate(search_names):
+        search = request_json(EASTMONEY_SEARCH_URL, {
+            "input": search_name, "type": 14,
+            "token": "D43BF722C8E33BDC906FB84D85E326E8",
+        })
+        matches = ((search.get("QuotationCodeTable") or {}).get("Data") or [])
+        for row in matches:
+            if not str(row.get("Code") or "").startswith("BK"):
+                continue
+            candidate = normalize_concept_name(row.get("Name"))
+            target = normalize_concept_name(search_name)
+            if candidate == requested:
+                return row, "exact"
+            score = difflib.SequenceMatcher(None, target, candidate).ratio()
+            if target and (target in candidate or candidate in target):
+                score = max(score, .86)
+            if index > 0 and candidate == target:
+                score = .95
+            if best is None or score > best[0]:
+                best = (score, row, "alias" if index > 0 else "similar")
+    if best and best[0] >= .72:
+        return best[1], best[2]
+    raise MarketDataError(f"未能可靠匹配概念板块：{concept_name}")
+
+
+def fetch_hot_concept_data(concept_name: str) -> Dict[str, Any]:
+    exact, match_type = resolve_hot_concept(concept_name)
+    if not exact:
+        raise MarketDataError(f"未找到概念板块：{concept_name}")
+    board_code = str(exact["Code"])
+    resolved_name = str(exact.get("Name") or concept_name)
+    params = {
+        "pn": 1, "pz": 100, "po": 1, "np": 1, "fltt": 2, "invt": 2,
+        "fid": "f3", "fs": f"b:{board_code}",
+        "fields": "f2,f3,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f62,f100,f124",
+    }
+    payload = request_json(EASTMONEY_LIST_URL, params)
+    data = payload.get("data") or {}
+    rows = list(data.get("diff") or [])
+    updated_at = datetime.now(CHINA_TZ)
+    quotes = [dynamic_snapshot(row, updated_at, "all") for row in rows]
+    quotes = [quote for quote in quotes if quote is not None]
+    screened, _ = filter_steady_decline_quotes(quotes)
+    sector_strength = aggregate_sector_strength(quotes)
+    add_order_flow_factors(screened, sector_strength)
+    add_probability_models(screened, sector_strength, updated_at.strftime("%Y-%m-%d"))
+    screened.sort(key=lambda item: (item.get("probability", {}).get("todayLimitUp", 0), item.get("changePct", 0)), reverse=True)
+    for quote in screened:
+        quote["relatedSectors"] = [concept_name]
+        quote["popularity"] = {"available": False, "source": "热门板块页不重复请求人气"}
+    return {
+        "source": f"东方财富{resolved_name}板块行情",
+        "concept": concept_name,
+        "resolvedConcept": resolved_name,
+        "matchType": match_type,
+        "boardCode": board_code,
+        "marketDate": updated_at.strftime("%Y-%m-%d"),
+        "updatedAt": updated_at.isoformat(),
+        "scannedCount": int(data.get("total") or len(rows)),
+        "matchedCount": len(screened),
+        "averageChangePct": round(sum(float(quote.get("changePct") or 0) for quote in quotes) / len(quotes), 2) if quotes else None,
+        "quotes": screened,
+    }
+
+
+def get_hot_concept_data(concept_name: str, force_refresh: bool = False) -> Dict[str, Any]:
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _hot_concept_cache.get(concept_name)
+        if cached and now - cached["created_at"] < DYNAMIC_CACHE_TTL_SECONDS and not force_refresh:
+            return cached["payload"]
+    payload = fetch_hot_concept_data(concept_name)
+    with _cache_lock:
+        _hot_concept_cache[concept_name] = {"created_at": time.monotonic(), "payload": payload}
+    return payload
+
+
+def fetch_hot_concept_summary(concept_name: str) -> Dict[str, Any]:
+    board, match_type = resolve_hot_concept(concept_name)
+    board_code = str(board["Code"])
+    payload = request_json(EASTMONEY_LIST_URL, {
+        "pn": 1, "pz": 100, "po": 1, "np": 1, "fltt": 2, "invt": 2,
+        "fid": "f3", "fs": f"b:{board_code}", "fields": "f3,f12",
+    })
+    data = payload.get("data") or {}
+    changes = [number(row.get("f3")) for row in (data.get("diff") or [])]
+    changes = [value for value in changes if value is not None]
+    return {
+        "concept": concept_name,
+        "resolvedConcept": str(board.get("Name") or concept_name),
+        "matchType": match_type,
+        "averageChangePct": round(sum(changes) / len(changes), 2) if changes else None,
+        "memberCount": int(data.get("total") or len(changes)),
+        "available": bool(changes),
+    }
+
+
+def get_hot_concept_summaries(names: List[str], force_refresh: bool = False) -> List[Dict[str, Any]]:
+    results: Dict[str, Dict[str, Any]] = {}
+    pending: List[str] = []
+    now = time.monotonic()
+    with _cache_lock:
+        for name in names:
+            cached = _hot_concept_summary_cache.get(name)
+            if cached and now - cached["created_at"] < DYNAMIC_CACHE_TTL_SECONDS and not force_refresh:
+                results[name] = cached["payload"]
+            else:
+                pending.append(name)
+    if pending:
+        with ThreadPoolExecutor(max_workers=min(4, len(pending))) as executor:
+            futures = {executor.submit(fetch_hot_concept_summary, name): name for name in pending}
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    results[name] = future.result()
+                except MarketDataError as exc:
+                    results[name] = {"concept": name, "available": False, "error": str(exc), "averageChangePct": None}
+        with _cache_lock:
+            for name in pending:
+                _hot_concept_summary_cache[name] = {"created_at": time.monotonic(), "payload": results[name]}
+    return [results[name] for name in names]
+
+
 def fetch_dynamic_market_data(
     market_key: str, min_amount: float, min_change: float, min_turnover: float, limit: int,
     include_all: bool = False,
@@ -1275,6 +1631,8 @@ def fetch_dynamic_market_data(
     screened_quotes, limit_up_excluded_count = filter_recent_limit_up_quotes(screened_quotes)
     final_quotes = screened_quotes if include_all else screened_quotes[:limit]
     sector_strength = aggregate_sector_strength(market_quotes)
+    if not include_all:
+        add_order_flow_factors(final_quotes, sector_strength)
     add_probability_models(final_quotes, sector_strength, updated_at.strftime("%Y-%m-%d"))
     calibration = {"samples": 0, "updatedAt": datetime.now(CHINA_TZ).isoformat()}
     if not include_all:
@@ -1378,14 +1736,14 @@ def get_sector_strength_data(market_key: str, force_refresh: bool = False) -> Di
     return payload
 
 
-def fetch_limit_up_history(code: str) -> Dict[str, Any]:
+def fetch_limit_up_history(code: str, datalen: Optional[int] = None) -> Dict[str, Any]:
     payload = request_json(
         SINA_DAILY_KLINE_URL,
         {
             "symbol": stock_symbol(code),
             "scale": 240,
             "ma": "no",
-            "datalen": LIMIT_UP_HISTORY_DAYS,
+            "datalen": datalen or LIMIT_UP_HISTORY_DAYS,
         },
     )
     rows: List[Dict[str, Any]] = []
@@ -1452,10 +1810,149 @@ def get_limit_up_history(code: str) -> Dict[str, Any]:
         cached = _limit_up_history_cache.get(code)
         if cached and now - cached["created_at"] < LIMIT_UP_HISTORY_CACHE_TTL_SECONDS:
             return cached["payload"]
-    payload = fetch_limit_up_history(code)
+    stored_rows: List[Dict[str, Any]] = []
+    try:
+        connection = open_backtest_db()
+        cache_row = connection.execute(
+            "SELECT bars_json FROM midterm_history_cache WHERE code=?", (code,)
+        ).fetchone()
+        connection.close()
+        if cache_row:
+            stored_rows = json.loads(cache_row[0]) or []
+    except (OSError, sqlite3.Error, TypeError, json.JSONDecodeError):
+        stored_rows = []
+
+    # 首次查询取完整750日；已有缓存只取最近45日，再按日期合并。
+    payload = fetch_limit_up_history(code, 45 if stored_rows else LIMIT_UP_HISTORY_DAYS)
+    if stored_rows:
+        merged = {str(row.get("date")): row for row in stored_rows if row.get("date")}
+        merged.update({str(row.get("date")): row for row in payload.get("bars", []) if row.get("date")})
+        payload["bars"] = [merged[key] for key in sorted(merged)]
+        payload = summarize_limit_up_history(payload["bars"])
+    try:
+        connection = open_backtest_db()
+        connection.execute(
+            "INSERT OR REPLACE INTO midterm_history_cache(code,latest_date,bars_json,fetched_at) VALUES(?,?,?,?)",
+            (code, payload["bars"][-1]["date"], json.dumps(payload["bars"], ensure_ascii=False), datetime.now(CHINA_TZ).isoformat()),
+        )
+        connection.commit()
+        connection.close()
+    except (OSError, sqlite3.Error, IndexError, KeyError, TypeError):
+        pass
     with _cache_lock:
         _limit_up_history_cache[code] = {"created_at": time.monotonic(), "payload": payload}
     return payload
+
+
+def summarize_limit_up_history(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    rows = sorted(rows, key=lambda row: str(row.get("date") or ""))
+    if len(rows) < 2:
+        raise MarketDataError("历史日线数据不足")
+    latest_date = datetime.strptime(rows[-1]["date"], "%Y-%m-%d")
+    cutoff = latest_date - timedelta(days=365)
+    sealed = touched = 0
+    recent_limit_date = None
+    recent_limit_index = None
+    for index in range(1, len(rows)):
+        current = rows[index]
+        try:
+            trade_date = datetime.strptime(current["date"], "%Y-%m-%d")
+        except (TypeError, ValueError):
+            continue
+        if trade_date < cutoff:
+            continue
+        previous_close = rows[index - 1].get("close")
+        if previous_close in (None, 0):
+            continue
+        limit_price = normal_limit_price(previous_close)
+        if current.get("high") is not None and current["high"] >= limit_price - 0.001:
+            touched += 1
+        if current.get("close") is not None and current["close"] >= limit_price - 0.001:
+            sealed += 1
+            recent_limit_date = current["date"]
+            recent_limit_index = index
+    return {"available": True, "sealedCount": sealed, "touchedCount": touched,
+            "brokenCount": max(0, touched - sealed), "recentLimitDate": recent_limit_date,
+            "sessionsSinceRecentLimit": len(rows) - 1 - recent_limit_index if recent_limit_index is not None else None,
+            "bars": rows}
+
+
+def fetch_midterm_activity_history(code: str, signal_year: int) -> List[Dict[str, Any]]:
+    params = {
+        "code": f"cn_{code}",
+        "start": f"{signal_year}0801",
+        "end": "20500101",
+        "stat": "1",
+        "order": "A",
+        "period": "d",
+        "rt": "json",
+    }
+    full_url = f"{SOHU_HISTORY_URL}?{urlencode(params, safe=',')}"
+    try:
+        result = subprocess.run(
+            ["curl", "-fsSL", "--max-time", str(REQUEST_TIMEOUT_SECONDS), "--retry", "2", "--retry-delay", "0", full_url],
+            check=True,
+            capture_output=True,
+            timeout=REQUEST_TIMEOUT_SECONDS + 2,
+        )
+        payload = json.loads(result.stdout.decode("gb18030"))
+    except (
+        FileNotFoundError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise MarketDataError(f"搜狐历史行情请求失败: {exc}") from exc
+    rows: List[Dict[str, Any]] = []
+    source_rows = payload[0].get("hq") if isinstance(payload, list) and payload else []
+    for fields in source_rows or []:
+        if len(fields) < 10:
+            continue
+        close = number(fields[2])
+        change_amount = number(fields[3])
+        low = number(fields[5])
+        high = number(fields[6])
+        turnover = number(str(fields[9]).replace("%", ""))
+        previous_close = close - change_amount if close is not None and change_amount is not None else None
+        amplitude = (
+            (high - low) / previous_close * 100
+            if high is not None and low is not None and previous_close not in (None, 0)
+            else None
+        )
+        if amplitude is None or turnover is None:
+            continue
+        rows.append({"date": str(fields[0]), "amplitude": amplitude, "turnover": turnover})
+    if not rows:
+        raise MarketDataError(f"{code} 8月以来活跃度数据不足")
+    return rows
+
+
+def get_midterm_activity_history(code: str, signal_year: int) -> List[Dict[str, Any]]:
+    cache_key = f"{code}:{signal_year}"
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _midterm_activity_cache.get(cache_key)
+        if cached and now - cached["created_at"] < MIDTERM_ACTIVITY_CACHE_TTL_SECONDS:
+            return cached["payload"]
+    payload = fetch_midterm_activity_history(code, signal_year)
+    with _cache_lock:
+        _midterm_activity_cache[cache_key] = {"created_at": time.monotonic(), "payload": payload}
+    return payload
+
+
+def summarize_midterm_activity(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    total = len(rows)
+    amplitude_days = sum(1 for row in rows if float(row.get("amplitude") or 0) >= 4)
+    required_days = math.ceil(total * .2) if total else 0
+    return {
+        "available": total > 0,
+        "days": total,
+        "amplitudePassedDays": amplitude_days,
+        "turnoverPassedDays": None,
+        "amplitudePassed": total > 0 and amplitude_days >= required_days,
+        "turnoverPassed": True,
+    }
 
 
 def filter_recent_limit_up_quotes(quotes: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
@@ -1508,6 +2005,11 @@ def add_probability_models(quotes: List[Dict[str, Any]], sectors: List[Dict[str,
         float_cap = max(float(quote.get("floatMarketCap") or 1), 1)
         auction = auction_records.get(quote["code"])
         auction_score = auction_strength_score(auction, quote.get("floatMarketCap"))
+        order_flow = quote.get("orderFlow") or {}
+        order_flow_adjustment = (
+            (float(order_flow.get("score") or 50) - 50) * .08
+            if order_flow.get("available") else 0
+        )
         sector_score = float(sector.get("strengthScore") or 50)
         flow_ratio = net_inflow / max(amount, 1)
         attack = clamp((change - 1) / 8.8 * 100)
@@ -1517,6 +2019,7 @@ def add_probability_models(quotes: List[Dict[str, Any]], sectors: List[Dict[str,
             + sector_score * .14 + clamp(flow_ratio * 500) * .12
             + min(int(history.get("sealedCount") or 0) * 10, 100) * .10
             + auction_score["score"] * .10
+            + order_flow_adjustment
         , 1, 95)
         averages = quote.get("screener", {}).get("movingAverages") or {}
         ma_bull = sum(
@@ -1536,8 +2039,11 @@ def add_probability_models(quotes: List[Dict[str, Any]], sectors: List[Dict[str,
             "rawFollowUp": int(clamp(base_score, 1, 90)),
             "signals": analysis.get("patternSignals") or [],
             "auctionAvailable": auction_score["available"],
+            "orderFlowAvailable": bool(order_flow.get("available")),
+            "orderFlowScore": order_flow.get("score") if order_flow.get("available") else None,
+            "orderFlowAdjustment": round(order_flow_adjustment, 1),
             "netInflow": net_inflow,
-            "note": "模型参考，非历史回测胜率或投资建议。",
+            "note": "今日概率以经委比、位置、量能、K线、均线和板块联动确认后的内外盘作小幅修正；模型参考，非历史回测胜率或投资建议。",
         }
 
 
@@ -1551,6 +2057,10 @@ def open_backtest_db() -> sqlite3.Connection:
     connection.execute("""CREATE TABLE IF NOT EXISTS follow_up_snapshots (
         code TEXT NOT NULL, signal_date TEXT NOT NULL, score INTEGER NOT NULL,
         settled INTEGER NOT NULL DEFAULT 0, outcome INTEGER, PRIMARY KEY (code, signal_date)
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS midterm_history_cache (
+        code TEXT PRIMARY KEY, latest_date TEXT NOT NULL,
+        bars_json TEXT NOT NULL, fetched_at TEXT NOT NULL
     )""")
     return connection
 
@@ -1568,6 +2078,327 @@ def historical_follow_up_score(bars: List[Dict[str, Any]], index: int) -> int:
     if analysis.get("excluded"):
         score -= 18
     return int(clamp(score, 1, 90))
+
+
+def ensure_midterm_table(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE IF NOT EXISTS midterm_candidates (
+        code TEXT PRIMARY KEY, name TEXT NOT NULL, entry_date TEXT NOT NULL,
+        signal_year INTEGER NOT NULL, signal_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active', last_checked TEXT NOT NULL
+    )""")
+    connection.execute("CREATE TABLE IF NOT EXISTS midterm_scan_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    connection.execute("""CREATE TABLE IF NOT EXISTS midterm_display_entries (
+        code TEXT NOT NULL, trade_date TEXT NOT NULL,
+        created_at TEXT NOT NULL, PRIMARY KEY (code, trade_date)
+    )""")
+
+
+def trade_date_from_market_row(row: Dict[str, Any]) -> str:
+    timestamp = number(row.get("f124"))
+    if timestamp is not None:
+        if timestamp > 10_000_000_000:
+            timestamp /= 1000
+        try:
+            return datetime.fromtimestamp(timestamp, CHINA_TZ).strftime("%Y-%m-%d")
+        except (OverflowError, OSError, ValueError):
+            pass
+    return datetime.now(CHINA_TZ).strftime("%Y-%m-%d")
+
+
+def moving_average_at(bars: List[Dict[str, Any]], period: int, end: int) -> Optional[float]:
+    rows = bars[max(0, end - period + 1):end + 1]
+    closes = [number(row.get("close")) for row in rows]
+    return sum(closes) / period if len(closes) == period and all(value is not None for value in closes) else None
+
+
+def evaluate_midterm_pattern(bars: List[Dict[str, Any]], now: datetime, required_ma_count: int = 3, simplified_market: bool = False) -> Optional[Dict[str, Any]]:
+    signal_year = now.year if now.month >= 9 else now.year - 1
+    july = [row for row in bars if str(row.get("date", "")).startswith(f"{signal_year}-07")]
+    august = [row for row in bars if str(row.get("date", "")).startswith(f"{signal_year}-08")]
+    prior_end = f"{signal_year}-07-01"
+    prior = [row for row in bars if str(row.get("date", "")) < prior_end]
+    if len(july) < 10 or len(august) < 10 or len(bars) < 40 or (not simplified_market and len(prior) < 240):
+        return None
+    july_low = min(float(row.get("low") or row["close"]) for row in july)
+    prior_1y = prior[-250:]
+    prior_2y = prior[-500:]
+    low_1y = min(float(row.get("low") or row["close"]) for row in prior_1y)
+    low_2y = min(float(row.get("low") or row["close"]) for row in prior_2y)
+    near_1y = low_1y <= july_low <= low_1y * 1.05 if prior_1y else False
+    near_2y = len(prior_2y) >= 450 and low_2y <= july_low <= low_2y * 1.05
+    year_start = [row for row in bars if str(row.get("date", "")) >= f"{signal_year}-01-01" and str(row.get("date", "")) <= f"{signal_year}-06-30"]
+    new_low_since_year_start = bool(year_start) and july_low <= min(float(row.get("low") or row["close"]) for row in year_start)
+    august_first = float(august[0]["close"])
+    august_last = float(august[-1]["close"])
+    august_rebound = august_last >= july_low * 1.08 and august_last > august_first
+    latest_index = len(bars) - 1
+    slopes: Dict[str, bool] = {}
+    averages: Dict[str, Optional[float]] = {}
+    for period in (5, 10, 20, 30):
+        current = moving_average_at(bars, period, latest_index)
+        previous = moving_average_at(bars, period, latest_index - 5)
+        averages[f"ma{period}"] = round(current, 2) if current is not None else None
+        slopes[f"ma{period}"] = current is not None and previous is not None and current > previous
+    rising_count = sum(slopes.values())
+    latest_close = float(bars[-1]["close"])
+    recovered_1y = (
+        july_low < low_1y
+        and latest_close >= low_1y * .98
+        and slopes.get("ma20", False)
+        and slopes.get("ma30", False)
+    )
+    required_ma_count = max(2, min(4, int(required_ma_count)))
+    qualified = (
+        august_rebound and new_low_since_year_start
+        if simplified_market
+        else august_rebound and rising_count >= required_ma_count and ((near_1y or near_2y) or recovered_1y)
+    )
+    if not qualified:
+        return None
+    broken = latest_close < july_low * .98 or ((not simplified_market) and rising_count < required_ma_count) or (
+        averages["ma20"] is not None and averages["ma30"] is not None
+        and latest_close < averages["ma20"] and latest_close < averages["ma30"]
+    )
+    low_cycle = "1年修复" if recovered_1y and not (near_1y or near_2y) else (
+        "1年/2年" if near_1y and near_2y else ("2年" if near_2y else "1年")
+    )
+    return {
+        "signalYear": signal_year, "julyLow": round(july_low, 2),
+        "prior1yLow": round(low_1y, 2), "prior2yLow": round(low_2y, 2),
+        "lowCycle": low_cycle,
+        "recovered1y": recovered_1y, "newLowSinceYearStart": new_low_since_year_start,
+        "augustReboundPct": round((august_last / july_low - 1) * 100, 2),
+        "maRisingCount": rising_count, "requiredMaCount": required_ma_count,
+        "maSlopes": slopes, "movingAverages": averages,
+        "broken": broken,
+    }
+
+
+def run_midterm_scan() -> None:
+    global _midterm_scan_status
+    try:
+        # 中期选股覆盖全部 A 股市场，排除 ST/退市标识。
+        rows, _ = fetch_market_rows("all")
+        rows = [
+            row for row in rows
+            if str(row.get("f12") or "").strip()
+            and "ST" not in str(row.get("f14") or "").upper()
+            and "退" not in str(row.get("f14") or "")
+        ]
+        today = datetime.now(CHINA_TZ)
+        with _midterm_lock:
+            connection = open_backtest_db()
+            ensure_midterm_table(connection)
+            existing_signals = {row[0]: json.loads(row[1]) for row in connection.execute("SELECT code,signal_json FROM midterm_candidates")}
+            connection.close()
+        _midterm_scan_status = {"status": "running", "total": len(rows), "processed": 0, "added": 0, "failed": 0, "startedAt": today.isoformat()}
+        for start in range(0, len(rows), 12):
+            batch = rows[start:start + 12]
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                futures = {executor.submit(get_limit_up_history, str(row.get("f12"))): row for row in batch}
+                for future in as_completed(futures):
+                    row = futures[future]
+                    code, name = str(row.get("f12")), str(row.get("f14") or row.get("f12"))
+                    try:
+                        bars = future.result().get("bars") or []
+                        required_ma_count = midterm_required_ma_count(code)
+                        signal = evaluate_midterm_pattern(bars, today, required_ma_count, midterm_simplified_market(code))
+                        if signal and not signal["broken"]:
+                            with _midterm_lock:
+                                connection = open_backtest_db()
+                                ensure_midterm_table(connection)
+                                connection.execute(
+                                    "INSERT OR IGNORE INTO midterm_candidates(code,name,entry_date,signal_year,signal_json,status,last_checked) VALUES(?,?,?,?,?,?,?)",
+                                    (code, name, today.strftime("%Y-%m-%d"), signal["signalYear"], json.dumps(signal, ensure_ascii=False), "broken" if signal["broken"] else "active", today.isoformat()),
+                                )
+                                connection.execute(
+                                    "UPDATE midterm_candidates SET name=?,signal_json=?,status=?,last_checked=? WHERE code=?",
+                                    (name, json.dumps(signal, ensure_ascii=False), "broken" if signal["broken"] else "active", today.isoformat(), code),
+                                )
+                                connection.commit()
+                                if code not in existing_signals:
+                                    _midterm_scan_status["added"] += 1
+                                    existing_signals[code] = signal
+                                connection.close()
+                        elif code in existing_signals and bars:
+                            saved = existing_signals[code]
+                            latest = float(bars[-1]["close"])
+                            slopes = []
+                            for period in (5, 10, 20, 30):
+                                current = moving_average_at(bars, period, len(bars) - 1)
+                                previous = moving_average_at(bars, period, len(bars) - 6)
+                                slopes.append(current is not None and previous is not None and current > previous)
+                            ma20 = moving_average_at(bars, 20, len(bars) - 1)
+                            ma30 = moving_average_at(bars, 30, len(bars) - 1)
+                            required_ma_count = midterm_required_ma_count(code)
+                            with _midterm_lock:
+                                connection = open_backtest_db()
+                                ensure_midterm_table(connection)
+                                # 形态走坏或本次不再满足入池条件，直接移出当前池；
+                                # display_entries 保留，以便未来重新满足时累计进入次数。
+                                connection.execute("DELETE FROM midterm_candidates WHERE code=?", (code,))
+                                connection.commit()
+                                connection.close()
+                    except (MarketDataError, OSError, ValueError, sqlite3.Error):
+                        _midterm_scan_status["failed"] += 1
+                    _midterm_scan_status["processed"] += 1
+            _midterm_scan_status["updatedAt"] = datetime.now(CHINA_TZ).isoformat()
+        _midterm_scan_status["status"] = "completed"
+        _midterm_scan_status["completedAt"] = datetime.now(CHINA_TZ).isoformat()
+        with _midterm_lock:
+            connection = open_backtest_db()
+            ensure_midterm_table(connection)
+            connection.execute("INSERT OR REPLACE INTO midterm_scan_meta(key,value) VALUES('completedAt',?)", (_midterm_scan_status["completedAt"],))
+            connection.execute("INSERT OR REPLACE INTO midterm_scan_meta(key,value) VALUES('ruleVersion',?)", ("growth-markets-july-low-aug-rebound",))
+            connection.commit()
+            connection.close()
+    except Exception as exc:
+        _midterm_scan_status.update({"status": "error", "message": str(exc)})
+
+
+def get_midterm_pool(force_scan: bool = False) -> Dict[str, Any]:
+    global _midterm_scan_status
+    today = datetime.now(CHINA_TZ).strftime("%Y-%m-%d")
+    with _midterm_lock:
+        meta_connection = open_backtest_db()
+        ensure_midterm_table(meta_connection)
+        meta_row = meta_connection.execute("SELECT value FROM midterm_scan_meta WHERE key='completedAt'").fetchone()
+        rule_row = meta_connection.execute("SELECT value FROM midterm_scan_meta WHERE key='ruleVersion'").fetchone()
+        meta_connection.close()
+    completed_at = str(meta_row[0]) if meta_row else str(_midterm_scan_status.get("completedAt", ""))
+    should_start = _midterm_scan_status.get("status") not in ("running",) and (force_scan or completed_at[:10] != today or not rule_row or rule_row[0] != "growth-markets-july-low-aug-rebound")
+    if completed_at[:10] == today and _midterm_scan_status.get("status") == "idle":
+        _midterm_scan_status = {"status": "completed", "total": 0, "processed": 0, "added": 0, "failed": 0, "completedAt": completed_at}
+    if should_start:
+        _midterm_scan_status = {"status": "running", "total": 0, "processed": 0, "added": 0, "failed": 0, "startedAt": datetime.now(CHINA_TZ).isoformat()}
+        threading.Thread(target=run_midterm_scan, name="midterm-scan", daemon=True).start()
+    with _midterm_lock:
+        connection = open_backtest_db()
+        ensure_midterm_table(connection)
+        records = connection.execute("SELECT code,name,entry_date,signal_json,status,last_checked FROM midterm_candidates ORDER BY entry_date DESC, code").fetchall()
+        connection.close()
+    candidates = [
+        {"code": row[0], "name": row[1], "entryDate": row[2], "signal": json.loads(row[3]), "status": row[4], "lastChecked": row[5]}
+        for row in records
+    ]
+    now_monotonic = time.monotonic()
+    with _cache_lock:
+        quote_rows = dict(_midterm_quote_cache["rows"]) if now_monotonic - float(_midterm_quote_cache["created_at"]) < 30 else {}
+    if not quote_rows:
+        try:
+            rows_all, _ = fetch_market_rows("all")
+            quote_rows = {str(row.get("f12") or ""): row for row in rows_all}
+            with _cache_lock:
+                _midterm_quote_cache.update({"created_at": time.monotonic(), "rows": quote_rows})
+        except MarketDataError:
+            quote_rows = {}
+    prepared_candidates: List[Dict[str, Any]] = []
+    activity_inputs: Dict[str, int] = {}
+    for candidate in candidates:
+        row = quote_rows.get(candidate["code"], {})
+        amplitude = number(row.get("f7"))
+        amount = number(row.get("f6"))
+        turnover = number(row.get("f8"))
+        price = number(row.get("f2"))
+        signal = candidate.get("signal", {})
+        july_low = number(signal.get("julyLow"))
+        low_to_latest_gain = (
+            (price / july_low - 1) * 100
+            if price is not None and july_low not in (None, 0)
+            else None
+        )
+        base_available = all(value is not None for value in (amount, price, july_low))
+        amount_passed = amount is not None and amount >= 500_000_000
+        low_to_latest_min = 20 if str(candidate["code"]).startswith(("300", "301", "688", "689")) else 10
+        low_to_latest_passed = low_to_latest_gain is not None and low_to_latest_min < low_to_latest_gain < 50
+        simplified_market = midterm_simplified_market(candidate["code"])
+        required_ma_count = int(signal.get("requiredMaCount") or midterm_required_ma_count(candidate["code"]))
+        ma_all_passed = simplified_market or int(signal.get("maRisingCount") or 0) >= required_ma_count
+        if base_available and amount_passed and low_to_latest_passed and ma_all_passed:
+            activity_inputs[candidate["code"]] = int(signal.get("signalYear") or datetime.now(CHINA_TZ).year)
+        prepared_candidates.append({
+            "candidate": candidate,
+            "amplitude": amplitude,
+            "amount": amount,
+            "turnover": turnover,
+            "price": price,
+            "baseAvailable": base_available,
+            "amountPassed": amount_passed,
+            "lowToLatestGain": low_to_latest_gain,
+            "lowToLatestPassed": low_to_latest_passed,
+            "maAllPassed": ma_all_passed,
+        })
+
+    activity_summaries: Dict[str, Dict[str, Any]] = {}
+    if activity_inputs:
+        for code, signal_year in activity_inputs.items():
+            try:
+                activity_summaries[code] = summarize_midterm_activity(get_midterm_activity_history(code, signal_year))
+            except (MarketDataError, OSError, ValueError):
+                time.sleep(.2)
+                try:
+                    activity_summaries[code] = summarize_midterm_activity(get_midterm_activity_history(code, signal_year))
+                except (MarketDataError, OSError, ValueError):
+                    activity_summaries[code] = {"available": False}
+            time.sleep(.04)
+
+    eligible_count = 0
+    eligible_trade_dates: List[Tuple[str, str]] = []
+    for prepared in prepared_candidates:
+        candidate = prepared["candidate"]
+        row = quote_rows.get(candidate["code"], {})
+        activity = activity_summaries.get(candidate["code"], {"available": False})
+        available = bool(prepared["baseAvailable"] and activity.get("available"))
+        eligible = bool(
+            prepared["baseAvailable"]
+            and prepared["amountPassed"]
+            and prepared["lowToLatestPassed"]
+            and prepared["maAllPassed"]
+            and activity.get("amplitudePassed")
+        )
+        if eligible:
+            eligible_count += 1
+            eligible_trade_dates.append((candidate["code"], trade_date_from_market_row(row)))
+        candidate["quote"] = {
+            "price": prepared["price"], "changePct": number(row.get("f3")),
+            "amplitude": prepared["amplitude"], "amount": prepared["amount"], "turnover": prepared["turnover"],
+            "netInflow": number(row.get("f62")),
+        }
+        candidate["tStrategy"] = {
+            "available": available, "eligible": eligible,
+            "amplitudePassed": bool(activity.get("amplitudePassed")),
+            "amountPassed": prepared["amountPassed"],
+            "turnoverPassed": bool(activity.get("turnoverPassed")),
+            "maAllPassed": prepared["maAllPassed"],
+            "activityDays": activity.get("days"),
+            "amplitudePassedDays": activity.get("amplitudePassedDays"),
+            "turnoverPassedDays": activity.get("turnoverPassedDays"),
+            "lowToLatestGainPct": round(prepared["lowToLatestGain"], 2) if prepared["lowToLatestGain"] is not None else None,
+            "lowToLatestGainPassed": prepared["lowToLatestPassed"],
+        }
+    with _midterm_lock:
+        connection = open_backtest_db()
+        ensure_midterm_table(connection)
+        if eligible_trade_dates:
+            now_iso = datetime.now(CHINA_TZ).isoformat()
+            connection.executemany(
+                "INSERT OR IGNORE INTO midterm_display_entries(code,trade_date,created_at) VALUES(?,?,?)",
+                [(code, trade_date, now_iso) for code, trade_date in eligible_trade_dates],
+            )
+            connection.commit()
+        entry_counts = {
+            str(row[0]): int(row[1])
+            for row in connection.execute("SELECT code,COUNT(*) FROM midterm_display_entries GROUP BY code")
+        }
+        connection.close()
+    for candidate in candidates:
+        candidate["entryCount"] = entry_counts.get(candidate["code"], 0)
+    return {
+        "source": "主板历史日线中期形态池", "updatedAt": datetime.now(CHINA_TZ).isoformat(),
+        "scan": dict(_midterm_scan_status),
+        "poolCount": len(candidates), "tEligibleCount": eligible_count,
+        "candidates": candidates,
+    }
 
 
 def build_follow_up_calibration(quotes: List[Dict[str, Any]], trade_date: str) -> Dict[str, Any]:
@@ -2049,6 +2880,29 @@ class AppHandler(BaseHTTPRequestHandler):
                     "sectors": [public_sector(key) for key in SECTOR_ORDER],
                 },
             )
+            return
+        if parsed.path == "/api/hot-concept":
+            concept_name = query.get("name", [""])[0].strip()
+            if not concept_name or len(concept_name) > 20:
+                self.send_json(400, {"error": "概念板块名称不正确"})
+                return
+            try:
+                self.send_json(200, get_hot_concept_data(concept_name, query.get("refresh") == ["1"]))
+            except MarketDataError as exc:
+                self.send_json(502, {"error": str(exc)})
+            return
+        if parsed.path == "/api/hot-concept-summary":
+            names = [name.strip() for name in query.get("names", [""])[0].split(",") if name.strip()]
+            if not names or len(names) > 8 or any(len(name) > 20 for name in names):
+                self.send_json(400, {"error": "概念板块名称列表不正确"})
+                return
+            self.send_json(200, {
+                "updatedAt": datetime.now(CHINA_TZ).isoformat(),
+                "concepts": get_hot_concept_summaries(names, query.get("refresh") == ["1"]),
+            })
+            return
+        if parsed.path == "/api/midterm":
+            self.send_json(200, get_midterm_pool(query.get("refresh") == ["1"]))
             return
         if parsed.path == "/api/quotes":
             sector_key = query.get("sector", ["overview"])[0]
