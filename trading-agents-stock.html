@@ -1410,6 +1410,9 @@
     .score-trace-chart svg { width: 100%; height: 240px; display: block; overflow: visible; }
     .score-trace-chart .chart-title { justify-content: center; gap: 28px; margin-top: 10px; font-size: 14px; }
     .pre-alert-badge { display: inline-flex; align-items: center; padding: 3px 6px; border: 1px solid #d9a441; border-radius: 5px; color: #a56a00; background: #fff5d9; font-size: 10px; font-weight: 800; }
+    .intraday-mini { display: inline-flex; width: 58px; height: 25px; margin-left: 8px; vertical-align: middle; align-items: center; justify-content: center; overflow: hidden; border-left: 2px solid var(--amber); opacity: .95; }
+    .intraday-mini svg { width: 56px; height: 23px; display: block; }
+    .intraday-mini.loading { color: var(--muted); font-size: 9px; border-left-color: var(--chart-grid-strong); }
 
     .stock-card-metric .order-flow-label {
       display: flex;
@@ -4538,7 +4541,7 @@
           <button class="stock-card${active}${stock.screener?.recommendation ? ` has-recommendation ${stock.screener.recommendation === "推荐买入" ? "recommend-buy" : stock.screener.recommendation === "已涨停" ? "recommend-limit" : stock.screener.recommendation === "谨慎追高" ? "recommend-caution" : stock.screener.recommendation === "等待回落" ? "recommend-wait" : stock.screener.recommendation === "冲高回落风险" ? "recommend-risk" : "recommend-watch"}` : ""}" type="button" data-code="${stock.code}" data-recommendation="${stock.screener?.recommendation || ""}" aria-pressed="${stock.code === state.selectedCode}" aria-label="选择 ${stock.name}，双击查看日 K 线" title="单击选择，双击查看日 K 线">
             <div class="stock-top">
               <div>
-                <div class="stock-name">${stock.name}<span class="code">${stock.code}</span>${popularityMarkup}${infoBadges}${predictive}</div>
+                <div class="stock-name">${stock.name}<span class="code">${stock.code}</span><span class="intraday-mini loading" data-mini-code="${stock.code}">分时</span>${popularityMarkup}${infoBadges}${predictive}</div>
                 <div class="stock-moving-averages" aria-label="${escapeHtml(stock.name)}均线位置">${movingAverageMarkup}</div>
               </div>
               <div class="stock-quote ${pctClass}" aria-label="现价 ${formatPrice(stock.price)}，涨跌幅 ${formatPct(stock.change)}">
@@ -4598,6 +4601,33 @@
           selectStockCard(card.dataset.code, true);
         });
       });
+      loadIntradayMiniCharts();
+    }
+
+    async function loadIntradayMiniCharts() {
+      const date = state.marketDate || new Date().toISOString().slice(0, 10);
+      const nodes = [...document.querySelectorAll("[data-mini-code]")].slice(0, 20);
+      await Promise.all(nodes.map(async (node) => {
+        const code = node.dataset.miniCode;
+        try {
+          const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+          const params = { code, date };
+          if (date === today) params.refresh = "1";
+          const response = await fetch(`/api/intraday?${new URLSearchParams(params)}`, { cache: "no-store" });
+          const payload = await response.json();
+          const points = (payload.points || []).map((item) => Number(item.price)).filter(Number.isFinite);
+          if (!response.ok || points.length < 2) throw new Error("no intraday data");
+          const min = Math.min(...points), max = Math.max(...points);
+          const narrow = max > 0 && (max - min) / max <= .0025;
+          const span = Math.max(max - min, max * .006, .01);
+          const line = points.map((price, index) => `${(index / (points.length - 1)) * 54 + 1},${narrow ? 12 : 21 - ((price - min) / span) * 18}`).join(" ");
+          const color = narrow ? "var(--amber)" : (points[points.length - 1] >= points[0] ? "var(--rising)" : "var(--falling)");
+          node.classList.remove("loading");
+          node.innerHTML = `<svg viewBox="0 0 56 23" role="img" aria-label="${code} 当日分时缩略图"><polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+        } catch {
+          node.textContent = "--";
+        }
+      }));
     }
 
     function dailyChartRows(stock) {
