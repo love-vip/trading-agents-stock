@@ -1,0 +1,5 @@
+__pycache__/
+data/auction/
+data/backtest.sqlite
+data/backtest.sqlite-shm
+data/backtest.sqlite-wal
