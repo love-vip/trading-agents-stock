@@ -295,6 +295,19 @@
       margin-bottom: 18px;
     }
 
+    .score-alerts { position: fixed; z-index: 40; top: 18px; right: 22px; width: min(400px, calc(100vw - 36px)); }
+    .score-alerts[hidden] { display: none; }
+    .score-alert-panel { border: 1px solid rgba(245, 158, 11, .45); border-radius: 10px; padding: 10px; background: var(--panel-strong); box-shadow: 0 12px 30px rgba(0,0,0,.25); }
+    .score-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; }
+    .score-alert-close { border: 0; border-radius: 5px; padding: 2px 7px; color: var(--muted); background: rgba(255,255,255,.08); }
+    .score-alert-list { display: grid; gap: 5px; max-height: 220px; margin-top: 8px; overflow-y: auto; }
+    .score-alert-item { display: grid; grid-template-columns: minmax(0, 1fr) 68px 58px 58px; align-items: center; gap: 5px; color: var(--text); font-size: 12px; }
+    .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .score-alert-item b { font-weight: 800; text-align: right; }
+    .score-alert-item em { color: var(--red); font-style: normal; font-weight: 800; text-align: right; }
+    .score-alert-item time { text-align: right; }
+    .score-alert-item time { color: var(--amber); font-variant-numeric: tabular-nums; }
+
     .brand {
       min-width: 0;
     }
@@ -916,7 +929,7 @@
       font-size: 12px;
       font-weight: 500;
       line-height: 1.65;
-      white-space: normal;
+      white-space: pre-line;
       opacity: 0;
       pointer-events: none;
       transform: translateY(4px);
@@ -1010,6 +1023,11 @@
       grid-template-columns: minmax(0, 1fr) auto auto;
       gap: 12px;
       align-items: start;
+    }
+
+    .stock-top > .stock-macd {
+      grid-column: 1 / -1;
+      grid-row: 2;
     }
 
     .stock-name {
@@ -1203,11 +1221,11 @@
     }
     :root[data-theme="light"] .page-loading-card p { color: #718198; }
     :root[data-theme="light"] .page-loading-spinner { border-color: rgba(48, 104, 170, .16); border-top-color: #287ac1; }
-    .stock-card.has-recommendation { position: relative; overflow: hidden; }
+    .stock-card.has-recommendation { position: relative; overflow: hidden; container-type: inline-size; }
     .stock-card.has-recommendation::after {
       content: attr(data-recommendation);
       position: absolute; left: 50%; top: 50%; z-index: 0;
-      font-size: 44px; font-weight: 950; letter-spacing: 10px;
+      font-size: clamp(42px, 9cqw, 72px); font-weight: 950; letter-spacing: 10px;
       opacity: .16; pointer-events: none; white-space: nowrap;
       transform: translate(-50%, -50%) rotate(-16deg);
     }
@@ -1343,11 +1361,12 @@
       color: var(--green);
       background: rgba(52, 211, 153, .08);
     }
-    .stock-macd { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--muted-2); font-size: 9px; }
-    .stock-macd-bars { display: inline-flex; align-items: center; gap: 1px; height: 22px; max-width: 340px; overflow: hidden; padding: 0 4px; border-bottom: 1px solid var(--line); }
-    .stock-macd-bars i { display: block; flex: 0 0 3px; width: 3px; border-radius: 1px; background: var(--red); }
+    .stock-macd { display: flex; align-items: flex-start; flex-wrap: nowrap; width: 100%; gap: 7px; margin-top: 6px; color: var(--muted-2); font-size: 10px; white-space: nowrap; }
+    .stock-macd-bars { display: inline-flex; align-items: flex-end; flex: 0 1 calc(100% - 85px); min-width: 0; gap: 1px; height: 52px; max-width: calc(100% - 85px); overflow: visible; padding: 0 5px 12px; border-bottom: 1px solid var(--line); }
+    .stock-macd-bars i { position: relative; display: block; flex: 0 0 4px; width: 4px; border-radius: 1px; background: var(--red); }
+    .stock-macd-bars i.turn::after { content: attr(data-date); position: absolute; left: 50%; top: calc(100% + 2px); color: var(--muted-2); font-size: 8px; font-style: normal; line-height: 1; white-space: nowrap; transform: translateX(-50%); }
     .stock-macd-bars i.negative { background: var(--green); }
-    .stock-macd-signal { color: var(--text); font-weight: 750; }
+    .stock-macd-signal { flex: 0 0 auto; align-self: flex-end; padding-bottom: 14px; color: var(--text); font-weight: 750; }
 
     .stock-card-metric {
       padding: 4px 6px;
@@ -1374,6 +1393,12 @@
       text-overflow: ellipsis;
     }
 
+    .stock-card-metric .entry-time { font-style: normal; font-weight: 800; }
+    .stock-card-metric .entry-time-60 { color: var(--cyan); }
+    .stock-card-metric .entry-time-70 { color: var(--cyan); }
+    .stock-card-metric .entry-time-3 { color: var(--pink); }
+    .stock-card-metric .entry-time-6 { color: var(--pink); }
+
     .stock-card-metric .order-flow-label {
       display: flex;
       align-items: center;
@@ -1399,6 +1424,9 @@
     .stock-card-metric .probability-value.follow-up { color: var(--cyan); }
     .stock-card-metric .probability-value.today-hot { color: var(--red); font-size: 14px; font-weight: 900; text-shadow: 0 0 12px rgba(255, 92, 92, .30); }
     .stock-card-metric .probability-value.follow-hot { color: var(--red); font-size: 14px; font-weight: 900; text-shadow: 0 0 12px rgba(255, 92, 92, .30); }
+    .stock-card-metric .today-probability,
+    .stock-card-metric .follow-probability { font-style: normal; }
+    .stock-card-metric .today-probability.today-hot { color: var(--red); font-weight: 900; text-shadow: 0 0 12px rgba(255, 92, 92, .30); }
     .stock-card-metric .probability-value::after {
       content: attr(data-tooltip);
       position: absolute;
@@ -2484,6 +2512,7 @@
         <span class="pill" id="marketUpdated">更新时间：--</span>
       </div>
     </header>
+    <div class="score-alerts" id="scoreAlerts" hidden aria-live="polite"></div>
 
     <div id="screenerView">
     <section class="panel control-deck" aria-label="选股控制台">
@@ -2910,14 +2939,14 @@
     };
 
     const factorTips = {
-      trend: "趋势评分：基准 50 分；近 6 日收益每增加 1%，约加 1.4 分，近阶段累计收益每增加 1%，约加 1.6 分。再结合均线方向和价格是否站上 5/10/20/30 日均线校验，结果限制在 0～100 分。",
-      momentum: "动量评分：基准 50 分；短周期收益每增加 1%，约加 2.8 分，当日涨幅每增加 1%，约加 2 分。涨幅、涨速和量价同步时加分，冲高过快或动能衰减时由风险项限制。",
-      liquidity: "流动性评分：以成交额为核心，基准约 35 分；成交额相对 1 亿元的数量级每提升一个数量级，约增加 30 分。成交额越充足，越能承载资金进出。",
-      strength: "强弱评分：基准 50 分；当日涨幅每增加 1%，约加 5 分，并结合板块强度、板块内上涨家数和个股相对排名修正。单独上涨、缺少板块联动时不会拿满分。",
-      stability: "稳定性评分：基准约 96 分，再根据近期日收益波动扣分，波动率越高扣分越多。振幅过大、冲高回落或价格剧烈跳动时，稳定性下降。",
-      risk: "风险扣分：由近期波动风险、异常涨幅和回撤共同构成。基础风险约为 100 减稳定性分；当日涨幅超过 5% 后，超出部分还会增加风险扣分，阴跌和均线破位会进一步降低最终分数。",
-      orderFlow: "盘口确认：结合内盘/外盘、委比、价格位置、成交量、K 线形态和板块联动判断盘口真实性。盘口与价格背离时自动降权，最高占 8%。",
-      macd: "MACD评分计算：基准分 50 分；金叉 +22，多头增强 +18，多头收敛 +7，空头增强 -22，空头收敛 -8，死叉 -22。再比较近 5 日 MACD 柱体：柱体扩大 +10，柱体缩短 -10。若当日涨幅达到 8% 且处于高位金叉或多头状态，正向加分减半。最终分数限制在 0～100 分，再按 15% 折算进入综合评分；同时对今日涨停概率做小幅修正。"
+      trend: "• 基准：50 分\n• 近 6 日收益每增加 1%，约加 1.4 分\n• 近阶段累计收益每增加 1%，约加 1.6 分\n• 结合 5/10/20/30 日均线方向与价格位置校验\n• 最终限制在 0～100 分",
+      momentum: "• 基准：50 分\n• 短周期收益每增加 1%，约加 2.8 分\n• 当日涨幅每增加 1%，约加 2 分\n• 涨幅、涨速和量价同步时加分\n• 冲高过快或动能衰减时由风险项限制",
+      liquidity: "• 核心数据：成交额、成交量和量比\n• 基准约：35 分\n• 成交额相对 1 亿元每提升一个数量级，约增加 30 分\n• 成交额越充足，资金承载能力越强",
+      strength: "• 基准：50 分\n• 当日涨幅每增加 1%，约加 5 分\n• 结合板块强度和板块内上涨家数修正\n• 板块排名靠前且存在联动时加分\n• 孤立上涨不会拿满分",
+      stability: "• 基准约：96 分\n• 根据近期日收益波动扣分\n• 波动率越高，扣分越多\n• 振幅过大、冲高回落或价格跳动明显时降低",
+      risk: "• 根据近期波动、异常涨幅和回撤计算\n• 基础风险约等于 100 减稳定性分\n• 当日涨幅超过 5% 后，超出部分增加风险扣分\n• 阴跌结构和均线破位会进一步扣分",
+      orderFlow: "• 参考内盘、外盘和委比\n• 结合价格位置、成交量、K 线形态和板块联动\n• 盘口与价格走势背离时自动降权\n• 最高占综合评分 8%",
+      macd: "• 基准：50 分\n• 金叉：+22；多头增强：+18；多头收敛：+7\n• 死叉：-22；空头增强：-22；空头收敛：-8\n• 近 5 日柱体扩大：+10；柱体缩短：-10\n• 涨幅达到 8% 且高位偏强时，正向加分减半\n• 最终限制在 0～100 分，按 15% 计入综合评分"
     };
 
     const colors = {
@@ -2967,6 +2996,11 @@
       reviewed: false,
       marketStatus: "loading",
       marketMessage: "正在获取最新行情",
+      scoreAlerts: [],
+      scoreAlertKeys: new Set(),
+      scoreAlertAbove: {},
+      scoreAlertFetchAt: 0,
+      scoreAlertReady: false,
       marketDate: null,
       marketUpdatedAt: null,
       marketRegime: { label: "常态", minScore: 70 },
@@ -3024,6 +3058,7 @@
       resetBtn: document.getElementById("resetBtn"),
       refreshBtn: document.getElementById("refreshBtn"),
       quoteState: document.getElementById("quoteState"),
+      scoreAlerts: document.getElementById("scoreAlerts"),
       quoteStateText: document.getElementById("quoteStateText"),
       quoteSource: document.getElementById("quoteSource"),
       marketDate: document.getElementById("marketDate"),
@@ -4190,10 +4225,10 @@
       `;
       }).join("") + `
         <div class="factor-row" data-tip="${factorTips.orderFlow}">
-          <span title="${factorTips.orderFlow}">盘口确认</span><span class="track"><span class="bar" style="--w:24%; background:var(--cyan)"></span></span><span>8%</span>
+          <span>盘口确认</span><span class="track"><span class="bar" style="--w:24%; background:var(--cyan)"></span></span><span>8%</span>
         </div>
         <div class="factor-row" data-tip="${factorTips.macd}">
-          <span title="${factorTips.macd}">MACD</span><span class="track"><span class="bar" style="--w:45%; background:${colors.macd || "var(--amber)"}"></span></span><span>15%</span>
+          <span>MACD</span><span class="track"><span class="bar" style="--w:45%; background:${colors.macd || "var(--amber)"}"></span></span><span>15%</span>
         </div>
         `;
     }
@@ -4403,9 +4438,19 @@
         const movingAverages = stock.screener?.movingAverages || stock.movingAverages || {};
         const macd = stock.screener?.downtrend?.macd || {};
         const macdValues = (macd.bars || []).map(Number).filter(Number.isFinite);
+        const macdDates = macd.barDates || [];
         const macdScale = Math.max(...macdValues.map((bar) => Math.abs(bar)), 0.01);
-        const macdBars = macdValues.map((bar) => `<i class="${bar < 0 ? "negative" : ""}" style="height:${Math.max(3, Math.min(16, Math.abs(bar) / macdScale * 16))}px" title="${bar.toFixed(4)}"></i>`).join("");
-        const macdMarkup = macd.available ? `<div class="stock-macd"><span>MACD</span><span class="stock-macd-bars">${macdBars}</span><span class="stock-macd-signal">${escapeHtml(macd.signal || "--")}</span></div>` : "";
+        const turningIndexes = macdValues.reduce((indexes, bar, index) => {
+          if (index > 0 && ((bar >= 0) !== (macdValues[index - 1] >= 0))) indexes.push(index);
+          return indexes;
+        }, []);
+        const macdBars = macdValues.map((bar, index) => {
+          const turning = turningIndexes.includes(index)
+            && !turningIndexes.some((nextIndex) => nextIndex > index && nextIndex - index <= 5);
+          const date = macdDates[index] || "";
+          return `<i class="${bar < 0 ? "negative" : ""}${turning ? " turn" : ""}" data-date="${escapeHtml(date)}" style="height:${Math.max(4, Math.min(22, Math.abs(bar) / macdScale * 22))}px" title="${date ? `${date} ` : ""}${bar.toFixed(4)}"></i>`;
+        }).join("");
+        const macdMarkup = macd.available ? `<div class="stock-macd"><span class="stock-macd-bars">${macdBars}</span><span class="stock-macd-signal">${escapeHtml(macd.signal || "--")}</span></div>` : "";
         const popularity = stock.popularity || {};
         const popularityLevel = !popularity.available ? "unavailable" : popularity.rank <= 10 ? "hot" : popularity.rank <= 50 ? "warm" : "normal";
         const popularityTooltip = popularity.available
@@ -4440,6 +4485,13 @@
           .join("");
         const infoBadges = `${topicBadge}${sectorBadges}${patternBadges}`;
         const probability = stock.probability || {};
+        const followValue = hasNumber(probability.followUp) ? Number(probability.followUp) : null;
+        const followDepth = followValue === null ? 0 : Math.min(8, Math.floor(Math.abs(followValue - 60) / 5));
+        const followColor = followValue === null
+          ? "var(--muted)"
+          : followValue >= 60
+            ? `rgb(220, ${Math.max(35, 90 - followDepth * 7)}, ${Math.max(38, 88 - followDepth * 6)})`
+            : `rgb(${Math.max(20, 48 - followDepth * 3)}, ${Math.max(70, 166 - followDepth * 11)}, ${Math.max(48, 105 - followDepth * 6)})`;
         const todayProbabilityTitle = `今日涨停概率：综合当日攻击强度、量比、换手、主力净流入、板块强度、历史封板、已接入时的竞价委买，以及经委比、价格位置、量能、K线、均线和板块联动确认后的内外盘。盘口确认分 ${hasNumber(probability.orderFlowScore) ? probability.orderFlowScore : "--"}，本次概率修正 ${hasNumber(probability.orderFlowAdjustment) ? `${probability.orderFlowAdjustment > 0 ? "+" : ""}${probability.orderFlowAdjustment.toFixed(1)}` : "--"} 个百分点。${probability.note || "模型参考，非投资建议。"}`;
         const followProbabilityTitle = `后续上涨概率：目标为${probability.target || "未来 10 个交易日最高价较信号日收盘上涨至少 5%"}。综合近 30 日日 K、筑底与均线/布林结构、识别到的形态和风险；已按历史日线样本校准（当前样本 ${hasNumber(probability.backtestSamples) ? probability.backtestSamples : "--"} 条）。形态：${(probability.signals || []).join("、") || "未识别明显形态"}。${probability.note || "模型参考，非投资建议。"}`;
         const orderFlow = stock.orderFlow || {};
@@ -4463,24 +4515,24 @@
               <div>
                 <div class="stock-name">${stock.name}<span class="code">${stock.code}</span>${popularityMarkup}${infoBadges}</div>
                 <div class="stock-moving-averages" aria-label="${escapeHtml(stock.name)}均线位置">${movingAverageMarkup}</div>
-                ${macdMarkup}
               </div>
               <div class="stock-quote ${pctClass}" aria-label="现价 ${formatPrice(stock.price)}，涨跌幅 ${formatPct(stock.change)}">
                 <div class="stock-price">${formatPrice(stock.price)}</div>
                 <div class="stock-change">${formatPct(stock.change)}</div>
               </div>
               <div class="score" style="--score:${stock.score}" data-tooltip="${escapeHtml(dynamicScoreTooltip(stock))}" title="${escapeHtml(dynamicScoreTooltip(stock))}">${stock.score}</div>
+              ${macdMarkup}
             </div>
             <div class="stock-card-metrics" aria-label="${escapeHtml(stock.name)}行情指标">
               <div class="stock-card-metric"><span>总市值 / 流通市值</span><strong>${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}</strong></div>
               <div class="stock-card-metric"><span>昨收价格 / 涨停价</span><strong>${formatPrice(stock.previousClose)} / ${formatPrice(limitPrice)}</strong></div>
-              <div class="stock-card-metric"><span>今日涨停概率 / 后续上涨概率</span><strong class="probability-value${probability.todayLimitUp >= 90 ? " today-hot" : probability.followUp >= 50 ? " follow-hot" : ""}" tabindex="0" data-tooltip="${escapeHtml(`${todayProbabilityTitle} ${followProbabilityTitle}`)}" title="${escapeHtml(`${todayProbabilityTitle} ${followProbabilityTitle}`)}">${hasNumber(probability.todayLimitUp) ? `${probability.todayLimitUp}%` : "--"} / ${hasNumber(probability.followUp) ? `${probability.followUp}%` : "--"}</strong></div>
+              <div class="stock-card-metric"><span>今日涨停概率 / 后续上涨概率</span><strong class="probability-value" tabindex="0" data-tooltip="${escapeHtml(`${todayProbabilityTitle} ${followProbabilityTitle}`)}" title="${escapeHtml(`${todayProbabilityTitle} ${followProbabilityTitle}`)}"><i class="today-probability${probability.todayLimitUp >= 90 ? " today-hot" : ""}">${hasNumber(probability.todayLimitUp) ? `${probability.todayLimitUp}%` : "--"}</i> / <i class="follow-probability" style="color:${followColor}">${hasNumber(probability.followUp) ? `${probability.followUp}%` : "--"}</i></strong></div>
               <div class="stock-card-metric"><span>竞价涨幅 / 最低涨幅</span><strong class="${quoteClass(lowChange)}">${formatPct(auctionChange)} / ${formatPct(lowChange)}</strong></div>
               <div class="stock-card-metric"><span>量比 / 换手率</span><strong>${hasNumber(stock.volumeRatio) ? stock.volumeRatio.toFixed(2) : "--"} / ${hasNumber(stock.screener?.turnover) ? `${stock.screener.turnover.toFixed(2)}%` : "--"}</strong></div>
               <div class="stock-card-metric"><span>资金净流入</span><strong class="money-flow ${(stock.netInflow ?? 0) < 0 ? "negative" : "positive"}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</strong></div>
               <div class="stock-card-metric"><span class="order-flow-label"><i class="order-flow-key inner">内盘</i> / <i class="order-flow-key outer">外盘</i></span><strong tabindex="0" data-tooltip="${escapeHtml(orderFlowTitle)}" title="${escapeHtml(orderFlowTitle)}"><i class="order-flow-value inner">${formatVolume(orderFlow.innerVolume)}</i> / <i class="order-flow-value outer">${formatVolume(orderFlow.outerVolume)}</i></strong></div>
-              <div class="stock-card-metric"><span>进入时间（60分 / 70分）</span><strong>${stock.screener?.scoreThresholdTimes?.["60"] || "--"} / ${stock.screener?.scoreThresholdTimes?.["70"] || "--"}</strong></div>
-              <div class="stock-card-metric"><span>进入时间（3% / 9%）</span><strong>${stock.screener?.changeThresholdTimes?.["3"] || "--"} / ${stock.screener?.changeThresholdTimes?.["9"] || "--"}</strong></div>
+              <div class="stock-card-metric"><span>进入时间（60分 / 70分）</span><strong><i class="entry-time entry-time-60">${stock.screener?.scoreThresholdTimes?.["60"] || "--"}</i> / <i class="entry-time entry-time-70">${stock.screener?.scoreThresholdTimes?.["70"] || "--"}</i></strong></div>
+              <div class="stock-card-metric"><span>进入时间（3% / 6%）</span><strong><i class="entry-time entry-time-3">${stock.screener?.changeThresholdTimes?.["3"] || "--"}</i> / <i class="entry-time entry-time-6">${stock.screener?.changeThresholdTimes?.["6"] || "--"}</i></strong></div>
             </div>
           </button>
         `;
@@ -4639,7 +4691,8 @@
         ...difValues.filter(Number.isFinite).map((value) => Math.abs(value)),
         ...deaValues.filter(Number.isFinite).map((value) => Math.abs(value))
       );
-      const yMacd = (value) => macd.bottom / 2 - (value / macdAbs) * ((macd.bottom - macd.top) / 2 - 8);
+      const macdZero = (macd.top + macd.bottom) / 2;
+      const yMacd = (value) => macdZero - (value / macdAbs) * ((macd.bottom - macd.top) / 2 - 8);
       const macdBars = histValues.map((value, index) => {
         const x = plot.left + step * index + step / 2;
         const zero = yMacd(0);
@@ -4705,7 +4758,7 @@
           ${averageLines}
           <path d="M${plot.left} ${macd.top - 10} H${width - plot.right}" stroke="var(--chart-grid-strong)" stroke-width="1"/>
           <text x="${plot.left}" y="${macd.top - 16}" fill="var(--chart-caption)" font-size="12">MACD（DIF / DEA / 柱）</text>
-          <path d="M${plot.left} ${yMacd(0)} H${width - plot.right}" stroke="var(--chart-grid)" stroke-width="1" stroke-dasharray="4 4"/>
+          <path d="M${plot.left} ${macdZero} H${width - plot.right}" stroke="var(--chart-grid)" stroke-width="1" stroke-dasharray="4 4"/>
           ${macdBars}
           ${macdLine(difValues, "var(--rising)")}
           ${macdLine(deaValues, "var(--amber)")}
@@ -5156,6 +5209,102 @@
       `;
     }
 
+    function updateScoreAlerts(list) {
+      if (!state.scoreAlertReady) return;
+      let added = false;
+      let dismissed = new Set();
+      try { dismissed = new Set(JSON.parse(localStorage.getItem("scoreAlertDismissedKeys") || "[]")); } catch {}
+      list.forEach((stock) => {
+        const currentScore = Number(stock.screener?.snapshotScore ?? stock.score);
+        if (!Number.isFinite(currentScore)) return;
+        if (currentScore < 70) {
+          state.scoreAlertAbove[stock.code] = false;
+          return;
+        }
+        if (state.scoreAlertAbove[stock.code] === true) return;
+        state.scoreAlertAbove[stock.code] = true;
+        const time = stock.screener?.scoreThresholdTimes?.["70"] || new Date().toLocaleTimeString("zh-CN", { hour12: false });
+        const key = `${stock.code}:${time}`;
+        if (dismissed.has(key)) return;
+        if (state.scoreAlertKeys.has(key)) return;
+        state.scoreAlertKeys.add(key);
+        state.scoreAlerts.push({ code: stock.code, name: stock.name || stock.code, time, price: stock.price, changePct: stock.changePct ?? stock.change });
+        added = true;
+      });
+      if (added && state.scoreAlertReady) playScoreAlertSound();
+      if (!state.scoreAlerts.length) {
+        el.scoreAlerts.hidden = true;
+        el.scoreAlerts.innerHTML = "";
+        return;
+      }
+      el.scoreAlerts.hidden = false;
+      el.scoreAlerts.innerHTML = `
+        <div class="score-alert-panel">
+          <div class="score-alert-head"><span>综合评分达到 70 分</span><button class="score-alert-close" type="button" data-close-score-alerts>关闭</button></div>
+          <div class="score-alert-list">
+            ${state.scoreAlerts.map((item) => `<div class="score-alert-item"><span>${escapeHtml(item.name)}（${item.code}）</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`).join("")}
+          </div>
+        </div>`;
+      el.scoreAlerts.querySelector("[data-close-score-alerts]")?.addEventListener("click", () => {
+        try {
+          const dismissed = new Set(JSON.parse(localStorage.getItem("scoreAlertDismissedKeys") || "[]"));
+          state.scoreAlerts.forEach((item) => dismissed.add(`${item.code}:${item.time}`));
+          localStorage.setItem("scoreAlertDismissedKeys", JSON.stringify([...dismissed].slice(-500)));
+        } catch {}
+        state.scoreAlerts = [];
+        el.scoreAlerts.hidden = true;
+        el.scoreAlerts.innerHTML = "";
+      });
+    }
+
+    function playScoreAlertSound() {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        const context = new AudioContextClass();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, context.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.28);
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.3);
+        oscillator.addEventListener("ended", () => context.close().catch(() => {}));
+      } catch {
+        // 浏览器未授权音频时，不影响行情和提醒文字。
+      }
+    }
+
+    async function loadScoreAlerts() {
+      if (Date.now() - state.scoreAlertFetchAt < 20000) return;
+      state.scoreAlertFetchAt = Date.now();
+      try {
+        const response = await fetch("/api/score-alerts", { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) return;
+        const alertStocks = (payload.alerts || []).map((item) => ({
+          code: item.code,
+          name: item.name || stocks.find((stock) => stock.code === item.code)?.name || item.code,
+          price: item.price,
+          changePct: item.changePct,
+          screener: { snapshotScore: 70, scoreThresholdTimes: { "70": item.time } }
+        }));
+        // 首次加载只建立历史基线，不把历史记录当成新提醒展示。
+        alertStocks.forEach((item) => {
+          const key = `${item.code}:${item.screener.scoreThresholdTimes["70"]}`;
+          state.scoreAlertKeys.add(key);
+          state.scoreAlertAbove[item.code] = true;
+        });
+        state.scoreAlertReady = true;
+        render();
+      } catch {
+        // 提示接口不可用时不影响行情页面。
+      }
+    }
+
     function render() {
       const showLoading = (state.marketStatus === "loading" && !stocks.length)
         || (state.pageView === "midterm" && ["loading", "running"].includes(state.midtermScan?.status) && !state.midtermCandidates.length);
@@ -5176,6 +5325,8 @@
       renderMarketStatus();
       renderWeights();
       const list = filteredStocks();
+      updateScoreAlerts(stocks);
+      loadScoreAlerts();
       renderStats(list);
       if (state.pageView === "sector-strength") {
         renderSectorStrength();

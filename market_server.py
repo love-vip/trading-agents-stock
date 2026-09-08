@@ -64,6 +64,7 @@ SUPPLEMENT_REQUEST_TIMEOUT_SECONDS = 5
 MARKET_PAGE_SIZE = 100
 AUCTION_DATA_DIR = BASE_DIR / "data" / "auction"
 BACKTEST_DB_PATH = BASE_DIR / "data" / "backtest.sqlite"
+THRESHOLD_TIMES_PATH = BASE_DIR / "data" / "threshold_times.json"
 BACKTEST_LOOKBACK_DAYS = 30
 BACKTEST_HORIZON_DAYS = 10
 BACKTEST_TARGET_RETURN = 0.05
@@ -281,7 +282,45 @@ _midterm_scan_status: Dict[str, Any] = {
 }
 _midterm_quote_cache: Dict[str, Any] = {"created_at": 0.0, "rows": {}}
 _score_threshold_times: Dict[Tuple[str, str, int], str] = {}
+_score_threshold_names: Dict[Tuple[str, str, int], str] = {}
+_score_threshold_quotes: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
 _change_threshold_times: Dict[Tuple[str, str, int], str] = {}
+
+
+def load_threshold_times() -> None:
+    """Restore first-hit timestamps so service restarts never overwrite them."""
+    try:
+        payload = json.loads(THRESHOLD_TIMES_PATH.read_text(encoding="utf-8"))
+        for item in payload.get("score", []):
+            key = (str(item["date"]), str(item["code"]), int(item["threshold"]))
+            _score_threshold_times[key] = str(item["time"])
+            _score_threshold_names[key] = str(item.get("name") or item["code"])
+            _score_threshold_quotes[key] = {"price": item.get("price"), "changePct": item.get("changePct")}
+        for item in payload.get("change", []):
+            key = (str(item["date"]), str(item["code"]), int(item["threshold"]))
+            _change_threshold_times[key] = str(item["time"])
+    except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
+        pass
+
+
+def persist_threshold_times() -> None:
+    payload = {
+        "score": [
+            {"date": date, "code": code, "threshold": threshold, "time": value, "name": _score_threshold_names.get((date, code, threshold), code), **(_score_threshold_quotes.get((date, code, threshold)) or {})}
+            for (date, code, threshold), value in _score_threshold_times.items()
+        ],
+        "change": [
+            {"date": date, "code": code, "threshold": threshold, "time": value}
+            for (date, code, threshold), value in _change_threshold_times.items()
+        ],
+    }
+    THRESHOLD_TIMES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = THRESHOLD_TIMES_PATH.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(THRESHOLD_TIMES_PATH)
+
+
+load_threshold_times()
 
 
 class MarketDataError(RuntimeError):
@@ -448,21 +487,37 @@ def auction_capture_loop(stop_event: threading.Event) -> None:
 
 
 def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
-    """Save one end-of-day candidate snapshot while the local service is running."""
+    """交易时段后台扫描全市场，收盘后保存一次候选快照。"""
     captured_dates: set[str] = set()
+    last_intraday_scan = 0.0
     while not stop_event.wait(30):
         now = datetime.now(CHINA_TZ)
-        if now.weekday() >= 5 or now.hour != 15 or not (5 <= now.minute < 30):
+        if now.weekday() >= 5:
             continue
         trade_date = now.strftime("%Y-%m-%d")
-        if trade_date in captured_dates:
-            continue
+        current_minutes = now.hour * 60 + now.minute
+        in_session = 555 <= current_minutes < 690 or 780 <= current_minutes < 900
         try:
-            fetch_dynamic_market_data("all", 0, -20, 0, 100)
-            captured_dates.add(trade_date)
-            print(f"后续上涨模型已保存 {trade_date} 收盘候选快照")
+            if in_session and time.monotonic() - last_intraday_scan >= 25:
+                # 轻量扫描全市场快照；dynamic_snapshot 会记录首次达到阈值的时间，
+                # 不触发历史 K 线、概念和人气等页面级补充请求。
+                scan_all_market_thresholds()
+                last_intraday_scan = time.monotonic()
+                print(f"后台全市场评分扫描完成：{trade_date} {now.strftime('%H:%M:%S')}")
+            elif now.hour == 15 and 5 <= now.minute < 30 and trade_date not in captured_dates:
+                scan_all_market_thresholds()
+                captured_dates.add(trade_date)
+                print(f"后续上涨模型已保存 {trade_date} 收盘候选快照")
         except (MarketDataError, OSError, ValueError) as exc:
-            print(f"后续上涨模型收盘快照失败: {exc}")
+            print(f"后台全市场评分扫描失败: {exc}")
+
+
+def scan_all_market_thresholds() -> None:
+    """Scan every live A-share row only for score/change threshold timestamps."""
+    rows, _ = fetch_market_rows("all")
+    updated_at = datetime.now(CHINA_TZ)
+    for row in rows:
+        dynamic_snapshot(row, updated_at, "all")
 
 
 def auction_strength_score(auction: Optional[Dict[str, Any]], float_cap: Optional[float]) -> Dict[str, Any]:
@@ -1010,6 +1065,8 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         for period in (5, 10, 20, 30)
     }
     macd = calculate_macd(closes)
+    if macd.get("available"):
+        macd["barDates"] = [str(row.get("date") or "")[5:] for row in history[-len(macd.get("bars") or []):]]
     ma10 = sum(closes[-10:]) / 10
     ma20 = sum(closes[-20:]) / 20
     ma10_previous = sum(closes[-15:-5]) / 10
@@ -1319,6 +1376,16 @@ def dynamic_snapshot(
     market = MARKET_SCOPES[market_key]
     code = str(row.get("f12") or "")
     name = str(row.get("f14") or "")
+    listing_date = str(row.get("f26") or "").strip()
+    if name.upper().startswith(("N", "C")):
+        return None
+    if len(listing_date) == 8 and listing_date.isdigit():
+        try:
+            listed = datetime.strptime(listing_date, "%Y%m%d").replace(tzinfo=CHINA_TZ)
+            if updated_at - listed < timedelta(days=180):
+                return None
+        except ValueError:
+            pass
     price = number(row.get("f2"))
     change_pct = number(row.get("f3"))
     amount = number(row.get("f6"))
@@ -1355,10 +1422,14 @@ def dynamic_snapshot(
             key = (trade_date, code, threshold)
             if score >= threshold and key not in _score_threshold_times:
                 _score_threshold_times[key] = score_time
-        for threshold in (3, 9):
+                _score_threshold_names[key] = name or code
+                _score_threshold_quotes[key] = {"price": price, "changePct": change_pct}
+                persist_threshold_times()
+        for threshold in (3, 6):
             key = (trade_date, code, threshold)
             if change_pct >= threshold and key not in _change_threshold_times:
                 _change_threshold_times[key] = score_time
+                persist_threshold_times()
         day_average = statistics.mean(
             value for value in (number(row.get("f17")), number(row.get("f15")), number(row.get("f16")), price)
             if value is not None
@@ -1419,7 +1490,7 @@ def dynamic_snapshot(
             },
             "changeThresholdTimes": {
                 "3": _change_threshold_times.get((trade_date, code, 3)),
-                "9": _change_threshold_times.get((trade_date, code, 9)),
+                "6": _change_threshold_times.get((trade_date, code, 6)),
             },
             "dayAverage": day_average,
             "recommendation": recommendation,
@@ -1614,7 +1685,7 @@ def fetch_market_rows(market_key: str) -> Tuple[List[Dict[str, Any]], int]:
         "invt": 2,
         "fid": "f3",
         "fs": market["fs"],
-        "fields": "f2,f3,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f62,f100,f124",
+        "fields": "f2,f3,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f26,f62,f100,f124",
     }
     first_page = request_json(EASTMONEY_LIST_URL, params)
     data = first_page.get("data") or {}
@@ -3226,6 +3297,27 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/health":
             self.send_json(200, {"status": "ok", "version": 11, "allMarketBacktest": _all_market_backtest_status})
+            return
+        if parsed.path == "/api/score-alerts":
+            trade_date = datetime.now(CHINA_TZ).strftime("%Y-%m-%d")
+            missing_codes = [code for (date, code, threshold), item in _score_threshold_quotes.items() if date == trade_date and threshold == 70 and not item.get("price")]
+            if missing_codes:
+                try:
+                    live_rows, _ = fetch_market_rows("all")
+                    live = {str(row.get("f12")): row for row in live_rows}
+                    for code in missing_codes:
+                        row = live.get(code) or {}
+                        _score_threshold_quotes[(trade_date, code, 70)] = {"price": number(row.get("f2")), "changePct": number(row.get("f3"))}
+                    persist_threshold_times()
+                except (MarketDataError, OSError, ValueError):
+                    pass
+            alerts = [
+                {"code": code, "name": _score_threshold_names.get((date, code, threshold), code), "time": value, **(_score_threshold_quotes.get((date, code, threshold)) or {})}
+                for (date, code, threshold), value in _score_threshold_times.items()
+                if date == trade_date and threshold == 70
+            ]
+            alerts.sort(key=lambda item: item["time"])
+            self.send_json(200, {"tradeDate": trade_date, "alerts": alerts})
             return
         if parsed.path == "/api/sectors":
             self.send_json(
