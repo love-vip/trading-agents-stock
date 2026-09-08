@@ -296,6 +296,8 @@
     }
 
     .score-alerts { position: fixed; z-index: 40; top: 18px; right: 22px; width: min(400px, calc(100vw - 36px)); }
+    /* 中期选股已从左侧导航移除，保留内部兼容逻辑避免影响历史数据。 */
+    #midtermNav { display: none !important; }
     .score-alerts[hidden] { display: none; }
     .score-alert-panel { border: 1px solid rgba(245, 158, 11, .45); border-radius: 10px; padding: 10px; background: var(--panel-strong); box-shadow: 0 12px 30px rgba(0,0,0,.25); }
     .score-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; }
@@ -1398,6 +1400,16 @@
     .stock-card-metric .entry-time-70 { color: var(--cyan); }
     .stock-card-metric .entry-time-3 { color: var(--pink); }
     .stock-card-metric .entry-time-6 { color: var(--pink); }
+    .strategy-score-report { display: grid; gap: 9px; padding: 4px 0 2px; }
+    .strategy-score-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 34px; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; }
+    .strategy-score-track { height: 9px; border-radius: 999px; overflow: hidden; background: var(--chart-grid); }
+    .strategy-score-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan), var(--blue)); }
+    .strategy-score-row.active { color: var(--text); font-weight: 800; }
+    .strategy-score-row.active .strategy-score-track i { background: linear-gradient(90deg, var(--amber), var(--red)); }
+    .score-trace-chart { min-height: 300px; padding: 18px 22px 14px; border-radius: 16px; background: var(--panel-soft); }
+    .score-trace-chart svg { width: 100%; height: 240px; display: block; overflow: visible; }
+    .score-trace-chart .chart-title { justify-content: center; gap: 28px; margin-top: 10px; font-size: 14px; }
+    .pre-alert-badge { display: inline-flex; align-items: center; padding: 3px 6px; border: 1px solid #d9a441; border-radius: 5px; color: #a56a00; background: #fff5d9; font-size: 10px; font-weight: 800; }
 
     .stock-card-metric .order-flow-label {
       display: flex;
@@ -3001,6 +3013,7 @@
       scoreAlertAbove: {},
       scoreAlertFetchAt: 0,
       scoreAlertReady: false,
+      scoreTrace: { code: null, status: "idle", data: [] },
       marketDate: null,
       marketUpdatedAt: null,
       marketRegime: { label: "常态", minScore: 70 },
@@ -3286,7 +3299,7 @@
           : "";
         const limitUpNote = "";
         const marketCapNote = state.marketCapExcludedCount
-          ? `；总市值低于 30 亿 ${state.marketCapExcludedCount.toLocaleString("zh-CN")} 只`
+          ? `；流通市值不超过 30 亿 ${state.marketCapExcludedCount.toLocaleString("zh-CN")} 只`
           : "";
         const scopeName = state.pageView === "hot-concept" ? state.hotConcept : market.label;
         el.dynamicStatus.textContent = `${scopeName}已扫描 ${state.scannedCount.toLocaleString("zh-CN")} 只，展示 ${(state.matchedCount || 0).toLocaleString("zh-CN")} 只${marketCapNote}${downtrendNote}${limitUpNote}。${state.pageView === "hot-concept" ? "" : refreshNote}`;
@@ -4190,7 +4203,11 @@
       const query = state.search.trim().toLowerCase();
       return stocks
         .map((stock) => ({ ...stock, score: weightedScore(stock) }))
-        .filter((stock) => stock.score >= (state.pageView === "hot-concept" ? state.minScore : Math.max(state.marketRegime?.minScore ?? 70, state.minScore)))
+        .filter((stock) => {
+          const threshold = state.pageView === "hot-concept" ? state.minScore : Math.max(state.marketRegime?.minScore ?? 70, state.minScore);
+          // 70 分是确认入池线；预测性预警允许领先指标同步改善的股票提前进入观察池。
+          return stock.score >= threshold || (stock.score > 60 && Boolean(stock.screener?.preAlert));
+        })
         .filter((stock) => {
           if (!query) return true;
           const text = `${stock.code} ${stock.name} ${stock.industry} ${stock.theme} ${stock.reason} ${stock.tags.join(" ")}`.toLowerCase();
@@ -4203,6 +4220,13 @@
           if (state.sortBy === "amount") return (b.amount ?? 0) - (a.amount ?? 0);
           if (state.sortBy === "todayLimitUp") return (b.probability?.todayLimitUp ?? -Infinity) - (a.probability?.todayLimitUp ?? -Infinity);
           if (state.sortBy === "followUp") return (b.probability?.followUp ?? -Infinity) - (a.probability?.followUp ?? -Infinity);
+          const aConfirmed = a.score >= 70;
+          const bConfirmed = b.score >= 70;
+          if (aConfirmed !== bConfirmed) return bConfirmed ? 1 : -1;
+          if (!aConfirmed && !bConfirmed) {
+            const probabilityDiff = (b.screener?.predictiveProbability ?? -Infinity) - (a.screener?.predictiveProbability ?? -Infinity);
+            if (probabilityDiff) return probabilityDiff;
+          }
           return b.score - a.score;
         });
     }
@@ -4485,6 +4509,7 @@
           .join("");
         const infoBadges = `${topicBadge}${sectorBadges}${patternBadges}`;
         const probability = stock.probability || {};
+        const predictive = stock.screener?.preAlert ? `<span class="pre-alert-badge" title="${escapeHtml(`${stock.screener.preAlertReason || "评分接近70分"} 预测评分 ${stock.screener.predictiveScore}，预计达标概率 ${stock.screener.predictiveProbability}%。`)}">提前预警 ${stock.screener.predictiveProbability}%</span>` : "";
         const followValue = hasNumber(probability.followUp) ? Number(probability.followUp) : null;
         const followDepth = followValue === null ? 0 : Math.min(8, Math.floor(Math.abs(followValue - 60) / 5));
         const followColor = followValue === null
@@ -4513,7 +4538,7 @@
           <button class="stock-card${active}${stock.screener?.recommendation ? ` has-recommendation ${stock.screener.recommendation === "推荐买入" ? "recommend-buy" : stock.screener.recommendation === "已涨停" ? "recommend-limit" : stock.screener.recommendation === "谨慎追高" ? "recommend-caution" : stock.screener.recommendation === "等待回落" ? "recommend-wait" : stock.screener.recommendation === "冲高回落风险" ? "recommend-risk" : "recommend-watch"}` : ""}" type="button" data-code="${stock.code}" data-recommendation="${stock.screener?.recommendation || ""}" aria-pressed="${stock.code === state.selectedCode}" aria-label="选择 ${stock.name}，双击查看日 K 线" title="单击选择，双击查看日 K 线">
             <div class="stock-top">
               <div>
-                <div class="stock-name">${stock.name}<span class="code">${stock.code}</span>${popularityMarkup}${infoBadges}</div>
+                <div class="stock-name">${stock.name}<span class="code">${stock.code}</span>${popularityMarkup}${infoBadges}${predictive}</div>
                 <div class="stock-moving-averages" aria-label="${escapeHtml(stock.name)}均线位置">${movingAverageMarkup}</div>
               </div>
               <div class="stock-quote ${pctClass}" aria-label="现价 ${formatPrice(stock.price)}，涨跌幅 ${formatPct(stock.change)}">
@@ -5066,6 +5091,70 @@
       return ["等待确认", ""];
     }
 
+    function strategyScore(stock, strategyKey) {
+      const weights = strategies[strategyKey].weights;
+      const b = stock.base || {};
+      const positive = b.trend * weights.trend + b.momentum * weights.momentum + b.liquidity * weights.liquidity + b.strength * weights.strength + b.stability * weights.stability;
+      const baseScore = Math.max(0, Math.min(99, (positive - (b.risk || 0) * weights.risk) / 90));
+      const flow = stock.orderFlow;
+      const orderFlowScore = flow?.available && hasNumber(flow.score) ? flow.score : baseScore;
+      const orderAdjusted = baseScore * .77 + orderFlowScore * .08;
+      const macdScore = hasNumber(stock.probability?.macdScore) ? stock.probability.macdScore : 50;
+      return Math.round(Math.max(0, Math.min(100, orderAdjusted + macdScore * .15)));
+    }
+
+    function strategyScoreReport(stock) {
+      return `<div class="strategy-score-report" aria-label="不同策略模式评分报表">
+        ${Object.entries(strategies).map(([key, strategy]) => {
+          const score = strategyScore(stock, key);
+          return `<div class="strategy-score-row${key === state.strategy ? " active" : ""}"><span>${strategy.label}</span><span class="strategy-score-track"><i style="width:${score}%"></i></span><strong>${score}</strong></div>`;
+        }).join("")}
+      </div>`;
+    }
+
+    function traceStrategyScore(item) {
+      const b = item.base || {};
+      if (!Object.keys(b).length && hasNumber(item.score)) return Number(item.score);
+      const weights = strategies[state.strategy]?.weights || strategies.balanced.weights;
+      const positive = (Number(b.trend) || 0) * weights.trend + (Number(b.momentum) || 0) * weights.momentum + (Number(b.liquidity) || 0) * weights.liquidity + (Number(b.strength) || 0) * weights.strength + (Number(b.stability) || 0) * weights.stability;
+      const baseScore = Math.max(0, Math.min(99, (positive - (Number(b.risk) || 0) * weights.risk) / 90));
+      const flow = hasNumber(item.orderFlowScore) ? Number(item.orderFlowScore) : baseScore;
+      const macd = hasNumber(item.macdScore) ? Number(item.macdScore) : 50;
+      return Math.round(Math.max(0, Math.min(100, baseScore * .77 + flow * .08 + macd * .15)));
+    }
+
+    function scoreTraceChart(stock) {
+      const rows = state.scoreTrace.code === stock.code && state.scoreTrace.status === "ready" ? state.scoreTrace.data : [];
+      if (state.scoreTrace.code !== stock.code || state.scoreTrace.status === "loading") return `<div class="score-trace-chart"><div class="chart-loading">正在加载分钟评分轨迹...</div></div>`;
+      if (!rows.length) return `<div class="score-trace-chart"><div class="chart-error">今日暂无分钟评分轨迹。</div></div>`;
+      const width = 760, height = 240, left = 48, right = 24, top = 22, bottom = 38;
+      const strategyRows = rows.map((item) => ({ ...item, strategyScore: traceStrategyScore(item) }));
+      const axisMin = 50, axisMax = 100;
+      const x = (index) => left + (width - left - right) * index / Math.max(1, rows.length - 1);
+      const y = (value) => height - bottom - (Math.max(axisMin, Math.min(axisMax, Number(value || axisMin))) - axisMin) / (axisMax - axisMin) * (height - top - bottom);
+      const line = (key, color) => `<polyline points="${strategyRows.map((item, index) => `${x(index)},${y(item[key])}`).join(" ")}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const labels = strategyRows.filter((_, index) => index === 0 || index === strategyRows.length - 1 || index % Math.max(1, Math.floor(strategyRows.length / 5)) === 0).map((item) => {
+        const original = strategyRows.indexOf(item);
+        return `<text x="${x(original)}" y="${height - 12}" text-anchor="middle" fill="var(--chart-axis)" font-size="12">${item.time}</text>`;
+      }).join("");
+      return `<div class="score-trace-chart"><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${stock.name} ${strategies[state.strategy]?.label || "当前策略"}分钟评分走势图"><path d="M${left} ${y(50)} H${width - right}" stroke="var(--chart-axis)" stroke-width="1.5"/><path d="M${left} ${y(60)} H${width - right}" stroke="var(--amber)" stroke-dasharray="6 6"/><path d="M${left} ${y(70)} H${width - right}" stroke="var(--red)" stroke-dasharray="6 6"/>${line("strategyScore", "var(--cyan)")}${line("predictiveScore", "var(--violet)")}${labels}<text x="${left}" y="${y(70) - 8}" fill="var(--red)" font-size="12">70分</text><text x="${left}" y="${y(60) - 8}" fill="var(--amber)" font-size="12">60分</text><text x="${left}" y="${y(50) - 8}" fill="var(--chart-axis)" font-size="12">50分 / 0轴</text></svg><div class="chart-title"><span style="color:var(--cyan)">${strategies[state.strategy]?.label || "当前策略"}实评分</span><span style="color:var(--violet)">预测评分</span></div></div>`;
+    }
+
+    async function loadScoreTrace(stock) {
+      if (!stock || state.scoreTrace.code === stock.code && ["loading", "ready"].includes(state.scoreTrace.status)) return;
+      state.scoreTrace = { code: stock.code, status: "loading", data: [] };
+      renderDetail(filteredStocks());
+      try {
+        const response = await fetch(`/api/score-traces?${new URLSearchParams({ code: stock.code })}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "评分轨迹加载失败");
+        state.scoreTrace = { code: stock.code, status: "ready", data: payload.traces || [] };
+      } catch {
+        state.scoreTrace = { code: stock.code, status: "error", data: [] };
+      }
+      if (state.selectedCode === stock.code) renderDetail(filteredStocks());
+    }
+
     function renderDetail(list) {
       const stock = list.find((s) => s.code === state.selectedCode);
       if (!stock) {
@@ -5129,8 +5218,8 @@
         </section>
 
         <div class="chart-box">
-          <div class="chart-title"><span>因子结构</span><span class="${klass}">${text}</span></div>
-          ${radar(stock)}
+          <div class="chart-title"><span>分钟评分走势图 · ${strategies[state.strategy]?.label || "当前策略"}</span><span class="${klass}">${text}</span></div>
+          ${scoreTraceChart(stock)}
         </div>
 
         <div class="section-head">
@@ -5198,6 +5287,7 @@
           window.setTimeout(() => copyBtn.textContent = "复制请求", 1200);
         }
       });
+      loadScoreTrace(stock);
       if (!stock.conceptsLoaded) loadStockConcepts(stock.code);
     }
 
@@ -5217,19 +5307,32 @@
       list.forEach((stock) => {
         const currentScore = Number(stock.screener?.snapshotScore ?? stock.score);
         if (!Number.isFinite(currentScore)) return;
-        if (currentScore < 70) {
-          state.scoreAlertAbove[stock.code] = false;
-          return;
+        const levels = [80, 85, 90, 95];
+        const probability = Number(stock.screener?.predictiveProbability);
+        levels.forEach((threshold) => {
+          const levelKey = `${stock.code}:prediction:${threshold}`;
+          if (Number.isFinite(probability) && probability < threshold) state.scoreAlertAbove[levelKey] = false;
+          if (!Number.isFinite(probability) || probability < threshold || state.scoreAlertAbove[levelKey] === true) return;
+          state.scoreAlertAbove[levelKey] = true;
+          const time = stock.screener?.predictiveThresholdTimes?.[String(threshold)] || new Date().toLocaleTimeString("zh-CN", { hour12: false });
+          const key = `${stock.code}:prediction:${threshold}:${time}`;
+          if (dismissed.has(key) || state.scoreAlertKeys.has(key)) return;
+          state.scoreAlertKeys.add(key);
+          state.scoreAlerts.push({ code: stock.code, name: stock.name || stock.code, threshold, kind: "prediction", time, price: stock.price, changePct: stock.changePct ?? stock.change });
+          added = true;
+        });
+        const scoreKey = `${stock.code}:score:70`;
+        if (currentScore < 70) state.scoreAlertAbove[scoreKey] = false;
+        if (currentScore >= 70 && state.scoreAlertAbove[scoreKey] !== true) {
+          state.scoreAlertAbove[scoreKey] = true;
+          const time = stock.screener?.scoreThresholdTimes?.["70"] || new Date().toLocaleTimeString("zh-CN", { hour12: false });
+          const key = `${stock.code}:score:70:${time}`;
+          if (!dismissed.has(key) && !state.scoreAlertKeys.has(key)) {
+            state.scoreAlertKeys.add(key);
+            state.scoreAlerts.push({ code: stock.code, name: stock.name || stock.code, threshold: 70, kind: "score", time, price: stock.price, changePct: stock.changePct ?? stock.change });
+            added = true;
+          }
         }
-        if (state.scoreAlertAbove[stock.code] === true) return;
-        state.scoreAlertAbove[stock.code] = true;
-        const time = stock.screener?.scoreThresholdTimes?.["70"] || new Date().toLocaleTimeString("zh-CN", { hour12: false });
-        const key = `${stock.code}:${time}`;
-        if (dismissed.has(key)) return;
-        if (state.scoreAlertKeys.has(key)) return;
-        state.scoreAlertKeys.add(key);
-        state.scoreAlerts.push({ code: stock.code, name: stock.name || stock.code, time, price: stock.price, changePct: stock.changePct ?? stock.change });
-        added = true;
       });
       if (added && state.scoreAlertReady) playScoreAlertSound();
       if (!state.scoreAlerts.length) {
@@ -5238,17 +5341,35 @@
         return;
       }
       el.scoreAlerts.hidden = false;
+      const groupedAlerts = [];
+      const groupedMap = new Map();
+      state.scoreAlerts.forEach((item) => {
+        const groupKey = `${item.code}:${item.kind}`;
+        if (item.kind !== "prediction") {
+          groupedAlerts.push(item);
+          return;
+        }
+        let group = groupedMap.get(groupKey);
+        if (!group) {
+          group = { ...item, thresholds: [], maxThreshold: item.threshold };
+          groupedMap.set(groupKey, group);
+          groupedAlerts.push(group);
+        }
+        group.thresholds.push(Number(item.threshold));
+        group.maxThreshold = Math.max(group.maxThreshold, Number(item.threshold));
+        if (String(item.time) > String(group.time)) group.time = item.time;
+      });
       el.scoreAlerts.innerHTML = `
         <div class="score-alert-panel">
-          <div class="score-alert-head"><span>综合评分达到 70 分</span><button class="score-alert-close" type="button" data-close-score-alerts>关闭</button></div>
+          <div class="score-alert-head"><span>预测分级 / 70分确认提醒</span><button class="score-alert-close" type="button" data-close-score-alerts>关闭</button></div>
           <div class="score-alert-list">
-            ${state.scoreAlerts.map((item) => `<div class="score-alert-item"><span>${escapeHtml(item.name)}（${item.code}）</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`).join("")}
+            ${groupedAlerts.map((item) => { const low = Math.min(...(item.thresholds || [item.threshold])); const label = item.kind === "prediction" ? (low === item.maxThreshold ? `预警${item.maxThreshold}%` : `预警${low}%→${item.maxThreshold}%`) : "评分70"; return `<div class="score-alert-item"><span>${escapeHtml(item.name)}（${item.code}） <small>${label}</small></span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>`;
       el.scoreAlerts.querySelector("[data-close-score-alerts]")?.addEventListener("click", () => {
         try {
           const dismissed = new Set(JSON.parse(localStorage.getItem("scoreAlertDismissedKeys") || "[]"));
-          state.scoreAlerts.forEach((item) => dismissed.add(`${item.code}:${item.time}`));
+          state.scoreAlerts.forEach((item) => dismissed.add(`${item.code}:${item.kind}:${item.threshold}:${item.time}`));
           localStorage.setItem("scoreAlertDismissedKeys", JSON.stringify([...dismissed].slice(-500)));
         } catch {}
         state.scoreAlerts = [];
@@ -5267,11 +5388,11 @@
         oscillator.type = "sine";
         oscillator.frequency.value = 880;
         gain.gain.setValueAtTime(0.0001, context.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.28);
+        gain.gain.exponentialRampToValueAtTime(0.5, context.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.45);
         oscillator.connect(gain).connect(context.destination);
         oscillator.start();
-        oscillator.stop(context.currentTime + 0.3);
+        oscillator.stop(context.currentTime + 0.5);
         oscillator.addEventListener("ended", () => context.close().catch(() => {}));
       } catch {
         // 浏览器未授权音频时，不影响行情和提醒文字。
@@ -5290,13 +5411,18 @@
           name: item.name || stocks.find((stock) => stock.code === item.code)?.name || item.code,
           price: item.price,
           changePct: item.changePct,
-          screener: { snapshotScore: 70, scoreThresholdTimes: { "70": item.time } }
+          screener: item.kind === "prediction"
+            ? { snapshotScore: 0, predictiveProbability: item.threshold, predictiveThresholdTimes: { [String(item.threshold)]: item.time } }
+            : { snapshotScore: 70, scoreThresholdTimes: { "70": item.time } }
         }));
         // 首次加载只建立历史基线，不把历史记录当成新提醒展示。
         alertStocks.forEach((item) => {
-          const key = `${item.code}:${item.screener.scoreThresholdTimes["70"]}`;
+          const isPrediction = item.screener?.predictiveThresholdTimes;
+          const threshold = isPrediction ? Object.keys(item.screener.predictiveThresholdTimes)[0] : "70";
+          const time = isPrediction ? item.screener.predictiveThresholdTimes[threshold] : item.screener.scoreThresholdTimes["70"];
+          const key = `${item.code}:${isPrediction ? "prediction" : "score"}:${threshold}:${time}`;
           state.scoreAlertKeys.add(key);
-          state.scoreAlertAbove[item.code] = true;
+          state.scoreAlertAbove[`${item.code}:${isPrediction ? "prediction" : "score"}:${threshold}`] = true;
         });
         state.scoreAlertReady = true;
         render();

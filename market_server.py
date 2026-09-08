@@ -284,7 +284,11 @@ _midterm_quote_cache: Dict[str, Any] = {"created_at": 0.0, "rows": {}}
 _score_threshold_times: Dict[Tuple[str, str, int], str] = {}
 _score_threshold_names: Dict[Tuple[str, str, int], str] = {}
 _score_threshold_quotes: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
+_prediction_threshold_times: Dict[Tuple[str, str, int], str] = {}
+_prediction_threshold_names: Dict[Tuple[str, str, int], str] = {}
+_prediction_threshold_quotes: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
 _change_threshold_times: Dict[Tuple[str, str, int], str] = {}
+_score_observations: Dict[Tuple[str, str], Tuple[float, float]] = {}
 
 
 def load_threshold_times() -> None:
@@ -296,6 +300,11 @@ def load_threshold_times() -> None:
             _score_threshold_times[key] = str(item["time"])
             _score_threshold_names[key] = str(item.get("name") or item["code"])
             _score_threshold_quotes[key] = {"price": item.get("price"), "changePct": item.get("changePct")}
+        for item in payload.get("prediction", []):
+            key = (str(item["date"]), str(item["code"]), int(item["threshold"]))
+            _prediction_threshold_times[key] = str(item["time"])
+            _prediction_threshold_names[key] = str(item.get("name") or item["code"])
+            _prediction_threshold_quotes[key] = {"price": item.get("price"), "changePct": item.get("changePct")}
         for item in payload.get("change", []):
             key = (str(item["date"]), str(item["code"]), int(item["threshold"]))
             _change_threshold_times[key] = str(item["time"])
@@ -308,6 +317,10 @@ def persist_threshold_times() -> None:
         "score": [
             {"date": date, "code": code, "threshold": threshold, "time": value, "name": _score_threshold_names.get((date, code, threshold), code), **(_score_threshold_quotes.get((date, code, threshold)) or {})}
             for (date, code, threshold), value in _score_threshold_times.items()
+        ],
+        "prediction": [
+            {"date": date, "code": code, "threshold": threshold, "time": value, "name": _prediction_threshold_names.get((date, code, threshold), code), **(_prediction_threshold_quotes.get((date, code, threshold)) or {})}
+            for (date, code, threshold), value in _prediction_threshold_times.items()
         ],
         "change": [
             {"date": date, "code": code, "threshold": threshold, "time": value}
@@ -516,8 +529,46 @@ def scan_all_market_thresholds() -> None:
     """Scan every live A-share row only for score/change threshold timestamps."""
     rows, _ = fetch_market_rows("all")
     updated_at = datetime.now(CHINA_TZ)
+    snapshots: List[Dict[str, Any]] = []
     for row in rows:
-        dynamic_snapshot(row, updated_at, "all")
+        quote = dynamic_snapshot(row, updated_at, "all")
+        if quote:
+            snapshots.append(quote)
+    save_score_traces(snapshots, updated_at)
+
+
+def save_score_traces(quotes: List[Dict[str, Any]], updated_at: datetime) -> None:
+    """Persist at most one score snapshot per stock per minute."""
+    if not quotes:
+        return
+    trade_date = updated_at.astimezone(CHINA_TZ).strftime("%Y-%m-%d")
+    minute = updated_at.astimezone(CHINA_TZ).strftime("%H:%M")
+    connection = open_backtest_db()
+    try:
+        connection.executemany(
+            """INSERT OR IGNORE INTO score_traces
+            (trade_date, minute, code, name, score, predictive_score, predictive_probability,
+             price, change_pct, volume_ratio, net_inflow, macd_signal, base_json,
+             order_flow_score, macd_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    trade_date, minute, quote["code"], quote.get("name"),
+                    quote.get("screener", {}).get("snapshotScore"),
+                    quote.get("screener", {}).get("predictiveScore"),
+                    quote.get("screener", {}).get("predictiveProbability"),
+                    quote.get("price"), quote.get("changePct"), quote.get("volumeRatio"),
+                    quote.get("netInflow"), None,
+                    json.dumps(quote.get("base") or {}, ensure_ascii=False),
+                    (quote.get("probability") or {}).get("orderFlowScore"),
+                    (quote.get("probability") or {}).get("macdScore"),
+                )
+                for quote in quotes
+            ],
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def auction_strength_score(auction: Optional[Dict[str, Any]], float_cap: Optional[float]) -> Dict[str, Any]:
@@ -1417,7 +1468,40 @@ def dynamic_snapshot(
     )
     trade_date = updated_at.astimezone(CHINA_TZ).strftime("%Y-%m-%d")
     score_time = updated_at.astimezone(CHINA_TZ).strftime("%H:%M:%S")
+    observation_key = (trade_date, code)
+    previous_score, previous_at = _score_observations.get(observation_key, (float(score), time.monotonic()))
+    elapsed_minutes = max((time.monotonic() - previous_at) / 60, 0.5)
+    score_velocity = (score - previous_score) / elapsed_minutes
+    _score_observations[observation_key] = (float(score), time.monotonic())
+    flow_ratio = (net_inflow / amount * 100) if net_inflow is not None and amount > 0 else 0.0
+    momentum_support = 0
+    if score_velocity >= .15: momentum_support += 4
+    if (volume_ratio or 0) >= 1.2: momentum_support += 3
+    if flow_ratio > 0: momentum_support += 3
+    if amplitude >= 3: momentum_support += 2
+    chase_penalty = max(0, change_pct - 7) * 2.5
+    # 预测性入池：允许评分尚未到 70 分、但多个领先指标已经同步改善的股票提前进入观察池。
+    # 70 分仍是确认线；预测线只负责提前发现，不直接等同于确认信号。
+    predictive_score = round(min(95, max(0, score + momentum_support + score_velocity * 5 - chase_penalty)))
+    predictive_probability = round(min(95, max(1, 35 + (predictive_score - 60) * 6 + max(0, score_velocity) * 12 - max(0, change_pct - 7) * 5)))
+    early_momentum = momentum_support >= 6 and (volume_ratio or 0) >= 1.1
+    early_flow = flow_ratio > 0.15
+    pre_alert = (
+        56 <= score < 70
+        and predictive_score >= 66
+        and predictive_probability >= 80
+        and change_pct <= 7.5
+        and (early_momentum or early_flow)
+    )
     with _cache_lock:
+        # 预测概率分级告警：每个级别只记录首次达到时间，70 分为最终确认告警。
+        for threshold in (80, 85, 90, 95):
+            key = (trade_date, code, threshold)
+            if predictive_probability >= threshold and key not in _prediction_threshold_times:
+                _prediction_threshold_times[key] = score_time
+                _prediction_threshold_names[key] = name or code
+                _prediction_threshold_quotes[key] = {"price": price, "changePct": change_pct}
+                persist_threshold_times()
         for threshold in (60, 70):
             key = (trade_date, code, threshold)
             if score >= threshold and key not in _score_threshold_times:
@@ -1484,6 +1568,11 @@ def dynamic_snapshot(
             "turnover": turnover,
             "amplitude": amplitude,
             "snapshotScore": score,
+            "predictiveScore": predictive_score,
+            "predictiveProbability": predictive_probability,
+            "preAlert": pre_alert,
+            "preAlertReason": "预测评分正在向70分靠近：评分趋势、量价动能或资金流已出现同步改善；这是提前观察信号，不代表已确认达到70分。" if pre_alert else None,
+            "predictiveThresholdTimes": {str(level): _prediction_threshold_times.get((trade_date, code, level)) for level in (80, 85, 90, 95)},
             "scoreThresholdTimes": {
                 "60": _score_threshold_times.get((trade_date, code, 60)),
                 "70": _score_threshold_times.get((trade_date, code, 70)),
@@ -1867,7 +1956,8 @@ def fetch_dynamic_market_data(
         if quote is None:
             continue
         market_quotes.append(quote)
-        if not bse_code(quote["code"]) and (quote.get("marketCap") is None or quote["marketCap"] < 3_000_000_000):
+        # 盘中选股只按流通市值过滤；总市值不再作为硬性入池条件。
+        if not bse_code(quote["code"]) and (quote.get("floatMarketCap") is None or quote["floatMarketCap"] <= 3_000_000_000):
             market_cap_excluded_count += 1
             continue
         if (
@@ -2478,6 +2568,18 @@ def open_backtest_db() -> sqlite3.Connection:
         code TEXT NOT NULL, signal_date TEXT NOT NULL, score INTEGER NOT NULL,
         settled INTEGER NOT NULL DEFAULT 0, outcome INTEGER, PRIMARY KEY (code, signal_date)
     )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS score_traces (
+        trade_date TEXT NOT NULL, minute TEXT NOT NULL, code TEXT NOT NULL,
+        name TEXT, score REAL, predictive_score REAL, predictive_probability REAL,
+            price REAL, change_pct REAL, volume_ratio REAL, net_inflow REAL, macd_signal TEXT,
+        base_json TEXT, order_flow_score REAL, macd_score REAL,
+        PRIMARY KEY (trade_date, minute, code)
+    )""")
+    for column, definition in (("base_json", "TEXT"), ("order_flow_score", "REAL"), ("macd_score", "REAL")):
+        try:
+            connection.execute(f"ALTER TABLE score_traces ADD COLUMN {column} {definition}")
+        except sqlite3.OperationalError:
+            pass
     connection.execute("""CREATE TABLE IF NOT EXISTS midterm_history_cache (
         code TEXT PRIMARY KEY, latest_date TEXT NOT NULL,
         bars_json TEXT NOT NULL, fetched_at TEXT NOT NULL
@@ -3312,12 +3414,33 @@ class AppHandler(BaseHTTPRequestHandler):
                 except (MarketDataError, OSError, ValueError):
                     pass
             alerts = [
-                {"code": code, "name": _score_threshold_names.get((date, code, threshold), code), "time": value, **(_score_threshold_quotes.get((date, code, threshold)) or {})}
+                {"code": code, "name": _score_threshold_names.get((date, code, threshold), code), "time": value, "kind": "score", "threshold": threshold, **(_score_threshold_quotes.get((date, code, threshold)) or {})}
                 for (date, code, threshold), value in _score_threshold_times.items()
                 if date == trade_date and threshold == 70
             ]
+            alerts.extend(
+                {"code": code, "name": _prediction_threshold_names.get((date, code, threshold), code), "time": value, "kind": "prediction", "threshold": threshold, **(_prediction_threshold_quotes.get((date, code, threshold)) or {})}
+                for (date, code, threshold), value in _prediction_threshold_times.items()
+                if date == trade_date
+            )
             alerts.sort(key=lambda item: item["time"])
             self.send_json(200, {"tradeDate": trade_date, "alerts": alerts})
+            return
+        if parsed.path == "/api/score-traces":
+            code = query.get("code", [""])[0]
+            trade_date = query.get("date", [datetime.now(CHINA_TZ).strftime("%Y-%m-%d")])[0]
+            if len(code) != 6 or not code.isdigit():
+                self.send_json(400, {"error": "股票代码应为 6 位数字"})
+                return
+            with open_backtest_db() as connection:
+                rows = connection.execute(
+                    "SELECT minute, score, predictive_score, predictive_probability, price, change_pct, base_json, order_flow_score, macd_score FROM score_traces WHERE trade_date=? AND code=? ORDER BY minute",
+                    (trade_date, code),
+                ).fetchall()
+            self.send_json(200, {"code": code, "date": trade_date, "traces": [
+                {"time": row[0], "score": row[1], "predictiveScore": row[2], "probability": row[3], "price": row[4], "changePct": row[5], "base": json.loads(row[6] or "{}"), "orderFlowScore": row[7], "macdScore": row[8]}
+                for row in rows
+            ]})
             return
         if parsed.path == "/api/sectors":
             self.send_json(
