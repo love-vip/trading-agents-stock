@@ -291,6 +291,20 @@ _change_threshold_times: Dict[Tuple[str, str, int], str] = {}
 _score_observations: Dict[Tuple[str, str], Tuple[float, float]] = {}
 
 
+def is_intraday_alert_session(value: datetime) -> bool:
+    """Only trading-session snapshots may create live alerts."""
+    local = value.astimezone(CHINA_TZ)
+    if local.weekday() >= 5:
+        return False
+    minutes = local.hour * 60 + local.minute
+    return 9 * 60 + 25 <= minutes < 11 * 60 + 30 or 13 * 60 <= minutes < 15 * 60
+
+
+def is_alert_market_code(code: str) -> bool:
+    """右上角实时告警只覆盖创业板、科创板和北交所。"""
+    return str(code).startswith(("300", "301", "688", "689", "4", "8", "92"))
+
+
 def load_threshold_times() -> None:
     """Restore first-hit timestamps so service restarts never overwrite them."""
     try:
@@ -565,6 +579,33 @@ def save_score_traces(quotes: List[Dict[str, Any]], updated_at: datetime) -> Non
                 )
                 for quote in quotes
             ],
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def save_alert_event(
+    trade_date: str, code: str, name: str, alert_kind: str, threshold: int,
+    alert_time: str, quote: Dict[str, Any], score: float, predictive_score: float,
+    predictive_probability: float, factors: Dict[str, Any], macd_score: Optional[float] = None,
+) -> None:
+    """Persist a one-time alert snapshot for later after-close evaluation."""
+    connection = open_backtest_db()
+    try:
+        connection.execute(
+            """INSERT OR IGNORE INTO alert_events
+            (trade_date, code, name, alert_kind, threshold, alert_time, price, change_pct,
+             score, predictive_score, predictive_probability, volume_ratio, turnover,
+             amplitude, net_inflow, factors_json, macd_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                trade_date, code, name or code, alert_kind, threshold, alert_time,
+                quote.get("price"), quote.get("changePct"), score, predictive_score,
+                predictive_probability, quote.get("volumeRatio"), quote.get("turnover"),
+                quote.get("amplitude"), quote.get("netInflow"),
+                json.dumps(factors or {}, ensure_ascii=False), macd_score,
+            ),
         )
         connection.commit()
     finally:
@@ -1458,7 +1499,7 @@ def dynamic_snapshot(
     net_inflow = number(row.get("f62"))
     volume_ratio = number(row.get("f10"))
     factors = dynamic_factors(change_pct, amount, turnover, amplitude, net_inflow)
-    score = round(
+    base_score_reference = round(
         factors["trend"] * 0.22
         + factors["momentum"] * 0.28
         + factors["liquidity"] * 0.2
@@ -1469,11 +1510,36 @@ def dynamic_snapshot(
     trade_date = updated_at.astimezone(CHINA_TZ).strftime("%Y-%m-%d")
     score_time = updated_at.astimezone(CHINA_TZ).strftime("%H:%M:%S")
     observation_key = (trade_date, code)
-    previous_score, previous_at = _score_observations.get(observation_key, (float(score), time.monotonic()))
+    previous_score, previous_at = _score_observations.get(observation_key, (float(base_score_reference), time.monotonic()))
     elapsed_minutes = max((time.monotonic() - previous_at) / 60, 0.5)
-    score_velocity = (score - previous_score) / elapsed_minutes
-    _score_observations[observation_key] = (float(score), time.monotonic())
+    score_velocity = (base_score_reference - previous_score) / elapsed_minutes
+    _score_observations[observation_key] = (float(base_score_reference), time.monotonic())
     flow_ratio = (net_inflow / amount * 100) if net_inflow is not None and amount > 0 else 0.0
+    # 告警专用评分：实时量价55% + 资金15% + 板块10% + 分时动能/MACD代理15% + 风险5%。
+    # 全市场扫描不逐只请求分钟K线，分时动能代理由评分速度、量比、振幅和涨跌背离构成。
+    price_volume_score = (
+        factors["trend"] * 0.12
+        + factors["momentum"] * 0.20
+        + factors["liquidity"] * 0.13
+        + factors["strength"] * 0.10
+    )
+    capital_score = clamp(50 + flow_ratio * 12) if net_inflow is not None else 50
+    sector_score = clamp(50 + change_pct * 4 + (2 if amplitude >= 3 else 0))
+    intraday_macd_score = clamp(
+        50
+        + score_velocity * 18
+        + max(-12, min(12, ((volume_ratio or 1) - 1) * 8))
+        + (6 if change_pct > 0 and change_pct >= amplitude * 0.55 else 0)
+        - (6 if change_pct > 6 and score_velocity < 0 else 0)
+    )
+    risk_quality_score = clamp(100 - factors["risk"])
+    score = round(
+        price_volume_score
+        + capital_score * 0.15
+        + sector_score * 0.10
+        + intraday_macd_score * 0.15
+        + risk_quality_score * 0.05
+    )
     momentum_support = 0
     if score_velocity >= .15: momentum_support += 4
     if (volume_ratio or 0) >= 1.2: momentum_support += 3
@@ -1494,26 +1560,41 @@ def dynamic_snapshot(
         and (early_momentum or early_flow)
     )
     with _cache_lock:
-        # 预测概率分级告警：每个级别只记录首次达到时间，70 分为最终确认告警。
-        for threshold in (80, 85, 90, 95):
-            key = (trade_date, code, threshold)
-            if predictive_probability >= threshold and key not in _prediction_threshold_times:
-                _prediction_threshold_times[key] = score_time
-                _prediction_threshold_names[key] = name or code
-                _prediction_threshold_quotes[key] = {"price": price, "changePct": change_pct}
-                persist_threshold_times()
-        for threshold in (60, 70):
-            key = (trade_date, code, threshold)
-            if score >= threshold and key not in _score_threshold_times:
-                _score_threshold_times[key] = score_time
-                _score_threshold_names[key] = name or code
-                _score_threshold_quotes[key] = {"price": price, "changePct": change_pct}
-                persist_threshold_times()
-        for threshold in (3, 6):
-            key = (trade_date, code, threshold)
-            if change_pct >= threshold and key not in _change_threshold_times:
-                _change_threshold_times[key] = score_time
-                persist_threshold_times()
+        if is_intraday_alert_session(updated_at) and is_alert_market_code(code):
+            # 预测概率分级告警：每个级别只记录首次达到时间，70 分为最终确认告警。
+            for threshold in (80, 85, 90, 95):
+                key = (trade_date, code, threshold)
+                if predictive_probability >= threshold and key not in _prediction_threshold_times:
+                    _prediction_threshold_times[key] = score_time
+                    _prediction_threshold_names[key] = name or code
+                    _prediction_threshold_quotes[key] = {"price": price, "changePct": change_pct}
+                    save_alert_event(
+                        trade_date, code, name, "prediction", threshold, score_time,
+                        {"price": price, "changePct": change_pct, "volumeRatio": volume_ratio,
+                         "turnover": turnover, "amplitude": amplitude, "netInflow": net_inflow},
+                        score, predictive_score, predictive_probability, factors,
+                        intraday_macd_score,
+                    )
+                    persist_threshold_times()
+            for threshold in (60, 70):
+                key = (trade_date, code, threshold)
+                if score >= threshold and key not in _score_threshold_times:
+                    _score_threshold_times[key] = score_time
+                    _score_threshold_names[key] = name or code
+                    _score_threshold_quotes[key] = {"price": price, "changePct": change_pct}
+                    save_alert_event(
+                        trade_date, code, name, "score", threshold, score_time,
+                        {"price": price, "changePct": change_pct, "volumeRatio": volume_ratio,
+                         "turnover": turnover, "amplitude": amplitude, "netInflow": net_inflow},
+                        score, predictive_score, predictive_probability, factors,
+                        intraday_macd_score,
+                    )
+                    persist_threshold_times()
+            for threshold in (3, 6):
+                key = (trade_date, code, threshold)
+                if change_pct >= threshold and key not in _change_threshold_times:
+                    _change_threshold_times[key] = score_time
+                    persist_threshold_times()
         day_average = statistics.mean(
             value for value in (number(row.get("f17")), number(row.get("f15")), number(row.get("f16")), price)
             if value is not None
@@ -2575,6 +2656,22 @@ def open_backtest_db() -> sqlite3.Connection:
         base_json TEXT, order_flow_score REAL, macd_score REAL,
         PRIMARY KEY (trade_date, minute, code)
     )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS alert_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trade_date TEXT NOT NULL, code TEXT NOT NULL, name TEXT,
+        alert_kind TEXT NOT NULL, threshold INTEGER NOT NULL, alert_time TEXT NOT NULL,
+        price REAL, change_pct REAL, score REAL, predictive_score REAL,
+        predictive_probability REAL, volume_ratio REAL, turnover REAL, amplitude REAL,
+        net_inflow REAL, factors_json TEXT, macd_score REAL,
+        outcome_settled INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(trade_date, code, alert_kind, threshold)
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS alert_outcomes (
+        event_id INTEGER PRIMARY KEY,
+        close_price REAL, close_change_pct REAL,
+        high_1d_pct REAL, high_3d_pct REAL, high_5d_pct REAL, high_10d_pct REAL,
+        target_hit INTEGER, max_drawdown_pct REAL, settled_at TEXT
+    )""")
     for column, definition in (("base_json", "TEXT"), ("order_flow_score", "REAL"), ("macd_score", "REAL")):
         try:
             connection.execute(f"ALTER TABLE score_traces ADD COLUMN {column} {definition}")
@@ -3416,12 +3513,12 @@ class AppHandler(BaseHTTPRequestHandler):
             alerts = [
                 {"code": code, "name": _score_threshold_names.get((date, code, threshold), code), "time": value, "kind": "score", "threshold": threshold, **(_score_threshold_quotes.get((date, code, threshold)) or {})}
                 for (date, code, threshold), value in _score_threshold_times.items()
-                if date == trade_date and threshold == 70
+                if date == trade_date and threshold == 70 and value <= "15:00:00" and is_alert_market_code(code)
             ]
             alerts.extend(
                 {"code": code, "name": _prediction_threshold_names.get((date, code, threshold), code), "time": value, "kind": "prediction", "threshold": threshold, **(_prediction_threshold_quotes.get((date, code, threshold)) or {})}
                 for (date, code, threshold), value in _prediction_threshold_times.items()
-                if date == trade_date
+                if date == trade_date and value <= "15:00:00" and is_alert_market_code(code)
             )
             alerts.sort(key=lambda item: item["time"])
             self.send_json(200, {"tradeDate": trade_date, "alerts": alerts})

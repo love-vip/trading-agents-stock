@@ -295,7 +295,7 @@
       margin-bottom: 18px;
     }
 
-    .score-alerts { position: fixed; z-index: 40; top: 18px; right: 22px; width: min(400px, calc(100vw - 36px)); }
+    .score-alerts { position: fixed; z-index: 40; top: 18px; right: 22px; width: fit-content; min-width: 430px; max-width: calc(100vw - 36px); }
     /* 中期选股已从左侧导航移除，保留内部兼容逻辑避免影响历史数据。 */
     #midtermNav { display: none !important; }
     .score-alerts[hidden] { display: none; }
@@ -303,12 +303,14 @@
     .score-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; }
     .score-alert-close { border: 0; border-radius: 5px; padding: 2px 7px; color: var(--muted); background: rgba(255,255,255,.08); }
     .score-alert-list { display: grid; gap: 5px; max-height: 220px; margin-top: 8px; overflow-y: auto; }
-    .score-alert-item { display: grid; grid-template-columns: minmax(0, 1fr) 68px 58px 58px; align-items: center; gap: 5px; color: var(--text); font-size: 12px; }
+    .score-alert-item { display: grid; grid-template-columns: minmax(125px, max-content) 62px 68px 70px 68px; align-items: center; gap: 2px; color: var(--text); font-size: 12px; }
     .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .score-alert-item > span:first-child { overflow: visible; text-overflow: clip; }
     .score-alert-item b { font-weight: 800; text-align: right; }
     .score-alert-item em { color: var(--red); font-style: normal; font-weight: 800; text-align: right; }
     .score-alert-item time { text-align: right; }
     .score-alert-item time { color: var(--amber); font-variant-numeric: tabular-nums; }
+    .score-alert-item small { overflow: hidden; white-space: nowrap; color: var(--muted); font-size: 11px; }
 
     .brand {
       min-width: 0;
@@ -1022,7 +1024,7 @@
 
     .stock-top {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(0, 1fr) auto minmax(72px, auto);
       gap: 12px;
       align-items: start;
     }
@@ -1040,6 +1042,10 @@
       font-weight: 700;
       min-width: 0;
     }
+
+    .stock-alert-column { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 72px; }
+    .stock-alert-column .pre-alert-badge { max-width: 86px; justify-content: center; white-space: nowrap; }
+    .stock-alert-column .score { width: 58px; height: 58px; }
 
     .popularity-badge {
       display: inline-flex;
@@ -4541,14 +4547,14 @@
           <button class="stock-card${active}${stock.screener?.recommendation ? ` has-recommendation ${stock.screener.recommendation === "推荐买入" ? "recommend-buy" : stock.screener.recommendation === "已涨停" ? "recommend-limit" : stock.screener.recommendation === "谨慎追高" ? "recommend-caution" : stock.screener.recommendation === "等待回落" ? "recommend-wait" : stock.screener.recommendation === "冲高回落风险" ? "recommend-risk" : "recommend-watch"}` : ""}" type="button" data-code="${stock.code}" data-recommendation="${stock.screener?.recommendation || ""}" aria-pressed="${stock.code === state.selectedCode}" aria-label="选择 ${stock.name}，双击查看日 K 线" title="单击选择，双击查看日 K 线">
             <div class="stock-top">
               <div>
-                <div class="stock-name">${stock.name}<span class="code">${stock.code}</span><span class="intraday-mini loading" data-mini-code="${stock.code}">分时</span>${popularityMarkup}${infoBadges}${predictive}</div>
+                <div class="stock-name">${stock.name}<span class="code">${stock.code}</span><span class="intraday-mini loading" data-mini-code="${stock.code}">分时</span>${popularityMarkup}${infoBadges}</div>
                 <div class="stock-moving-averages" aria-label="${escapeHtml(stock.name)}均线位置">${movingAverageMarkup}</div>
               </div>
               <div class="stock-quote ${pctClass}" aria-label="现价 ${formatPrice(stock.price)}，涨跌幅 ${formatPct(stock.change)}">
                 <div class="stock-price">${formatPrice(stock.price)}</div>
                 <div class="stock-change">${formatPct(stock.change)}</div>
               </div>
-              <div class="score" style="--score:${stock.score}" data-tooltip="${escapeHtml(dynamicScoreTooltip(stock))}" title="${escapeHtml(dynamicScoreTooltip(stock))}">${stock.score}</div>
+              <div class="stock-alert-column">${predictive}<div class="score" style="--score:${stock.score}" data-tooltip="${escapeHtml(dynamicScoreTooltip(stock))}" title="${escapeHtml(dynamicScoreTooltip(stock))}">${stock.score}</div></div>
               ${macdMarkup}
             </div>
             <div class="stock-card-metrics" aria-label="${escapeHtml(stock.name)}行情指标">
@@ -5335,6 +5341,7 @@
       let dismissed = new Set();
       try { dismissed = new Set(JSON.parse(localStorage.getItem("scoreAlertDismissedKeys") || "[]")); } catch {}
       list.forEach((stock) => {
+        if (!/^(300|301|688|689|4|8|92)/.test(stock.code || "")) return;
         const currentScore = Number(stock.screener?.snapshotScore ?? stock.score);
         if (!Number.isFinite(currentScore)) return;
         const levels = [80, 85, 90, 95];
@@ -5393,7 +5400,7 @@
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>预测分级 / 70分确认提醒</span><button class="score-alert-close" type="button" data-close-score-alerts>关闭</button></div>
           <div class="score-alert-list">
-            ${groupedAlerts.map((item) => { const low = Math.min(...(item.thresholds || [item.threshold])); const label = item.kind === "prediction" ? (low === item.maxThreshold ? `预警${item.maxThreshold}%` : `预警${low}%→${item.maxThreshold}%`) : "评分70"; return `<div class="score-alert-item"><span>${escapeHtml(item.name)}（${item.code}） <small>${label}</small></span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
+            ${groupedAlerts.map((item) => { const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : "评分70"; return `<div class="score-alert-item"><span>${escapeHtml(item.name)}（${item.code}）</span><small>${label}</small><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>`;
       el.scoreAlerts.querySelector("[data-close-score-alerts]")?.addEventListener("click", () => {
