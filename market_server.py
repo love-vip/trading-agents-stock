@@ -2,6 +2,7 @@
 """Serve a sector-based TradingAgents stock selector with live A-share quotes."""
 
 import argparse
+import collections
 import difflib
 import html
 import json
@@ -72,6 +73,7 @@ HOT_CONCEPT_ALIASES: Dict[str, Tuple[str, ...]] = {
     "液冷": ("液冷服务器", "液冷服务器概念"),
     "CPO": ("CPO概念", "光模块"),
     "PCB": ("PCB概念", "印制电路板"),
+    "光纤": ("光纤概念",),
     "存储芯片": ("存储芯片概念", "存储器", "半导体存储器"),
     "半导体": ("半导体概念", "存储芯片"),
     "AI视频": ("AI视频概念", "文生视频", "Sora概念"),
@@ -113,6 +115,10 @@ HOT_CONCEPT_FIXED_BOARDS: Dict[str, Tuple[str, str]] = {
     # Eastmoney's suggestion API currently returns index 980138 first, while
     # the constituent-bearing concept board uses BK1137.
     "存储芯片": ("BK1137", "存储芯片"),
+    # 光纤概念在东方财富的成分板块代码为 BK1660，避免名称搜索误命中指数或空结果。
+    "光纤": ("BK1660", "光纤概念"),
+    # 页面展示名为“AI芯片”，内部兼容“算力芯片”请求。
+    "算力芯片": ("BK1127", "AI芯片"),
 }
 # This command is deliberately supplied through the local environment, never code.
 # It must print an EMT get_open_call_auction JSON result for the whole A-share universe.
@@ -268,6 +274,7 @@ _concept_cache: Dict[str, Dict[str, Any]] = {}
 _hot_concept_cache: Dict[str, Dict[str, Any]] = {}
 _hot_concept_summary_cache: Dict[str, Dict[str, Any]] = {}
 _limit_up_cache: Dict[str, Any] = {}
+_sector_money_flow_cache: Dict[str, Any] = {}
 _limit_up_history_cache: Dict[str, Dict[str, Any]] = {}
 _midterm_activity_cache: Dict[str, Dict[str, Any]] = {}
 _ths_popularity_cache: Dict[str, Dict[str, Any]] = {}
@@ -288,6 +295,11 @@ _prediction_threshold_times: Dict[Tuple[str, str, int], str] = {}
 _prediction_threshold_names: Dict[Tuple[str, str, int], str] = {}
 _prediction_threshold_quotes: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
 _change_threshold_times: Dict[Tuple[str, str, int], str] = {}
+_nonmain_repeat_alert_times: Dict[Tuple[str, str], str] = {}
+_nonmain_repeat_alert_names: Dict[Tuple[str, str], str] = {}
+_nonmain_repeat_alert_quotes: Dict[Tuple[str, str], Dict[str, Any]] = {}
+_nonmain_confirmation_history: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+_nonmain_candidate_entries: Dict[Tuple[str, str], Dict[str, Any]] = {}
 _score_observations: Dict[Tuple[str, str], Tuple[float, float]] = {}
 
 
@@ -300,9 +312,9 @@ def is_intraday_alert_session(value: datetime) -> bool:
     return 9 * 60 + 25 <= minutes < 11 * 60 + 30 or 13 * 60 <= minutes < 15 * 60
 
 
-def is_alert_market_code(code: str) -> bool:
-    """右上角实时告警只覆盖创业板、科创板和北交所。"""
-    return str(code).startswith(("300", "301", "688", "689", "4", "8", "92"))
+def is_main_board_code(code: str) -> bool:
+    code = str(code)
+    return code.startswith(("000", "001", "002", "003", "600", "601", "603", "605"))
 
 
 def load_threshold_times() -> None:
@@ -322,6 +334,11 @@ def load_threshold_times() -> None:
         for item in payload.get("change", []):
             key = (str(item["date"]), str(item["code"]), int(item["threshold"]))
             _change_threshold_times[key] = str(item["time"])
+        for item in payload.get("nonMainRepeat", []):
+            key = (str(item["date"]), str(item["code"]))
+            _nonmain_repeat_alert_times[key] = str(item["time"])
+            _nonmain_repeat_alert_names[key] = str(item.get("name") or item["code"])
+            _nonmain_repeat_alert_quotes[key] = {"price": item.get("price"), "changePct": item.get("changePct")}
     except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
         pass
 
@@ -339,6 +356,10 @@ def persist_threshold_times() -> None:
         "change": [
             {"date": date, "code": code, "threshold": threshold, "time": value}
             for (date, code, threshold), value in _change_threshold_times.items()
+        ],
+        "nonMainRepeat": [
+            {"date": date, "code": code, "time": value, "name": _nonmain_repeat_alert_names.get((date, code), code), **(_nonmain_repeat_alert_quotes.get((date, code)) or {})}
+            for (date, code), value in _nonmain_repeat_alert_times.items()
         ],
     }
     THRESHOLD_TIMES_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -549,6 +570,7 @@ def scan_all_market_thresholds() -> None:
         if quote:
             snapshots.append(quote)
     save_score_traces(snapshots, updated_at)
+    process_nonmain_confirmation_alerts(snapshots, updated_at)
 
 
 def save_score_traces(quotes: List[Dict[str, Any]], updated_at: datetime) -> None:
@@ -573,7 +595,14 @@ def save_score_traces(quotes: List[Dict[str, Any]], updated_at: datetime) -> Non
                     quote.get("screener", {}).get("predictiveProbability"),
                     quote.get("price"), quote.get("changePct"), quote.get("volumeRatio"),
                     quote.get("netInflow"), None,
-                    json.dumps(quote.get("base") or {}, ensure_ascii=False),
+                    json.dumps({
+                        **(quote.get("base") or {}),
+                        "_strategyScores": (quote.get("screener") or {}).get("strategyScores") or {},
+                        "_strategyPredictiveScores": (quote.get("screener") or {}).get("strategyPredictiveScores") or {},
+                        "_strategyPredictiveProbabilities": (quote.get("screener") or {}).get("strategyPredictiveProbabilities") or {},
+                        "_amount": quote.get("amount"),
+                        "_amountGatePassed": (quote.get("screener") or {}).get("amountGatePassed"),
+                    }, ensure_ascii=False),
                     (quote.get("probability") or {}).get("orderFlowScore"),
                     (quote.get("probability") or {}).get("macdScore"),
                 )
@@ -583,6 +612,136 @@ def save_score_traces(quotes: List[Dict[str, Any]], updated_at: datetime) -> Non
         connection.commit()
     finally:
         connection.close()
+
+
+def _clock_seconds(value: str) -> Optional[int]:
+    try:
+        hour, minute, second = (int(part) for part in str(value).split(":"))
+        return hour * 3600 + minute * 60 + second
+    except (TypeError, ValueError):
+        return None
+
+
+def process_nonmain_confirmation_alerts(quotes: List[Dict[str, Any]], updated_at: datetime) -> None:
+    """Alert only after a ten-minute, volume/flow/sector-confirmed non-main-board setup."""
+    if not is_intraday_alert_session(updated_at):
+        return
+    trade_date = updated_at.astimezone(CHINA_TZ).strftime("%Y-%m-%d")
+    score_time = updated_at.astimezone(CHINA_TZ).strftime("%H:%M:%S")
+    minute = score_time[:5]
+    sector_rising = collections.Counter(
+        str(quote.get("actualIndustry") or "").strip()
+        for quote in quotes
+        if str(quote.get("actualIndustry") or "").strip()
+        and (quote.get("changePct") or 0) >= 1
+        and (quote.get("amount") or 0) >= 100_000_000
+    )
+
+    with _cache_lock:
+        changed = False
+        for quote in quotes:
+            code = str(quote.get("code") or "")
+            if not code or is_main_board_code(code):
+                continue
+            screener = quote.get("screener") or {}
+            strategy_scores = screener.get("strategyScores") or {}
+            if len(strategy_scores) != 4:
+                continue
+            key = (trade_date, code)
+            snapshot = {
+                "minute": minute,
+                "score": float(screener.get("snapshotScore") or 0),
+                "strategyScores": {name: float(value) for name, value in strategy_scores.items()},
+                "price": float(quote.get("price") or 0),
+                "amount": float(quote.get("amount") or 0),
+                "turnover": float(screener.get("turnover") or 0),
+                "netInflow": quote.get("netInflow"),
+                "volumeRatio": quote.get("volumeRatio"),
+            }
+            history = _nonmain_confirmation_history.setdefault(key, [])
+            if history and history[-1]["minute"] == minute:
+                history[-1] = snapshot
+            else:
+                history.append(snapshot)
+            del history[:-10]
+
+            strategy_confirmed = sum(value >= 70 for value in snapshot["strategyScores"].values()) >= 2
+            if not strategy_confirmed:
+                changed = changed or key in _nonmain_repeat_alert_times
+                _nonmain_candidate_entries.pop(key, None)
+                _nonmain_repeat_alert_times.pop(key, None)
+                _nonmain_repeat_alert_names.pop(key, None)
+                _nonmain_repeat_alert_quotes.pop(key, None)
+                continue
+
+            entry = _nonmain_candidate_entries.setdefault(key, {
+                "minute": minute,
+                "price": snapshot["price"],
+                "amount": snapshot["amount"],
+                "turnover": snapshot["turnover"],
+                "firstFivePrices": [],
+            })
+            if not entry["firstFivePrices"] or entry["firstFivePrices"][-1][0] != minute:
+                if len(entry["firstFivePrices"]) < 5:
+                    entry["firstFivePrices"].append((minute, snapshot["price"]))
+
+            if len(history) < 10:
+                continue
+            confirmed_count = sum(sum(value >= 70 for value in item["strategyScores"].values()) >= 2 for item in history)
+            high_score_count = sum(max(item["strategyScores"].values()) >= 75 for item in history)
+            scores = [item["score"] for item in history]
+            flow_start, flow_now = history[0]["netInflow"], snapshot["netInflow"]
+            flow_stable = not (flow_start is not None and float(flow_start) > 0 and flow_now is not None and float(flow_now) < 0)
+            ratios = [float(item["volumeRatio"]) for item in history[-4:] if item["volumeRatio"] is not None]
+            volume_stable = not (len(ratios) == 4 and all(ratios[index] - ratios[index + 1] >= 0.05 for index in range(3)))
+            entry_floor = min((price for _, price in entry["firstFivePrices"]), default=entry["price"])
+            amount_turnover_stable = (
+                all(item["amount"] >= 100_000_000 for item in history[-3:])
+                and snapshot["amount"] > entry["amount"]
+                and snapshot["turnover"] > entry["turnover"]
+            )
+            industry = str(quote.get("actualIndustry") or "").strip()
+            sector_confirmed = bool(industry) and sector_rising[industry] >= 3
+            confirmation_passed = (
+                confirmed_count >= 8
+                and high_score_count >= 3
+                and snapshot["score"] >= max(scores) - 5
+                and flow_stable
+                and volume_stable
+                and snapshot["price"] > entry["price"]
+                and snapshot["price"] >= entry_floor
+                and amount_turnover_stable
+                and sector_confirmed
+            )
+            if not confirmation_passed:
+                changed = changed or key in _nonmain_repeat_alert_times
+                _nonmain_repeat_alert_times.pop(key, None)
+                _nonmain_repeat_alert_names.pop(key, None)
+                _nonmain_repeat_alert_quotes.pop(key, None)
+                continue
+
+            previous_time = _nonmain_repeat_alert_times.get(key)
+            previous_seconds, current_seconds = _clock_seconds(previous_time), _clock_seconds(score_time)
+            if previous_seconds is not None and current_seconds is not None and current_seconds - previous_seconds < 600:
+                continue
+            highest_strategy_score = max(snapshot["strategyScores"].values())
+            _nonmain_repeat_alert_times[key] = score_time
+            _nonmain_repeat_alert_names[key] = str(quote.get("name") or code)
+            _nonmain_repeat_alert_quotes[key] = {
+                "price": snapshot["price"], "changePct": quote.get("changePct"),
+                "strategyScore": highest_strategy_score,
+            }
+            changed = True
+            save_alert_event(
+                trade_date, code, str(quote.get("name") or code), f"score-repeat-{score_time}", 70, score_time,
+                {"price": snapshot["price"], "changePct": quote.get("changePct"),
+                 "volumeRatio": snapshot["volumeRatio"], "turnover": snapshot["turnover"],
+                 "amplitude": screener.get("amplitude"), "netInflow": flow_now},
+                highest_strategy_score, float(screener.get("predictiveScore") or 0),
+                float(screener.get("predictiveProbability") or 0), quote.get("base") or {}, None,
+            )
+        if changed:
+            persist_threshold_times()
 
 
 def save_alert_event(
@@ -610,6 +769,26 @@ def save_alert_event(
         connection.commit()
     finally:
         connection.close()
+
+
+def alert_consecutive_days(code: str, alert_kind: str, trade_date: str) -> int:
+    """Count consecutive weekdays with the same alert kind up to trade_date."""
+    with open_backtest_db() as connection:
+        rows = connection.execute(
+            "SELECT DISTINCT trade_date FROM alert_events WHERE code=? AND alert_kind=? AND trade_date<=? ORDER BY trade_date DESC",
+            (code, alert_kind, trade_date),
+        ).fetchall()
+    dates = {str(row[0]) for row in rows}
+    if trade_date not in dates:
+        return 0
+    current = datetime.strptime(trade_date, "%Y-%m-%d").date()
+    count = 0
+    while current.strftime("%Y-%m-%d") in dates:
+        count += 1
+        current -= timedelta(days=1)
+        while current.weekday() >= 5:
+            current -= timedelta(days=1)
+    return count
 
 
 def auction_strength_score(auction: Optional[Dict[str, Any]], float_cap: Optional[float]) -> Dict[str, Any]:
@@ -1540,6 +1719,43 @@ def dynamic_snapshot(
         + intraday_macd_score * 0.15
         + risk_quality_score * 0.05
     )
+    # 成交额是盘中评分的基础有效性门槛。未达到 1 亿元时，任何评分都
+    # 只能停留在观察线（60 分），不能借由趋势或 MACD 抬升到确认/预警区。
+    amount_gate_passed = amount >= 100_000_000
+    if not amount_gate_passed:
+        score = min(score, 60)
+    strategy_weights = {
+        "balanced": {"trend": 22, "momentum": 20, "liquidity": 18, "strength": 18, "stability": 12, "risk": 10},
+        "growth": {"trend": 28, "momentum": 28, "liquidity": 15, "strength": 15, "stability": 6, "risk": 8},
+        "value": {"trend": 16, "momentum": 10, "liquidity": 16, "strength": 12, "stability": 34, "risk": 12},
+        "event": {"trend": 18, "momentum": 30, "liquidity": 14, "strength": 25, "stability": 5, "risk": 8},
+    }
+    strategy_scores = {}
+    for strategy_name, weights in strategy_weights.items():
+        weighted_base = sum(float(factors[key]) * weights[key] for key in ("trend", "momentum", "liquidity", "strength", "stability"))
+        weighted_base -= float(factors["risk"]) * weights["risk"]
+        base = clamp(weighted_base / 90)
+        strategy_scores[strategy_name] = min(60, round(base * .85 + intraday_macd_score * .15)) if not amount_gate_passed else round(base * .85 + intraday_macd_score * .15)
+    strategy_confirmed = sum(value >= 70 for value in strategy_scores.values()) >= 2
+    strategy_early = sum(value > 60 for value in strategy_scores.values()) >= 2
+    highest_strategy_score = max(strategy_scores.values())
+    strategy_average = sum(strategy_scores.values()) / len(strategy_scores)
+    strategy_spread = max(strategy_scores.values()) - min(strategy_scores.values())
+    main_board_elite = (
+        not is_main_board_code(code)
+        or (
+            strategy_confirmed
+            and strategy_average >= 68
+            and max(strategy_scores.values()) >= 75
+            and strategy_spread <= 25
+            and (volume_ratio or 0) >= 1.1
+            and amount >= 100_000_000
+            and (flow_ratio >= 0 or net_inflow is None)
+            and change_pct <= 8
+        )
+    )
+    alert_confirmed = strategy_confirmed and main_board_elite
+    alert_early = strategy_early and main_board_elite
     momentum_support = 0
     if score_velocity >= .15: momentum_support += 4
     if (volume_ratio or 0) >= 1.2: momentum_support += 3
@@ -1548,23 +1764,41 @@ def dynamic_snapshot(
     chase_penalty = max(0, change_pct - 7) * 2.5
     # 预测性入池：允许评分尚未到 70 分、但多个领先指标已经同步改善的股票提前进入观察池。
     # 70 分仍是确认线；预测线只负责提前发现，不直接等同于确认信号。
-    predictive_score = round(min(95, max(0, score + momentum_support + score_velocity * 5 - chase_penalty)))
-    predictive_probability = round(min(95, max(1, 35 + (predictive_score - 60) * 6 + max(0, score_velocity) * 12 - max(0, change_pct - 7) * 5)))
+    # 提前预警不再只采用一个综合概率。四种策略分别按自身评分叠加盘中
+    # 动能、量能、资金和追高惩罚计算胜率；取第三高值作为三策略共识概率。
+    # 因此只有至少三种策略都站上同一概率阈值，才会产生提前预警。
+    strategy_predictive_scores = {}
+    strategy_predictive_probabilities = {}
+    for strategy_name, strategy_score in strategy_scores.items():
+        strategy_predictive_score = min(95, max(0, strategy_score + momentum_support + score_velocity * 5 - chase_penalty))
+        if not amount_gate_passed:
+            strategy_predictive_score = min(60, strategy_predictive_score)
+        strategy_predictive_scores[strategy_name] = round(strategy_predictive_score)
+        strategy_predictive_probabilities[strategy_name] = round(min(
+            95,
+            max(1, 35 + (strategy_predictive_score - 60) * 6 + max(0, score_velocity) * 12 - max(0, change_pct - 7) * 5),
+        ))
+    consensus_predictive_scores = sorted(strategy_predictive_scores.values(), reverse=True)
+    consensus_predictive_probabilities = sorted(strategy_predictive_probabilities.values(), reverse=True)
+    predictive_score = consensus_predictive_scores[2]
+    predictive_probability = consensus_predictive_probabilities[2]
+    strategy_predictive_confirmed = sum(value >= 80 for value in strategy_predictive_probabilities.values()) >= 3
     early_momentum = momentum_support >= 6 and (volume_ratio or 0) >= 1.1
     early_flow = flow_ratio > 0.15
     pre_alert = (
         56 <= score < 70
         and predictive_score >= 66
-        and predictive_probability >= 80
+        and strategy_predictive_confirmed
         and change_pct <= 7.5
         and (early_momentum or early_flow)
+        and alert_early
     )
     with _cache_lock:
-        if is_intraday_alert_session(updated_at) and is_alert_market_code(code):
+        if is_intraday_alert_session(updated_at):
             # 预测概率分级告警：每个级别只记录首次达到时间，70 分为最终确认告警。
             for threshold in (80, 85, 90, 95):
                 key = (trade_date, code, threshold)
-                if predictive_probability >= threshold and key not in _prediction_threshold_times:
+                if pre_alert and sum(value >= threshold for value in strategy_predictive_probabilities.values()) >= 3 and key not in _prediction_threshold_times:
                     _prediction_threshold_times[key] = score_time
                     _prediction_threshold_names[key] = name or code
                     _prediction_threshold_quotes[key] = {"price": price, "changePct": change_pct}
@@ -1578,15 +1812,18 @@ def dynamic_snapshot(
                     persist_threshold_times()
             for threshold in (60, 70):
                 key = (trade_date, code, threshold)
-                if score >= threshold and key not in _score_threshold_times:
+                # 70 分确认线以“至少两种策略各自达到 70 分”为准，
+                # 不再额外要求综合快照分也必须到 70，避免共识信号被平均分滞后。
+                threshold_met = score >= 60 if threshold == 60 else strategy_confirmed
+                if alert_confirmed and threshold_met and key not in _score_threshold_times:
                     _score_threshold_times[key] = score_time
                     _score_threshold_names[key] = name or code
-                    _score_threshold_quotes[key] = {"price": price, "changePct": change_pct}
+                    _score_threshold_quotes[key] = {"price": price, "changePct": change_pct, "strategyScore": highest_strategy_score}
                     save_alert_event(
                         trade_date, code, name, "score", threshold, score_time,
                         {"price": price, "changePct": change_pct, "volumeRatio": volume_ratio,
                          "turnover": turnover, "amplitude": amplitude, "netInflow": net_inflow},
-                        score, predictive_score, predictive_probability, factors,
+                        highest_strategy_score, predictive_score, predictive_probability, factors,
                         intraday_macd_score,
                     )
                     persist_threshold_times()
@@ -1649,8 +1886,18 @@ def dynamic_snapshot(
             "turnover": turnover,
             "amplitude": amplitude,
             "snapshotScore": score,
+            "strategyScores": strategy_scores,
+            "strategyConfirmed": strategy_confirmed,
+            "strategyEarly": strategy_early,
+            "strategyAverage": round(strategy_average, 1),
+            "strategySpread": round(strategy_spread, 1),
+            "mainBoardElite": main_board_elite,
+            "amountGatePassed": amount_gate_passed,
             "predictiveScore": predictive_score,
             "predictiveProbability": predictive_probability,
+            "strategyPredictiveScores": strategy_predictive_scores,
+            "strategyPredictiveProbabilities": strategy_predictive_probabilities,
+            "strategyPredictiveConfirmed": strategy_predictive_confirmed,
             "preAlert": pre_alert,
             "preAlertReason": "预测评分正在向70分靠近：评分趋势、量价动能或资金流已出现同步改善；这是提前观察信号，不代表已确认达到70分。" if pre_alert else None,
             "predictiveThresholdTimes": {str(level): _prediction_threshold_times.get((trade_date, code, level)) for level in (80, 85, 90, 95)},
@@ -2190,8 +2437,131 @@ def fetch_market_indices() -> Dict[str, Dict[str, Any]]:
         return {}
 
 
+def fetch_major_sector_money_flow() -> List[Dict[str, Any]]:
+    """Return the most active industry-board main-force flows from Eastmoney.
+
+    Industry boards are used here rather than a hand-picked concept list so the
+    comparison remains complete and does not depend on a concept-name mapping.
+    """
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _sector_money_flow_cache.get("industry")
+        if cached and now - cached["created_at"] < DYNAMIC_CACHE_TTL_SECONDS:
+            return cached["payload"]
+    try:
+        query = {
+            "pn": 1, "pz": 100, "np": 1, "fltt": 2, "invt": 2,
+            "fid": "f62", "fs": "m:90+t:2",
+            "fields": "f12,f14,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87",
+        }
+        # The provider caps a response at roughly 100 rows. Query both sort
+        # directions so large outflows are not hidden behind all net inflows.
+        inflow_payload = request_json(EASTMONEY_LIST_URL, {**query, "po": 1})
+        outflow_payload = request_json(EASTMONEY_LIST_URL, {**query, "po": 0})
+
+        def parse_flows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+            parsed = []
+            for row in list(((payload.get("data") or {}).get("diff") or [])):
+                value = number(row.get("f62"))
+                name = str(row.get("f14") or "").strip()
+                if value is None or not name:
+                    continue
+                parsed.append({
+                    "code": str(row.get("f12") or ""),
+                    "name": name,
+                    "netInflow": float(value),
+                    "netInflowRatio": number(row.get("f184")),
+                })
+            return parsed
+
+        inflow_rows = parse_flows(inflow_payload)
+        outflow_rows = parse_flows(outflow_payload)
+        positives = sorted((item for item in inflow_rows if item["netInflow"] > 0), key=lambda item: item["netInflow"], reverse=True)[:10]
+        negatives = sorted((item for item in outflow_rows if item["netInflow"] < 0), key=lambda item: item["netInflow"])[:10]
+        result = positives + negatives
+        # A near-universal rally may genuinely have no industry-level outflow.
+        # In that case show the weakest boards rather than silently omitting it.
+        if not negatives:
+            weakest = sorted(inflow_rows, key=lambda item: item["netInflow"])[:5]
+            seen = {item["code"] for item in result}
+            result.extend(item for item in weakest if item["code"] not in seen)
+    except Exception:
+        result = []
+    with _cache_lock:
+        _sector_money_flow_cache["industry"] = {"created_at": time.monotonic(), "payload": result}
+    return result
+
+
+def market_limit_ratio(code: str, name: str) -> float:
+    if str(code).startswith(("300", "301", "688", "689")):
+        return 0.20
+    if bse_code(str(code)):
+        return 0.30
+    if "ST" in str(name or "").upper():
+        return 0.05
+    return 0.10
+
+
+def build_market_distribution(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build close-to-close distribution plus seal/fried-board statistics."""
+    bins = [
+        {"key": "limitDown", "label": "跌停", "count": 0, "side": "down"},
+        {"key": "down7", "label": ">7", "count": 0, "side": "down"},
+        {"key": "down5", "label": "5–7", "count": 0, "side": "down"},
+        {"key": "down3", "label": "3–5", "count": 0, "side": "down"},
+        {"key": "down0", "label": "0–3", "count": 0, "side": "down"},
+        {"key": "flat", "label": "0", "count": 0, "side": "flat"},
+        {"key": "up0", "label": "0–3", "count": 0, "side": "up"},
+        {"key": "up3", "label": "3–5", "count": 0, "side": "up"},
+        {"key": "up5", "label": "5–7", "count": 0, "side": "up"},
+        {"key": "up7", "label": ">7", "count": 0, "side": "up"},
+        {"key": "limitUp", "label": "涨停", "count": 0, "side": "up"},
+    ]
+    lookup = {item["key"]: item for item in bins}
+    rising = falling = flat = suspended = limit_up = limit_down = one_word = fried = 0
+    for row in rows:
+        change = number(row.get("f3"))
+        price = number(row.get("f2"))
+        if change is None or price is None or price <= 0:
+            continue
+        code, name = str(row.get("f12") or ""), str(row.get("f14") or "")
+        limit_pct = market_limit_ratio(code, name) * 100
+        high, low, opening, previous = (number(row.get(field)) for field in ("f15", "f16", "f17", "f18"))
+        eligible = previous is not None and previous > 0 and not name.upper().startswith(("N", "C"))
+        upper = float((Decimal(str(previous or 0)) * (Decimal(1) + Decimal(str(limit_pct / 100)))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        lower = float((Decimal(str(previous or 0)) * (Decimal(1) - Decimal(str(limit_pct / 100)))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        is_up_limit = eligible and abs(price - upper) < 0.005
+        is_down_limit = eligible and abs(price - lower) < 0.005
+        if is_up_limit:
+            limit_up += 1
+            lookup["limitUp"]["count"] += 1
+            if all(value is not None and abs(value - price) <= max(0.01, price * 0.0005) for value in (high, low, opening)):
+                one_word += 1
+        elif is_down_limit:
+            limit_down += 1
+            lookup["limitDown"]["count"] += 1
+        elif change > 0:
+            rising += 1
+            lookup["up0" if change < 3 else "up3" if change < 5 else "up5" if change < 7 else "up7"]["count"] += 1
+        elif change < 0:
+            falling += 1
+            lookup["down0" if change > -3 else "down3" if change > -5 else "down5" if change > -7 else "down7"]["count"] += 1
+        else:
+            flat += 1
+            lookup["flat"]["count"] += 1
+        if eligible and not is_up_limit and high is not None:
+            if abs(high - upper) < 0.005:
+                fried += 1
+    return {
+        "bins": bins, "rising": rising + limit_up, "falling": falling + limit_down,
+        "flat": flat, "suspended": None, "limitUp": limit_up,
+        "limitDown": limit_down, "oneWordLimitUp": one_word, "friedBoard": fried,
+    }
+
+
 def fetch_index_analysis() -> Dict[str, Any]:
     rows, _ = fetch_market_rows("all")
+    distribution = build_market_distribution(rows)
     changes = []
     amounts = 0.0
     limit_up = limit_down = 0
@@ -2224,9 +2594,12 @@ def fetch_index_analysis() -> Dict[str, Any]:
     return {
         "indices": fetch_market_indices(),
         "total": len(changes), "rising": rising, "falling": falling, "flat": flat,
-        "limitUp": limit_up, "limitDown": limit_down, "breadth": breadth,
+        "limitUp": distribution["limitUp"], "limitDown": distribution["limitDown"], "breadth": breadth,
+        "distribution": distribution,
         "averageChange": average, "medianChange": median, "amount": amounts,
-        "mood": mood, "strategy": strategy, "updatedAt": datetime.now(CHINA_TZ).isoformat(),
+        "mood": mood, "strategy": strategy,
+        "sectorMoneyFlow": fetch_major_sector_money_flow(),
+        "updatedAt": datetime.now(CHINA_TZ).isoformat(),
     }
 
 
@@ -3506,20 +3879,28 @@ class AppHandler(BaseHTTPRequestHandler):
                     live = {str(row.get("f12")): row for row in live_rows}
                     for code in missing_codes:
                         row = live.get(code) or {}
-                        _score_threshold_quotes[(trade_date, code, 70)] = {"price": number(row.get("f2")), "changePct": number(row.get("f3"))}
+                        _score_threshold_quotes.setdefault((trade_date, code, 70), {}).update({"price": number(row.get("f2")), "changePct": number(row.get("f3"))})
                     persist_threshold_times()
                 except (MarketDataError, OSError, ValueError):
                     pass
             alerts = [
                 {"code": code, "name": _score_threshold_names.get((date, code, threshold), code), "time": value, "kind": "score", "threshold": threshold, **(_score_threshold_quotes.get((date, code, threshold)) or {})}
                 for (date, code, threshold), value in _score_threshold_times.items()
-                if date == trade_date and threshold == 70 and value <= "15:00:00" and is_alert_market_code(code)
+                if date == trade_date and threshold == 70 and value <= "15:00:00"
             ]
             alerts.extend(
                 {"code": code, "name": _prediction_threshold_names.get((date, code, threshold), code), "time": value, "kind": "prediction", "threshold": threshold, **(_prediction_threshold_quotes.get((date, code, threshold)) or {})}
                 for (date, code, threshold), value in _prediction_threshold_times.items()
-                if date == trade_date and value <= "15:00:00" and is_alert_market_code(code)
+                if date == trade_date and value <= "15:00:00"
             )
+            alerts.extend(
+                {"code": code, "name": _nonmain_repeat_alert_names.get((date, code), code), "time": value, "kind": "score-repeat", "threshold": 70, **(_nonmain_repeat_alert_quotes.get((date, code)) or {})}
+                for (date, code), value in _nonmain_repeat_alert_times.items()
+                if date == trade_date and value <= "15:00:00"
+            )
+            for alert in alerts:
+                alert_kind = "score" if alert["kind"] == "score-repeat" else alert["kind"]
+                alert["consecutiveDays"] = alert_consecutive_days(alert["code"], alert_kind, trade_date)
             alerts.sort(key=lambda item: item["time"])
             self.send_json(200, {"tradeDate": trade_date, "alerts": alerts})
             return
@@ -3553,6 +3934,13 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/index-analysis":
             self.send_json(200, fetch_index_analysis())
+            return
+        if parsed.path == "/api/sector-money-flow":
+            self.send_json(200, {
+                "source": "东方财富行业板块主力资金流",
+                "sectorMoneyFlow": fetch_major_sector_money_flow(),
+                "updatedAt": datetime.now(CHINA_TZ).isoformat(),
+            })
             return
         if parsed.path == "/api/hot-concept":
             concept_name = query.get("name", [""])[0].strip()
