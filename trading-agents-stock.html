@@ -304,16 +304,37 @@
     .score-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; }
     .score-alert-close { border: 0; border-radius: 5px; padding: 2px 7px; color: var(--muted); background: rgba(255,255,255,.08); }
     .score-alert-list { display: grid; gap: 5px; max-height: 220px; margin-top: 8px; overflow-y: auto; }
-    .score-alert-item { display: grid; grid-template-columns: minmax(125px, max-content) 62px 38px 68px 70px 68px; align-items: center; gap: 2px; color: var(--text); font-size: 12px; }
+    .score-alert-item { display: grid; grid-template-columns: minmax(125px, max-content) minmax(72px, 96px) 62px 38px 68px 70px 68px; align-items: center; gap: 3px; color: var(--text); font-size: 12px; }
     .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .score-alert-item > span:first-child { overflow: visible; text-overflow: clip; }
     .score-alert-item .ai-compute-stock { font-weight: 900; }
+    .score-alert-item .repeated-alert-stock { color: #a855f7; font-weight: 900; }
     .score-alert-item b { font-weight: 800; text-align: right; }
     .score-alert-item em { color: var(--red); font-style: normal; font-weight: 800; text-align: right; }
     .score-alert-item time { text-align: right; }
     .score-alert-item time { color: var(--amber); font-variant-numeric: tabular-nums; }
     .score-alert-item small { overflow: hidden; white-space: nowrap; color: var(--muted); font-size: 11px; }
     .score-alert-item .consecutive { color: var(--cyan); font-weight: 800; text-align: right; }
+    .alert-pool-modal[hidden] { display: none; }
+    .alert-pool-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 28px; }
+    .alert-pool-backdrop { position: absolute; inset: 0; background: rgba(8, 15, 28, .72); backdrop-filter: blur(4px); }
+    .alert-pool-panel { position: relative; width: min(1500px, 96vw); max-height: 88vh; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-strong); box-shadow: 0 28px 80px rgba(0,0,0,.42); }
+    .alert-pool-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+    .alert-pool-head h2 { margin: 0; font-size: 21px; }
+    .alert-pool-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .alert-pool-head p .up { color: var(--red); font-weight: 800; }
+    .alert-pool-head p .down { color: var(--green); font-weight: 800; }
+    .alert-pool-close { border: 0; background: transparent; color: var(--muted); font-size: 30px; cursor: pointer; }
+    .alert-pool-body { max-height: calc(88vh - 80px); overflow: auto; padding: 16px 22px 22px; }
+    .alert-pool-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 13px; }
+    .alert-pool-table th, .alert-pool-table td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+    .alert-pool-table th:first-child, .alert-pool-table td:first-child { width: 150px; max-width: 180px; }
+    .alert-pool-table th { position: sticky; top: 0; z-index: 1; color: var(--muted); background: var(--panel-strong); }
+    .alert-pool-table .up { color: var(--red); font-weight: 800; }
+    .alert-pool-table .down { color: var(--green); font-weight: 800; }
+    .alert-pool-mini { display: inline-flex; width: 64px; height: 27px; align-items: center; justify-content: center; overflow: hidden; border-left: 2px solid var(--amber); color: var(--muted); font-size: 9px; }
+    .alert-pool-mini svg { width: 62px; height: 25px; display: block; }
+    .alert-pool-empty { padding: 46px; color: var(--muted); text-align: center; }
 
     .brand {
       min-width: 0;
@@ -2529,6 +2550,13 @@
     .cpo-profile-table .profile-head { color:var(--muted); font-size:10px; font-weight:800; background:color-mix(in srgb,var(--line) 25%,transparent); }
     .cpo-intraday-mini { display:inline-flex; width:58px; height:25px; align-items:center; justify-content:center; overflow:hidden; color:var(--muted); font-size:9px; }
     .cpo-intraday-mini svg { width:56px; height:23px; display:block; }
+    .concept-rank-table-wrap { overflow:auto; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); }
+    .concept-rank-table { width:100%; min-width:900px; border-collapse:collapse; font-size:12px; }
+    .concept-rank-table th,.concept-rank-table td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+    .concept-rank-table th { color:var(--muted); background:color-mix(in srgb,var(--line) 25%,transparent); font-size:11px; }
+    .concept-rank-table td:first-child { color:var(--muted); width:46px; }
+    .concept-rank-table .rank-concept { color:var(--text); font-weight:800; }
+    .concept-rank-table .rank-up { color:var(--red); font-weight:800; } .concept-rank-table .rank-down { color:var(--green); font-weight:800; }
     .cpo-price { color:var(--text)!important; font-weight:800; font-variant-numeric:tabular-nums; }
     .cpo-change.up { color:#d93645!important; font-weight:800; } .cpo-change.down { color:#078058!important; font-weight:800; }
     @media(max-width:1100px) { .cpo-panorama { width:100%; } }
@@ -2549,6 +2577,7 @@
         <button class="nav-button" id="indexAnalysisNav" type="button">
           <span>指数分析</span><span class="nav-count">实时</span>
         </button>
+        <button class="nav-button" id="conceptRankNav" type="button"><span>概念排行</span><span class="nav-count">涨幅</span></button>
         <button class="nav-button" id="midtermNav" type="button">
           <span>中期选股</span><span class="nav-count">全市场</span>
         </button>
@@ -2625,9 +2654,9 @@
         <input id="search" type="search" placeholder="代码、名称、逻辑">
       </div>
       <div class="actions" aria-label="操作">
-        <button class="btn warn" id="agentBtn" type="button" aria-label="生成行情因子解读">
+        <button class="btn warn" id="agentBtn" type="button" aria-label="查看当天告警池">
           <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l7 4v5c0 4.2-2.8 7.7-7 9-4.2-1.3-7-4.8-7-9V7l7-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-          解读
+          告警池
         </button>
         <button class="btn" id="resetBtn" type="button" aria-label="重置条件">
           <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4v6h6M20 20v-6h-6M5 14a7 7 0 0 0 12 4M19 10A7 7 0 0 0 7 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -2800,6 +2829,10 @@
       <div class="index-analysis-strategy" id="indexAnalysisStrategy">正在加载指数分析...</div>
       <div class="sector-flow-chart" id="indexAnalysisFlowChart" aria-live="polite"></div>
     </section>
+    <section class="panel limit-up-view" id="conceptRankView" aria-label="概念排行" hidden>
+      <div class="section-head"><div><h2>概念排行</h2><span class="sector-strength-note">东方财富概念板块实时涨幅排名</span></div><span class="tag" id="conceptRankUpdated">更新时间：--</span></div>
+      <div class="concept-rank-table-wrap"><table class="concept-rank-table"><thead><tr><th>排名</th><th>概念名称</th><th>板块涨跌幅</th><th>最新指数</th><th>上涨 / 下跌家数</th><th>涨跌停家数</th><th>领涨个股</th><th>主力资金净流入</th></tr></thead><tbody id="conceptRankBody"><tr><td colspan="8">正在加载概念排行…</td></tr></tbody></table></div>
+    </section>
     <section class="panel cpo-panorama" id="cpoPanoramaView" hidden aria-label="CPO产业链全景">
       <h2>A股光引擎概念 · 产业链分层全景</h2>
       <p class="cpo-intro">光引擎与高速光模块产业链观察 · 按产业环节分组 · 名单来源：用户提供的参考图（2026-09-09）</p>
@@ -2852,6 +2885,17 @@
         </div>
       </header>
       <div class="chart-modal-content" id="chartModalContent"></div>
+    </section>
+  </div>
+
+  <div class="alert-pool-modal" id="alertPoolModal" hidden role="dialog" aria-modal="true" aria-labelledby="alertPoolTitle">
+    <div class="alert-pool-backdrop" data-close-alert-pool="true"></div>
+    <section class="alert-pool-panel">
+      <header class="alert-pool-head">
+        <div><h2 id="alertPoolTitle">当日告警池</h2><p id="alertPoolMeta">每只股票仅保留首次进入告警框时的数据</p></div>
+        <button class="alert-pool-close" id="alertPoolClose" type="button" aria-label="关闭告警池">&times;</button>
+      </header>
+      <div class="alert-pool-body" id="alertPoolBody"><div class="alert-pool-empty">正在读取当日告警…</div></div>
     </section>
   </div>
 
@@ -3169,6 +3213,10 @@
       scoreValue: document.getElementById("scoreValue"),
       search: document.getElementById("search"),
       agentBtn: document.getElementById("agentBtn"),
+      alertPoolModal: document.getElementById("alertPoolModal"),
+      alertPoolBody: document.getElementById("alertPoolBody"),
+      alertPoolMeta: document.getElementById("alertPoolMeta"),
+      alertPoolClose: document.getElementById("alertPoolClose"),
       resetBtn: document.getElementById("resetBtn"),
       refreshBtn: document.getElementById("refreshBtn"),
       quoteState: document.getElementById("quoteState"),
@@ -3483,6 +3531,13 @@
         document.title = "TradingAgents 指数分析";
         return;
       }
+      if (state.pageView === "concept-rank") {
+        el.pageTitle.textContent = "概念排行";
+        el.pageDescription.textContent = "东方财富概念板块实时涨幅、资金和市场广度排名。";
+        el.sectorMode.textContent = "概念排行：实时";
+        document.title = "TradingAgents 概念排行";
+        return;
+      }
       const market = currentMarketScope();
       el.pageTitle.textContent = `${market.label}动态选股`;
       el.pageDescription.textContent = `${market.description} 基于实时成交、涨跌、换手与振幅生成候选，入选后可继续查看历史 K 线。`;
@@ -3502,6 +3557,7 @@
       el.overviewNav?.classList.toggle("active", state.pageView === "screener" && state.marketScope === primary[0]);
       el.sectorStrengthNav.classList.toggle("active", state.pageView === "sector-strength");
       el.indexAnalysisNav.classList.toggle("active", state.pageView === "index-analysis");
+      document.getElementById("conceptRankNav").classList.toggle("active", state.pageView === "concept-rank");
       el.midtermNav.classList.toggle("active", state.pageView === "midterm");
       el.hotSectorNav.classList.toggle("active", state.pageView === "hot-concept");
       el.limitUpNav?.classList.toggle("active", state.pageView === "limit-up");
@@ -4405,6 +4461,8 @@
     }
 
     function weightedScore(stock) {
+      const serverStrategyScore = Number(stock.screener?.strategyScores?.[state.strategy]);
+      if (Number.isFinite(serverStrategyScore)) return Math.round(serverStrategyScore);
       const weights = strategies[state.strategy].weights;
       const b = stock.base;
       const positive =
@@ -5641,7 +5699,7 @@
           const key = `${stock.code}:score:70:${time}`;
           if (!dismissed.has(key) && !state.scoreAlertKeys.has(key)) {
             state.scoreAlertKeys.add(key);
-            state.scoreAlerts.push({ code: stock.code, name: stock.name || stock.code, threshold: 70, kind: "score", time, price: stock.price, changePct: stock.changePct ?? stock.change, score: currentScore, consecutiveDays: Number(stock.screener?.consecutiveDays) || 1 });
+            state.scoreAlerts.push({ code: stock.code, name: stock.name || stock.code, industry: stock.actualIndustry || stock.industry || "--", threshold: 70, kind: "score", time, price: stock.price, changePct: stock.changePct ?? stock.change, score: currentScore, consecutiveDays: Number(stock.screener?.consecutiveDays) || 1 });
             added = true;
           }
         }
@@ -5680,7 +5738,7 @@
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>创业板 / 科创板 / 北交所告警</span><button class="score-alert-close" type="button" data-close-score-alerts>关闭</button></div>
           <div class="score-alert-list">
-            ${growthAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const nameClass = isAiComputeStock(item.code) ? "ai-compute-stock" : ""; return `<div class="score-alert-item"><span class="${nameClass}">${escapeHtml(item.name)}（${item.code}）</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
+            ${growthAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : ""].filter(Boolean).join(" "); return `<div class="score-alert-item"><span class="${nameClasses}">${escapeHtml(item.name)}（${item.code}）</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>` : "";
       el.mainScoreAlerts.hidden = !mainAlerts.length;
@@ -5688,7 +5746,7 @@
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>主板优选告警</span><button class="score-alert-close" type="button" data-close-main-score-alerts>关闭</button></div>
           <div class="score-alert-list">
-            ${mainAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const nameClass = isAiComputeStock(item.code) ? "ai-compute-stock" : ""; return `<div class="score-alert-item"><span class="${nameClass}">${escapeHtml(item.name)}（${item.code}）</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
+            ${mainAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : ""].filter(Boolean).join(" "); return `<div class="score-alert-item"><span class="${nameClasses}">${escapeHtml(item.name)}（${item.code}）</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>` : "";
       el.scoreAlerts.querySelector("[data-close-score-alerts]")?.addEventListener("click", () => {
@@ -5740,6 +5798,7 @@
           price: item.price,
           changePct: item.changePct,
           score: item.strategyScore,
+          industry: item.industry || "--",
           alertKind: item.kind || "score",
           consecutiveDays: Number(item.consecutiveDays) || 1,
           screener: item.kind === "prediction"
@@ -5756,7 +5815,7 @@
           const kind = isPrediction ? "prediction" : (item.alertKind || "score");
           const key = `${item.code}:${kind}:${threshold}:${time}`;
           if (state.scoreAlertReady && isLiveAlertSession() && !state.scoreAlertKeys.has(key)) {
-            state.scoreAlerts.push({ code: item.code, name: item.name, threshold: Number(threshold), kind, time, price: item.price, changePct: item.changePct, score: item.score, consecutiveDays: item.consecutiveDays });
+            state.scoreAlerts.push({ code: item.code, name: item.name, industry: item.industry, threshold: Number(threshold), kind, time, price: item.price, changePct: item.changePct, score: item.score, consecutiveDays: item.consecutiveDays });
             remoteAdded = true;
           }
           state.scoreAlertKeys.add(key);
@@ -5785,6 +5844,7 @@
       el.sectorStrengthView.hidden = state.pageView !== "sector-strength";
       el.limitUpView.hidden = state.pageView !== "limit-up";
       el.indexAnalysisView.hidden = state.pageView !== "index-analysis";
+      document.getElementById("conceptRankView").hidden = state.pageView !== "concept-rank";
       document.getElementById("cpoPanoramaView").hidden = state.pageView !== "cpo-panorama";
       document.getElementById("pcbPanoramaView").hidden = state.pageView !== "pcb-panorama";
       document.getElementById("fiberPanoramaView").hidden = state.pageView !== "fiber-panorama";
@@ -5829,11 +5889,99 @@
       };
     }
 
-    el.agentBtn.addEventListener("click", () => {
-      updateFromControls();
-      state.reviewed = true;
-      render();
-    });
+    function alertPoolPct(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return "--";
+      return `${numeric > 0 ? "+" : ""}${numeric.toFixed(2)}%`;
+    }
+
+    function alertPoolPctClass(value) {
+      const numeric = Number(value);
+      return numeric > 0 ? "up" : numeric < 0 ? "down" : "";
+    }
+
+    function alertPoolDirection(entryPrice, currentPrice) {
+      const entry = Number(entryPrice), current = Number(currentPrice);
+      if (!Number.isFinite(entry) || !Number.isFinite(current)) return '<span>--</span>';
+      if (current > entry) return '<span class="up" title="当前价格高于进入价格">↑</span>';
+      if (current < entry) return '<span class="down" title="当前价格低于进入价格">↓</span>';
+      return '<span title="当前价格与进入价格持平">→</span>';
+    }
+
+    function closeAlertPool() {
+      el.alertPoolModal.hidden = true;
+      document.body.classList.remove("modal-open");
+    }
+
+    async function loadAlertPoolIntradayMiniCharts(date) {
+      const nodes = [...el.alertPoolBody.querySelectorAll("[data-alert-mini-code]")];
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < nodes.length) {
+          const node = nodes[cursor++];
+          const code = node.dataset.alertMiniCode;
+          try {
+            const response = await fetch(`/api/intraday?${new URLSearchParams({ code, date })}`, { cache: "no-store" });
+            const payload = await response.json();
+            const points = (payload.points || []).map((item) => Number(item.price)).filter(Number.isFinite);
+            if (!response.ok || points.length < 2) throw new Error("no intraday data");
+            const min = Math.min(...points), max = Math.max(...points);
+            const narrow = max > 0 && (max - min) / max <= .0025;
+            const span = Math.max(max - min, max * .006, .01);
+            const line = points.map((price, index) => `${(index / (points.length - 1)) * 60 + 1},${narrow ? 13 : 23 - ((price - min) / span) * 20}`).join(" ");
+            const color = narrow ? "var(--amber)" : (points.at(-1) >= points[0] ? "var(--rising)" : "var(--falling)");
+            node.innerHTML = `<svg viewBox="0 0 62 25" role="img" aria-label="${code} ${date} 分时缩略图"><polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+          } catch {
+            node.textContent = "--";
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(8, nodes.length) }, worker));
+    }
+
+    async function openAlertPool() {
+      el.alertPoolModal.hidden = false;
+      document.body.classList.add("modal-open");
+      el.alertPoolBody.innerHTML = '<div class="alert-pool-empty">正在读取当日告警…</div>';
+      try {
+        const query = new URLSearchParams({ market: state.pageView === "screener" ? state.marketScope : "all" });
+        const pageCodes = state.pageView === "cpo-panorama" ? cpoCodes
+          : state.pageView === "pcb-panorama" ? pcbCodes
+          : state.pageView === "fiber-panorama" ? fiberCodes
+          : state.pageView === "chip-panorama" ? chipCodes
+          : state.pageView === "compute-chip-panorama" ? computeChipCodes
+          : state.pageView === "hot-concept" ? stocks.map((stock) => stock.code)
+          : [];
+        if (pageCodes.length) query.set("codes", [...new Set(pageCodes.map((item) => typeof item === "string" ? item : item.code).filter(Boolean))].join(","));
+        const response = await fetch(`/api/alert-pool?${query}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "告警池读取失败");
+        const rows = payload.stocks || [];
+        const dateLabel = payload.isPreviousTradingDay ? `${payload.tradeDate}（上一交易日）` : (payload.tradeDate || "当日");
+        const validReturns = rows.map((item) => {
+          const entry = Number(item.entryPrice), current = Number(item.currentPrice);
+          return Number.isFinite(entry) && entry > 0 && Number.isFinite(current) ? (current / entry - 1) * 100 : null;
+        }).filter(Number.isFinite);
+        const risingCount = validReturns.filter((value) => value > .0001).length;
+        const fallingCount = validReturns.filter((value) => value < -.0001).length;
+        const flatCount = validReturns.length - risingCount - fallingCount;
+        const winRate = validReturns.length ? risingCount / validReturns.length * 100 : null;
+        const actualReturn = validReturns.length ? validReturns.reduce((sum, value) => sum + value, 0) / validReturns.length : null;
+        el.alertPoolMeta.innerHTML = `${escapeHtml(dateLabel)} · ${rows.length}只 · 进入后上涨 <span class="up">${risingCount}</span>只 / 下跌 <span class="down">${fallingCount}</span>只 / 持平 ${flatCount}只 · 胜率 ${winRate === null ? "--" : `${winRate.toFixed(1)}%`} · 等权实际收益率 <span class="${alertPoolPctClass(actualReturn)}">${actualReturn === null ? "--" : alertPoolPct(actualReturn)}</span> · 每只仅保留首次进入时间`;
+        if (!rows.length) {
+          el.alertPoolBody.innerHTML = '<div class="alert-pool-empty">当天尚无个股进入告警框</div>';
+          return;
+        }
+        el.alertPoolBody.innerHTML = `<table class="alert-pool-table"><thead><tr><th>个股名称</th><th>板块</th><th>分时</th><th>初次进入时间</th><th>进入评分</th><th>进入价格</th><th>进入涨幅</th><th>当前价格</th><th>当前涨幅</th><th>进入后涨跌</th><th>涨跌幅差额</th></tr></thead><tbody>${rows.map((item) => { const changeDifference = Number(item.currentChangePct) - Number(item.entryChangePct); const validDifference = hasNumber(item.currentChangePct) && hasNumber(item.entryChangePct); return `<tr><td><strong>${escapeHtml(item.name || item.code)}</strong>（${escapeHtml(item.code)}）</td><td>${escapeHtml(item.industry || "--")}</td><td><span class="alert-pool-mini" data-alert-mini-code="${escapeHtml(item.code)}">加载</span></td><td>${escapeHtml(item.firstAlertTime || "--")}</td><td>${hasNumber(item.entryScore) ? Math.round(Number(item.entryScore)) : "--"}</td><td>${hasNumber(item.entryPrice) ? formatPrice(item.entryPrice) : "--"}</td><td class="${alertPoolPctClass(item.entryChangePct)}">${alertPoolPct(item.entryChangePct)}</td><td>${hasNumber(item.currentPrice) ? formatPrice(item.currentPrice) : "--"}</td><td class="${alertPoolPctClass(item.currentChangePct)}">${alertPoolPct(item.currentChangePct)}</td><td>${alertPoolDirection(item.entryPrice, item.currentPrice)}</td><td class="${validDifference ? alertPoolPctClass(changeDifference) : ""}">${validDifference ? alertPoolPct(changeDifference) : "--"}</td></tr>`; }).join("")}</tbody></table>`;
+        loadAlertPoolIntradayMiniCharts(payload.tradeDate);
+      } catch (error) {
+        el.alertPoolBody.innerHTML = `<div class="alert-pool-empty">${escapeHtml(error.message || "告警池读取失败")}</div>`;
+      }
+    }
+
+    el.agentBtn.addEventListener("click", openAlertPool);
+    el.alertPoolClose.addEventListener("click", closeAlertPool);
+    el.alertPoolModal.addEventListener("click", (event) => { if (event.target.closest("[data-close-alert-pool]")) closeAlertPool(); });
 
     el.resetBtn.addEventListener("click", () => {
       clearPendingStockClick();
@@ -6156,6 +6304,50 @@
         // 页面保留上一份行情，等待下一次刷新。
       }
     }
+
+    async function loadConceptRank() {
+      const body = document.getElementById("conceptRankBody");
+      try {
+        const apiUrls = [`${window.location.origin}/api/concept-rank`];
+        if (window.location.port !== "8505") apiUrls.push("http://127.0.0.1:8505/api/concept-rank");
+        let response = null;
+        let payload = null;
+        let lastError = null;
+        for (const apiUrl of apiUrls) {
+          try {
+            const candidate = await fetch(apiUrl, {cache:"no-store"});
+            const candidatePayload = await candidate.json();
+            if (!candidate.ok) throw new Error(candidatePayload.error || `概念排行接口失败（${candidate.status}）`);
+            response = candidate;
+            payload = candidatePayload;
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (!response || !payload) throw lastError || new Error("概念排行加载失败");
+        state.marketStatus = "ready";
+        state.marketMessage = `概念排行已更新，共 ${payload.count ?? (payload.concepts || []).length} 个概念`;
+        state.marketSource = "东方财富概念板块实时数据";
+        renderMarketStatus();
+        body.innerHTML = (payload.concepts || []).map((item) => {
+          const change = Number(item.changePct);
+          const tone = Number.isFinite(change) ? (change >= 0 ? "rank-up" : "rank-down") : "";
+          const leaderChange = Number(item.leaderChangePct);
+          const leader = item.leader && item.leader !== "--" ? `${item.leaderName ? `${item.leaderName}（${item.leader}）` : item.leader}${Number.isFinite(leaderChange) ? ` <span class="${leaderChange >= 0 ? "rank-up" : "rank-down"}">${formatPct(leaderChange)}</span>` : ""}` : "--";
+          return `<tr><td>${item.rank}</td><td class="rank-concept">${escapeHtml(item.name)}</td><td class="${tone}">${Number.isFinite(change) ? formatPct(change) : "--"}</td><td>${hasNumber(item.index) ? Number(item.index).toFixed(2) : "--"}</td><td>${item.risingCount ?? 0} / ${item.fallingCount ?? 0}</td><td>${item.limitUpCount ?? 0} / ${item.limitDownCount ?? 0}</td><td>${leader}</td><td class="${Number(item.mainNetInflow) >= 0 ? "rank-up" : "rank-down"}">${hasNumber(item.mainNetInflow) ? formatAmount(item.mainNetInflow) : "--"}</td></tr>`;
+        }).join("") || `<tr><td colspan="8">暂无概念排行数据</td></tr>`;
+        document.getElementById("conceptRankUpdated").textContent = `更新时间：${formatUpdatedAt(payload.updatedAt)}`;
+      } catch (error) {
+        body.innerHTML = `<tr><td colspan="8">${escapeHtml(error.message || "概念排行暂不可用")}</td></tr>`;
+      }
+    }
+    document.getElementById("conceptRankNav").addEventListener("click", () => {
+      clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
+      if (state.chartOpen) closeChartModal();
+      state.pageView = "concept-rank";
+      renderSectorNavigation(); render(); loadConceptRank();
+    });
 
     applyTheme(savedTheme(), false);
     render();
