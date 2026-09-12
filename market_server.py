@@ -270,6 +270,7 @@ _intraday_cache: Dict[str, Dict[str, Any]] = {}
 _dynamic_cache: Dict[str, Dict[str, Any]] = {}
 _sector_strength_cache: Dict[str, Dict[str, Any]] = {}
 _stock_cache: Dict[str, Dict[str, Any]] = {}
+_stock_name_cache: Dict[str, str] = {}
 _downtrend_history_cache: Dict[str, Dict[str, Any]] = {}
 _concept_cache: Dict[str, Dict[str, Any]] = {}
 _hot_concept_cache: Dict[str, Dict[str, Any]] = {}
@@ -328,7 +329,10 @@ def load_threshold_times() -> None:
             key = (str(item["date"]), str(item["code"]), int(item["threshold"]))
             _score_threshold_times[key] = str(item["time"])
             _score_threshold_names[key] = str(item.get("name") or item["code"])
-            _score_threshold_quotes[key] = {"price": item.get("price"), "changePct": item.get("changePct")}
+            _score_threshold_quotes[key] = {
+                "price": item.get("price"), "changePct": item.get("changePct"),
+                "strategyScore": item.get("strategyScore"), "industry": item.get("industry"),
+            }
         for item in payload.get("prediction", []):
             key = (str(item["date"]), str(item["code"]), int(item["threshold"]))
             _prediction_threshold_times[key] = str(item["time"])
@@ -341,7 +345,10 @@ def load_threshold_times() -> None:
             key = (str(item["date"]), str(item["code"]))
             _nonmain_repeat_alert_times[key] = str(item["time"])
             _nonmain_repeat_alert_names[key] = str(item.get("name") or item["code"])
-            _nonmain_repeat_alert_quotes[key] = {"price": item.get("price"), "changePct": item.get("changePct")}
+            _nonmain_repeat_alert_quotes[key] = {
+                "price": item.get("price"), "changePct": item.get("changePct"),
+                "strategyScore": item.get("strategyScore"), "industry": item.get("industry"),
+            }
     except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
         pass
 
@@ -413,6 +420,54 @@ def midterm_simplified_market(code: str) -> bool:
 
 def normal_limit_price(previous_close: float) -> float:
     return float((Decimal(str(previous_close)) * Decimal("1.10")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+INDUSTRY_BLACKLIST = frozenset({"环境治理", "环保设备", "轨交设备", "银行", "个护用品", "种植业", "油服工程"})
+
+
+def blacklisted_industry(row: Dict[str, Any]) -> bool:
+    """行业级硬排除。
+
+    东方财富部分行业名称会带“Ⅰ/Ⅱ”层级后缀，因此取前缀匹配，保证同一
+    行业的子类别也无法绕过黑名单。
+    """
+    industry = str(row.get("f100") or "").strip()
+    return any(industry == item or industry.startswith(item) for item in INDUSTRY_BLACKLIST)
+
+
+def high_open_fade(row: Dict[str, Any], limit_pct: float = 7.0) -> bool:
+    """排除高开后走弱的股票。
+
+    开盘涨幅以 f17 相对前收 f18 计算；当开盘涨幅达 7% 及以上，且
+    盘中价 f2 已跌回开盘价之下，当日不再参与候选、评分或告警。
+    这使高开后仍继续走强的股票不会被误杀。
+    """
+    opening = number(row.get("f17"))
+    previous_close = number(row.get("f18"))
+    current_price = number(row.get("f2"))
+    if opening in (None, 0) or previous_close in (None, 0) or current_price is None:
+        return False
+    return (opening / previous_close - 1) * 100 >= limit_pct and current_price < opening
+
+
+def intraday_limit_up_fade(row: Dict[str, Any]) -> bool:
+    """排除盘中曾涨停、后续已跳水打开的股票。
+
+    f15 是当日最高价，若已触及按市场类型计算的涨停价，但 f2 已低于涨停价，
+    则该股当日永久不再进入候选池或产生告警。
+    """
+    code = str(row.get("f12") or "")
+    name = str(row.get("f14") or "")
+    previous_close = number(row.get("f18"))
+    high = number(row.get("f15"))
+    current_price = number(row.get("f2"))
+    if len(code) != 6 or previous_close in (None, 0) or high is None or current_price is None:
+        return False
+    limit_price = float(
+        (Decimal(str(previous_close)) * Decimal(str(1 + market_limit_ratio(code, name))))
+        .quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    )
+    return high >= limit_price - 0.001 and current_price < limit_price - 0.001
 
 
 def auction_data_path(trade_date: str) -> Path:
@@ -818,7 +873,7 @@ def get_today_alert_pool(market_key: str = "all", requested_codes: Optional[set]
     today = local_now.strftime("%Y-%m-%d")
     with open_backtest_db() as connection:
         trade_date = today
-        if local_now.hour * 60 + local_now.minute < 9 * 60 + 15:
+        if local_now.weekday() >= 5 or local_now.hour * 60 + local_now.minute < 9 * 60 + 15:
             previous = connection.execute(
                 """SELECT MAX(trade_date) FROM alert_events
                    WHERE trade_date < ? AND (alert_kind='score' OR alert_kind LIKE 'score-repeat-%')""",
@@ -854,12 +909,35 @@ def get_today_alert_pool(market_key: str = "all", requested_codes: Optional[set]
     stocks = []
     for code, item in first_by_code.items():
         live = live_by_code.get(code) or {}
+        # 服务重启前写入的当日告警也不应再出现在告警池。
+        # 以实时开盘价、前收价和现价复核后统一过滤。
+        if live and (high_open_fade(live) or intraday_limit_up_fade(live) or blacklisted_industry(live)):
+            continue
         item.update({
             "industry": str(live.get("f100") or "--"),
             "currentPrice": number(live.get("f2")),
             "currentChangePct": number(live.get("f3")),
         })
         stocks.append(item)
+    concept_by_code: Dict[str, str] = {}
+    if stocks:
+        with ThreadPoolExecutor(max_workers=min(12, len(stocks))) as executor:
+            futures = {executor.submit(get_stock_concepts, item["code"]): item for item in stocks}
+            for future in as_completed(futures):
+                item = futures[future]
+                try:
+                    concepts = future.result()
+                    names = [str(concept.get("name") or "") for concept in concepts]
+                except (MarketDataError, OSError, ValueError):
+                    names = []
+                concept_by_code[item["code"]] = select_primary_business_concept(item["code"], item.get("industry"), names)
+    for item in stocks:
+        concept = concept_by_code.get(item["code"], "")
+        if concept in ("共封装光学(CPO)", "共封装光学（CPO）"):
+            concept = "CPO"
+        industry = str(item.get("industry") or "--")
+        item["topicLabel"] = f"{industry} / {concept}" if concept else industry
+        item["industry"] = item["topicLabel"]
     stocks.sort(key=lambda item: (item["firstAlertTime"] or "", item["code"]))
     return {"tradeDate": trade_date, "isPreviousTradingDay": trade_date != today, "updatedAt": local_now.isoformat(), "stocks": stocks}
 
@@ -1055,6 +1133,29 @@ def enrich_stock(quote: Dict[str, Any]) -> Dict[str, Any]:
     return quote
 
 
+def resolve_stock_name(code: str) -> str:
+    """Resolve a missing quote name without downloading the full market list."""
+    with _cache_lock:
+        cached = _stock_name_cache.get(code)
+    if cached:
+        return cached
+    try:
+        payload = request_json(EASTMONEY_SEARCH_URL, {
+            "input": code, "type": 14,
+            "token": "D43BF722C8E33BDC906FB84D85E326E8",
+        })
+        candidates = ((payload.get("QuotationCodeTable") or {}).get("Data") or [])
+        match = next((item for item in candidates if str(item.get("Code") or "") == code), None)
+        name = str((match or {}).get("Name") or "").strip()
+        if name:
+            with _cache_lock:
+                _stock_name_cache[code] = name
+            return name
+    except (MarketDataError, OSError, ValueError):
+        pass
+    return code
+
+
 def fetch_stock(code: str) -> Dict[str, Any]:
     symbol = stock_symbol(code)
     try:
@@ -1097,7 +1198,7 @@ def fetch_stock(code: str) -> Dict[str, Any]:
         latest = rows[-1]
         return enrich_stock({
             "code": code,
-            "name": code,
+            "name": resolve_stock_name(code),
             "price": latest["close"],
             "changePct": latest.get("changePct"),
             "changeAmount": latest.get("changeAmount"),
@@ -1143,10 +1244,12 @@ def fetch_stock(code: str) -> Dict[str, Any]:
     except (TypeError, ValueError):
         updated_at = None
 
+    raw_name = str(quote[1] or "").strip()
+    resolved_name = raw_name if raw_name and raw_name != code else resolve_stock_name(code)
     return enrich_stock(
         {
             "code": code,
-            "name": quote[1] or code,
+            "name": resolved_name,
             "price": number(quote[3]),
             "changePct": number(quote[32]),
             "changeAmount": number(quote[31]),
@@ -1303,7 +1406,41 @@ def add_related_sectors(quotes: List[Dict[str, Any]]) -> None:
             except MarketDataError:
                 results[code] = []
     for quote in quotes:
-        quote["relatedSectors"] = results.get(quote["code"], [])
+        names = results.get(quote["code"], [])
+        primary = select_primary_business_concept(quote["code"], quote.get("actualIndustry"), names)
+        quote["relatedSectors"] = ([primary] if primary else []) + [name for name in names if name != primary]
+
+
+# 已人工确认的主营产品概念优先级。它只影响页面标签，不参与评分。
+PRIMARY_BUSINESS_CONCEPT_OVERRIDES = {
+    "002201": "玻璃玻纤",
+    "002585": "MLCC概念",
+    "300285": "MLCC概念",
+    "300408": "MLCC概念",
+    "300563": "铜缆高速连接",
+    "300852": "PCB概念",
+    "605606": "玻璃玻纤",
+    "688020": "PCB概念",
+    "688143": "光纤概念",
+    "688260": "MLCC概念",
+    "688655": "PCB概念",
+}
+
+
+def select_primary_business_concept(code: str, industry: Any, concepts: List[str]) -> str:
+    """Choose a business-relevant concept before falling back to provider order."""
+    override = PRIMARY_BUSINESS_CONCEPT_OVERRIDES.get(str(code))
+    if override:
+        return override
+    names = [str(name).strip() for name in concepts if str(name).strip()]
+    if not names:
+        return ""
+    industry_text = str(industry or "").replace("Ⅱ", "").replace("Ⅲ", "").strip()
+    if industry_text:
+        matched = [name for name in names if industry_text in name or name.replace("概念", "") in industry_text]
+        if matched:
+            return matched[0]
+    return names[0]
 
 
 def fetch_downtrend_history(code: str) -> List[Dict[str, Any]]:
@@ -1793,6 +1930,10 @@ def dynamic_snapshot(
         or amplitude is None
         or "ST" in name.upper()
     ):
+        return None
+    # 高开 7% 及以上且已跌回开盘价下方，或盘中涨停后跳水，当日不再参与
+    # 候选、评分记录和告警判定，防止因涨幅回落而重新入池。
+    if high_open_fade(row) or intraday_limit_up_fade(row) or blacklisted_industry(row):
         return None
 
     net_inflow = number(row.get("f62"))
@@ -2788,11 +2929,11 @@ def fetch_concept_rank_data() -> Dict[str, Any]:
             "index": number(row.get("f2")),
             "changePct": number(row.get("f3")),
             "mainNetInflow": number(row.get("f62")),
-            "risingCount": int(row.get("f104") or 0),
-            "fallingCount": int(row.get("f105") or 0),
-            "flatCount": int(row.get("f106") or 0),
-            "limitUpCount": int(row.get("f107") or 0),
-            "limitDownCount": int(row.get("f108") or 0),
+            "risingCount": int(number(row.get("f104")) or 0),
+            "fallingCount": int(number(row.get("f105")) or 0),
+            "flatCount": int(number(row.get("f106")) or 0),
+            "limitUpCount": int(number(row.get("f107")) or 0),
+            "limitDownCount": int(number(row.get("f108")) or 0),
             "leader": str(row.get("f140") or row.get("f128") or "--"),
             "leaderChangePct": number(row.get("f141")),
         })
@@ -3284,6 +3425,17 @@ def open_backtest_db() -> sqlite3.Connection:
         name TEXT, score REAL, predictive_score REAL, predictive_probability REAL,
             price REAL, change_pct REAL, volume_ratio REAL, net_inflow REAL, macd_signal TEXT,
         base_json TEXT, order_flow_score REAL, macd_score REAL,
+        PRIMARY KEY (trade_date, minute, code)
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS rebound_daily_scores (
+        trade_date TEXT NOT NULL, code TEXT NOT NULL, name TEXT,
+        daily_score INTEGER NOT NULL, factors_json TEXT,
+        calculated_at TEXT NOT NULL, PRIMARY KEY (trade_date, code)
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS rebound_intraday_scores (
+        trade_date TEXT NOT NULL, minute TEXT NOT NULL, code TEXT NOT NULL, name TEXT,
+        intraday_score INTEGER NOT NULL, price REAL, change_pct REAL,
+        factors_json TEXT, calculated_at TEXT NOT NULL,
         PRIMARY KEY (trade_date, minute, code)
     )""")
     connection.execute("""CREATE TABLE IF NOT EXISTS alert_events (
@@ -4026,6 +4178,150 @@ def get_stock_data(code: str, force_refresh: bool = False) -> Dict[str, Any]:
     return payload
 
 
+def rebound_daily_score(stock: Dict[str, Any]) -> Dict[str, Any]:
+    """Independent 0-100 stabilization score based on daily trend, MACD, volume and support."""
+    rows = [row for row in stock.get("history", []) if number(row.get("close")) is not None]
+    if len(rows) < 25:
+        return {"score": None, "factors": {"available": False}}
+    closes = [float(row["close"]) for row in rows]
+    volumes = [float(number(row.get("volume")) or 0) for row in rows]
+    latest = rows[-1]
+    close = closes[-1]
+    ma5 = sum(closes[-5:]) / 5
+    ma10 = sum(closes[-10:]) / 10
+    ma20 = sum(closes[-20:]) / 20
+    previous_ma5 = sum(closes[-6:-1]) / 5
+    trend = 35 + (12 if close >= ma5 else -8) + (10 if close >= ma10 else -5) + (8 if close >= ma20 else -6) + (10 if ma5 >= previous_ma5 else -5)
+    trend = clamp(trend)
+
+    def ema(values: List[float], period: int) -> List[float]:
+        alpha = 2 / (period + 1)
+        result = [values[0]]
+        for value in values[1:]:
+            result.append(value * alpha + result[-1] * (1 - alpha))
+        return result
+
+    dif = [fast - slow for fast, slow in zip(ema(closes, 12), ema(closes, 26))]
+    dea = ema(dif, 9)
+    hist = [(d - e) * 2 for d, e in zip(dif, dea)]
+    macd = 45 + (18 if dif[-1] >= dif[-2] else -8) + (12 if hist[-1] >= hist[-2] else -6) + (10 if hist[-1] > 0 else 0)
+    macd = clamp(macd)
+    avg_volume = sum(volumes[-6:-1]) / 5 if sum(volumes[-6:-1]) else 0
+    volume_ratio = volumes[-1] / avg_volume if avg_volume else 1
+    price_volume = clamp(48 + (18 if close >= closes[-2] and volume_ratio >= 1.1 else 0) + (12 if close < closes[-2] and volume_ratio < .85 else 0) - (12 if close < closes[-2] and volume_ratio > 1.3 else 0))
+    low20 = min(float(number(row.get("low")) or row["close"]) for row in rows[-20:])
+    recent_low = min(float(number(row.get("low")) or row["close"]) for row in rows[-5:])
+    support = clamp(45 + (20 if recent_low > low20 else 0) + (15 if close <= low20 * 1.08 else 0) + (10 if close >= closes[-2] else 0))
+    score = round(trend * .40 + macd * .30 + price_volume * .20 + support * .10)
+    return {"score": int(clamp(score)), "factors": {"trend": round(trend), "macd": round(macd), "priceVolume": round(price_volume), "support": round(support)}}
+
+
+def rebound_intraday_score(stock: Dict[str, Any], intraday: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    points = list((intraday or {}).get("points") or [])
+    prices = [float(item["price"]) for item in points if number(item.get("price")) is not None]
+    if len(prices) < 5:
+        change = float(number(stock.get("changePct")) or 0)
+        return {"score": round(clamp(45 + change * 5)), "factors": {"available": False}}
+    current = prices[-1]
+    average = sum(prices) / len(prices)
+    recent = prices[-min(15, len(prices)):]
+    prior = prices[-min(30, len(prices)):-min(15, len(prices))] or prices[:1]
+    position = clamp(45 + (20 if current >= average else -10) + (15 if current >= min(recent) else 0))
+    structure = clamp(45 + (20 if min(recent) >= min(prior) else -10) + (15 if current >= max(prior) else 0))
+    momentum = clamp(50 + ((current / prices[max(0, len(prices) - 6)] - 1) * 100) * 15)
+    volumes = [float(number(item.get("volume")) or 0) for item in points]
+    recent_volume = sum(volumes[-5:]) / max(1, min(5, len(volumes)))
+    previous_volume = sum(volumes[-15:-5]) / max(1, len(volumes[-15:-5])) if len(volumes) > 5 else recent_volume
+    volume_score = clamp(45 + (20 if recent_volume >= previous_volume * 1.2 else 0) - (10 if recent_volume < previous_volume * .7 else 0))
+    score = round(position * .35 + structure * .30 + momentum * .20 + volume_score * .15)
+    return {"score": int(clamp(score)), "factors": {"position": round(position), "structure": round(structure), "momentum": round(momentum), "volume": round(volume_score)}}
+
+
+def get_rebound_scores(codes: List[str], concept_name: str = "", force_refresh: bool = False, enable_aggressive_alerts: bool = False) -> Dict[str, Any]:
+    trade_date = datetime.now(CHINA_TZ).strftime("%Y-%m-%d")
+    results: Dict[str, Any] = {}
+    sector_score = 50
+    if concept_name:
+        try:
+            summary = get_hot_concept_summaries([concept_name], force_refresh)[0]
+            sector_score = round(clamp(50 + float(number(summary.get("averageChangePct")) or 0) * 8))
+        except (MarketDataError, OSError, ValueError, IndexError):
+            sector_score = 50
+    def calculate(code: str) -> Tuple[str, Dict[str, Any]]:
+        stock = get_stock_data(code, force_refresh)
+        history_rows = list(stock.get("history") or [])
+        score_trade_date = str(history_rows[-1].get("date") or trade_date) if history_rows else trade_date
+        try:
+            intraday = get_intraday_data(code, score_trade_date, force_refresh)
+        except MarketDataError:
+            intraday = None
+        daily = rebound_daily_score(stock)
+        intraday_result = rebound_intraday_score(stock, intraday)
+        if intraday_result.get("score") is not None:
+            intraday_result["score"] = round(float(intraday_result["score"]) * .90 + sector_score * .10)
+            intraday_result.setdefault("factors", {})["sector"] = sector_score
+        if daily.get("score") is not None:
+            with open_backtest_db() as connection:
+                connection.execute("INSERT OR REPLACE INTO rebound_daily_scores(trade_date,code,name,daily_score,factors_json,calculated_at) VALUES(?,?,?,?,?,?)",
+                    (score_trade_date, code, stock.get("name") or code, daily["score"], json.dumps(daily["factors"], ensure_ascii=False), datetime.now(CHINA_TZ).isoformat()))
+                connection.commit()
+        if intraday_result.get("score") is not None:
+            now_local = datetime.now(CHINA_TZ)
+            intraday_points = list((intraday or {}).get("points") or [])
+            snapshot_minute = str(intraday_points[-1].get("time") or now_local.strftime("%H:%M"))[:5] if intraday_points else now_local.strftime("%H:%M")
+            previous_score = None
+            last_alert_time = None
+            with open_backtest_db() as connection:
+                previous = connection.execute(
+                    "SELECT intraday_score FROM rebound_intraday_scores WHERE trade_date=? AND code=? AND minute<? ORDER BY minute DESC LIMIT 1",
+                    (score_trade_date, code, snapshot_minute),
+                ).fetchone()
+                previous_score = number(previous[0]) if previous else None
+                latest_alert = connection.execute(
+                    """SELECT alert_time FROM alert_events
+                       WHERE trade_date=? AND code=? AND alert_kind LIKE 'rebound-60%'
+                       ORDER BY alert_time DESC,id DESC LIMIT 1""",
+                    (score_trade_date, code),
+                ).fetchone()
+                last_alert_time = str(latest_alert[0]) if latest_alert else None
+                connection.execute("INSERT OR REPLACE INTO rebound_intraday_scores(trade_date,minute,code,name,intraday_score,price,change_pct,factors_json,calculated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (score_trade_date, snapshot_minute, code, stock.get("name") or code, intraday_result["score"], number(stock.get("price")), number(stock.get("changePct")), json.dumps(intraday_result.get("factors") or {}, ensure_ascii=False), now_local.isoformat()))
+                connection.commit()
+            score_time = f"{snapshot_minute}:00"
+            last_seconds, current_seconds = _clock_seconds(last_alert_time), _clock_seconds(score_time)
+            crossed_up = previous_score is not None and float(previous_score) < 60 <= float(intraday_result["score"])
+            repeat_due = (
+                float(intraday_result["score"]) >= 60
+                and last_seconds is not None and current_seconds is not None
+                and current_seconds - last_seconds >= 300
+            )
+            if (
+                enable_aggressive_alerts
+                and is_intraday_alert_session(now_local)
+                and score_trade_date == now_local.strftime("%Y-%m-%d")
+                and (crossed_up or repeat_due)
+            ):
+                save_alert_event(
+                    score_trade_date, code, str(stock.get("name") or code), f"rebound-60-{snapshot_minute.replace(':', '')}", 60,
+                    score_time, {"price": number(stock.get("price")), "changePct": number(stock.get("changePct"))},
+                    float(intraday_result["score"]), 0, 0,
+                    {
+                        **(intraday_result.get("factors") or {}), "concept": concept_name,
+                        "previousScore": previous_score, "dailyScore": daily.get("score"),
+                    }, None,
+                )
+        return code, {"code": code, "name": stock.get("name") or code, "dailyScore": daily.get("score"), "intradayScore": intraday_result.get("score"), "dailyFactors": daily.get("factors"), "intradayFactors": intraday_result.get("factors")}
+    with ThreadPoolExecutor(max_workers=min(8, len(codes))) as executor:
+        futures = [executor.submit(calculate, code) for code in codes]
+        for future in as_completed(futures):
+            try:
+                code, value = future.result()
+                results[code] = value
+            except (MarketDataError, OSError, ValueError, sqlite3.Error):
+                continue
+    return {"tradeDate": trade_date, "updatedAt": datetime.now(CHINA_TZ).isoformat(), "concept": concept_name, "sectorScore": sector_score, "scores": results}
+
+
 def fetch_intraday_data(code: str, requested_date: str) -> Dict[str, Any]:
     """Return actual one-minute data for the selected daily K-line date."""
     expected_date = normalized_trade_date(requested_date)
@@ -4166,10 +4462,98 @@ class AppHandler(BaseHTTPRequestHandler):
                 for (date, code), value in _nonmain_repeat_alert_times.items()
                 if date == trade_date and value <= "15:00:00"
             )
+            with open_backtest_db() as connection:
+                rebound_rows = connection.execute(
+                    """SELECT code,name,alert_time,price,change_pct,score,factors_json
+                       FROM alert_events
+                       WHERE trade_date=? AND alert_kind LIKE 'rebound-60%' AND alert_time<='15:00:00'
+                       ORDER BY alert_time,id""",
+                    (trade_date,),
+                ).fetchall()
+            previous_rebound_scores: Dict[str, Optional[float]] = {}
+            for row in rebound_rows:
+                code = str(row[0])
+                factors = json.loads(row[6] or "{}")
+                alerts.append({
+                    "code": code, "name": row[1] or code, "time": row[2],
+                    "kind": "rebound-60", "threshold": 60, "price": row[3],
+                    "changePct": row[4], "strategyScore": row[5],
+                    "dailyScore": number(factors.get("dailyScore")),
+                    "previousScore": previous_rebound_scores.get(code, number(factors.get("previousScore"))),
+                    "industry": f"AI算力 / {(factors.get('concept') or '企稳反弹')}",
+                })
+                previous_rebound_scores[code] = number(row[5])
+            # 防止规则修改前已写入内存/持久化的告警继续显示。
+            # 命中“高开 >=7% 且低于开盘价”或“盘中涨停后跳水”
+            # 的当日股票，从告警框中移除。
+            if alerts:
+                try:
+                    live_rows, _ = fetch_market_rows("all")
+                    excluded_codes = {
+                        str(row.get("f12") or "") for row in live_rows
+                        if high_open_fade(row) or intraday_limit_up_fade(row) or blacklisted_industry(row)
+                    }
+                    if excluded_codes:
+                        alerts = [item for item in alerts if item["code"] not in excluded_codes]
+                except (MarketDataError, OSError, ValueError):
+                    pass
             for alert in alerts:
                 alert_kind = "score" if alert["kind"] == "score-repeat" else alert["kind"]
                 alert["consecutiveDays"] = alert_consecutive_days(alert["code"], alert_kind, trade_date)
+            repeat_alerts = [alert for alert in alerts if alert["kind"] == "score-repeat"]
+            if repeat_alerts:
+                with open_backtest_db() as connection:
+                    for alert in repeat_alerts:
+                        previous = connection.execute(
+                            """SELECT change_pct FROM alert_events
+                               WHERE trade_date=? AND code=? AND alert_time<?
+                                 AND (alert_kind='score' OR alert_kind LIKE 'score-repeat-%')
+                                 AND change_pct IS NOT NULL
+                               ORDER BY alert_time DESC, id DESC LIMIT 1""",
+                            (trade_date, alert["code"], alert["time"]),
+                        ).fetchone()
+                        alert["previousChangePct"] = number(previous[0]) if previous else None
             alerts.sort(key=lambda item: item["time"])
+            # 告警框与盘中选股卡片使用同一题材口径：所属行业 / 第一关联概念。
+            # 只补充两个告警框各自最新 10 条，避免历史告警过多拖慢轮询。
+            latest_main = [item for item in alerts if is_main_board_code(item["code"]) and item["kind"] != "prediction"][-10:]
+            latest_nonmain = [item for item in alerts if not is_main_board_code(item["code"]) and item["kind"] != "prediction"][-10:]
+            topic_targets = latest_main + latest_nonmain
+            if topic_targets:
+                missing_industries = {item["code"] for item in topic_targets if not item.get("industry")}
+                if missing_industries:
+                    try:
+                        live_rows, _ = fetch_market_rows("all")
+                        industry_by_code = {
+                            str(row.get("f12") or ""): str(row.get("f100") or "")
+                            for row in live_rows if str(row.get("f12") or "") in missing_industries
+                        }
+                        for item in topic_targets:
+                            if not item.get("industry"):
+                                item["industry"] = industry_by_code.get(item["code"]) or "--"
+                                if item["kind"] == "score-repeat":
+                                    _nonmain_repeat_alert_quotes.setdefault((trade_date, item["code"]), {}).update({"industry": item["industry"]})
+                        persist_threshold_times()
+                    except (MarketDataError, OSError, ValueError):
+                        pass
+                concept_by_code: Dict[str, str] = {}
+                with ThreadPoolExecutor(max_workers=min(12, len(topic_targets))) as executor:
+                    futures = {executor.submit(get_stock_concepts, item["code"]): item["code"] for item in topic_targets}
+                    for future in as_completed(futures):
+                        code = futures[future]
+                        try:
+                            concepts = future.result()
+                            concept_names = [str(item.get("name") or "") for item in concepts]
+                            target = next((item for item in topic_targets if item["code"] == code), {})
+                            concept_by_code[code] = select_primary_business_concept(code, target.get("industry"), concept_names)
+                        except (MarketDataError, OSError, ValueError):
+                            concept_by_code[code] = ""
+                for item in topic_targets:
+                    industry = str(item.get("industry") or "--")
+                    concept = concept_by_code.get(item["code"], "")
+                    if concept in ("共封装光学(CPO)", "共封装光学（CPO）"):
+                        concept = "CPO"
+                    item["topicLabel"] = f"{industry} / {concept}" if concept else industry
             self.send_json(200, {"tradeDate": trade_date, "alerts": alerts})
             return
         if parsed.path == "/api/score-traces":
@@ -4187,6 +4571,47 @@ class AppHandler(BaseHTTPRequestHandler):
                 {"time": row[0], "score": row[1], "predictiveScore": row[2], "probability": row[3], "price": row[4], "changePct": row[5], "base": json.loads(row[6] or "{}"), "orderFlowScore": row[7], "macdScore": row[8]}
                 for row in rows
             ]})
+            return
+        if parsed.path == "/api/rebound-scores":
+            codes = [code.strip() for code in query.get("codes", [""])[0].split(",") if code.strip()]
+            if not codes or len(codes) > 120 or any(len(code) != 6 or not code.isdigit() for code in codes):
+                self.send_json(400, {"error": "股票代码列表不正确"})
+                return
+            concept_name = query.get("concept", [""])[0].strip()
+            self.send_json(200, get_rebound_scores(
+                list(dict.fromkeys(codes)), concept_name, query.get("refresh") == ["1"], query.get("aggressive") == ["1"]
+            ))
+            return
+        if parsed.path == "/api/rebound-daily-history":
+            code = query.get("code", [""])[0]
+            try:
+                page = max(1, int(query.get("page", ["1"])[0]))
+                page_size = min(50, max(5, int(query.get("pageSize", ["10"])[0])))
+            except ValueError:
+                self.send_json(400, {"error": "分页参数不正确"})
+                return
+            if len(code) != 6 or not code.isdigit():
+                self.send_json(400, {"error": "股票代码应为6位数字"})
+                return
+            with open_backtest_db() as connection:
+                total = int(connection.execute("SELECT COUNT(*) FROM rebound_daily_scores WHERE code=?", (code,)).fetchone()[0])
+                rows = connection.execute("SELECT trade_date,name,daily_score,factors_json,calculated_at FROM rebound_daily_scores WHERE code=? ORDER BY trade_date DESC LIMIT ? OFFSET ?", (code, page_size, (page - 1) * page_size)).fetchall()
+            self.send_json(200, {"code": code, "page": page, "pageSize": page_size, "total": total, "pages": max(1, math.ceil(total / page_size)), "rows": [{"tradeDate": row[0], "name": row[1], "dailyScore": row[2], "factors": json.loads(row[3] or "{}"), "calculatedAt": row[4]} for row in rows]})
+            return
+        if parsed.path == "/api/rebound-intraday-history":
+            code = query.get("code", [""])[0]
+            requested_date = query.get("date", [""])[0]
+            if len(code) != 6 or not code.isdigit():
+                self.send_json(400, {"error": "股票代码应为6位数字"})
+                return
+            with open_backtest_db() as connection:
+                if requested_date:
+                    trade_date = requested_date
+                else:
+                    latest = connection.execute("SELECT MAX(trade_date) FROM rebound_intraday_scores WHERE code=?", (code,)).fetchone()
+                    trade_date = str(latest[0] or datetime.now(CHINA_TZ).strftime("%Y-%m-%d"))
+                rows = connection.execute("SELECT minute,name,intraday_score,price,change_pct,factors_json FROM rebound_intraday_scores WHERE code=? AND trade_date=? AND ((minute>='09:30' AND minute<='11:30') OR (minute>='13:00' AND minute<='15:00')) ORDER BY minute", (code, trade_date)).fetchall()
+            self.send_json(200, {"code": code, "tradeDate": trade_date, "name": rows[-1][1] if rows else code, "points": [{"time": row[0], "score": row[2], "price": row[3], "changePct": row[4], "factors": json.loads(row[5] or "{}")} for row in rows]})
             return
         if parsed.path == "/api/sectors":
             self.send_json(
