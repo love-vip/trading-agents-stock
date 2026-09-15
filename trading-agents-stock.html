@@ -295,35 +295,44 @@
       margin-bottom: 18px;
     }
 
-    .score-alerts { position: fixed; z-index: 40; top: 18px; right: 22px; width: fit-content; min-width: 430px; max-width: calc(100vw - 36px); }
+    .score-alerts { position: fixed; z-index: 40; top: 18px; right: 10px; width: min(542px, calc(100vw - 20px)); min-width: 0; max-width: calc(100vw - 20px); }
     /* 中期选股已从左侧导航移除，保留内部兼容逻辑避免影响历史数据。 */
     #midtermNav { display: none !important; }
     .score-alerts[hidden] { display: none; }
-    .score-alerts-main { left: 22px; right: auto; }
-    .score-alerts-rebound { left: 50%; right: auto; top: 82px; transform: translateX(-50%); }
+    .score-alerts-main { left: 10px; right: auto; }
+    .score-alerts-rebound { left: 50%; right: auto; top: 18px; width: min(574px, calc(100vw - 20px)); transform: translateX(-50%); }
     .score-alert-panel { border: 1px solid rgba(245, 158, 11, .45); border-radius: 10px; padding: 10px; background: var(--panel-strong); box-shadow: 0 12px 30px rgba(0,0,0,.25); }
     .score-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; }
     .score-alert-close { border: 0; border-radius: 5px; padding: 2px 7px; color: var(--muted); background: rgba(255,255,255,.08); }
-    .score-alert-list { display: grid; gap: 5px; max-height: 220px; margin-top: 8px; overflow-y: auto; }
-    .score-alert-item { display: grid; grid-template-columns: minmax(125px, max-content) minmax(88px, max-content) 26px 62px 38px 68px 70px 68px; align-items: center; column-gap: 3px; row-gap: 3px; color: var(--text); font-size: 12px; }
+    .score-alert-list { display: grid; gap: 5px; max-height: 330px; margin-top: 8px; overflow-y: auto; }
+    .score-alert-item { display: grid; width: 100%; grid-template-columns: 110px 145px 18px 45px 28px 45px 52px 65px; align-items: center; column-gap: 2px; row-gap: 3px; color: var(--text); font-size: 12px; }
+    .score-alert-item.rebound-alert-item { grid-template-columns: 120px 120px 18px 45px 45px 28px 45px 52px 65px; }
     .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .score-alert-item > span:first-child { overflow: visible; text-overflow: clip; }
+    .score-alert-item > span:first-child { overflow: hidden; text-overflow: ellipsis; }
     .score-alert-item .ai-compute-stock { font-weight: 900; }
     .score-alert-item .repeated-alert-stock { color: #a855f7; font-weight: 900; }
     .score-alert-item .repeat-up { color: var(--red); font-weight: 900; }
     .score-alert-item .repeat-down { color: var(--green); font-weight: 900; }
     .score-alert-item .repeat-direction { text-align: center; font-size: 16px; line-height: 1; }
-    .score-alert-item.rebound-alert-item { grid-template-columns: minmax(125px,max-content) minmax(88px,max-content) 26px 58px 58px 38px 68px 70px 68px; }
     .rebound-alert-score { font-weight: 900; text-align: center; }
     .rebound-alert-score.score-high { color: var(--red); }
     .rebound-alert-score.score-low { color: var(--green); }
     .score-alert-item b { font-weight: 800; text-align: right; }
     .score-alert-item em { color: var(--red); font-style: normal; font-weight: 800; text-align: right; }
+    .score-alert-item em.down { color: var(--green); }
     .score-alert-item time { text-align: right; }
     .score-alert-item time { color: var(--amber); font-variant-numeric: tabular-nums; }
     .score-alert-item small { overflow: hidden; white-space: nowrap; color: var(--muted); font-size: 11px; }
-    .score-alert-item > small:first-of-type { overflow: visible; text-overflow: clip; }
+    .score-alert-item > small:first-of-type { overflow: hidden; text-overflow: ellipsis; text-align: left; }
     .score-alert-item .consecutive { color: var(--cyan); font-weight: 800; text-align: right; }
+    @media (max-width: 1680px) {
+      .score-alerts-rebound { top: 258px; }
+    }
+    @media (max-width: 1120px) {
+      .score-alerts-main { top: 18px; }
+      .score-alerts { top: 250px; }
+      .score-alerts-rebound { top: 482px; }
+    }
     .alert-pool-modal[hidden] { display: none; }
     .alert-pool-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 28px; }
     .alert-pool-backdrop { position: absolute; inset: 0; background: rgba(8, 15, 28, .72); backdrop-filter: blur(4px); }
@@ -5965,17 +5974,17 @@
         if (String(item.time) > String(group.time)) group.time = item.time;
       });
       const isMainBoardAlert = (code) => /^(000|001|002|003|600|601|603|605)/.test(String(code || ""));
-      // 提示框只保留最新 10 条滚动展示；完整历史仍由告警池接口保存。
+      // 提示框只保留最新 15 条滚动展示；完整历史仍由告警池接口保存。
       const byAlertTime = (a, b) => String(a.time || "").localeCompare(String(b.time || ""));
-      const reboundAlerts = groupedAlerts.filter((item) => item.kind === "rebound-60").sort(byAlertTime).slice(-10);
-      const mainAlerts = groupedAlerts.filter((item) => isMainBoardAlert(item.code) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-10);
-      const growthAlerts = groupedAlerts.filter((item) => /^(300|301|688|689|4|8|92)/.test(String(item.code || "")) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-10);
+      const reboundAlerts = groupedAlerts.filter((item) => item.kind === "rebound-60").sort(byAlertTime).slice(-15);
+      const mainAlerts = groupedAlerts.filter((item) => isMainBoardAlert(item.code) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-15);
+      const growthAlerts = groupedAlerts.filter((item) => /^(300|301|688|689|4|8|92)/.test(String(item.code || "")) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-15);
       el.scoreAlerts.hidden = !growthAlerts.length;
       el.scoreAlerts.innerHTML = growthAlerts.length ? `
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>创业板 / 科创板 / 北交所告警</span><button class="score-alert-close" type="button" data-close-score-alerts>关闭</button></div>
           <div class="score-alert-list">
-            ${growthAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const trend = repeatAlertTrend(item); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : "", trend.className].filter(Boolean).join(" "); return `<div class="score-alert-item"><span class="${nameClasses}">${escapeHtml(item.name)}（${item.code}）</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><span class="repeat-direction ${trend.className}" title="相对上一次告警涨幅">${trend.symbol}</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
+            ${growthAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const trend = repeatAlertTrend(item); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : "", trend.className].filter(Boolean).join(" "); const stockLabel = `${item.name}(${item.code})`; return `<div class="score-alert-item"><span class="${nameClasses}" title="${escapeHtml(stockLabel)}">${escapeHtml(stockLabel)}</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><span class="repeat-direction ${trend.className}" title="相对上一次告警涨幅">${trend.symbol}</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>` : "";
       el.mainScoreAlerts.hidden = !mainAlerts.length;
@@ -5983,7 +5992,7 @@
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>主板优选告警</span><button class="score-alert-close" type="button" data-close-main-score-alerts>关闭</button></div>
           <div class="score-alert-list">
-            ${mainAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const trend = repeatAlertTrend(item); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : "", trend.className].filter(Boolean).join(" "); return `<div class="score-alert-item"><span class="${nameClasses}">${escapeHtml(item.name)}（${item.code}）</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><span class="repeat-direction ${trend.className}" title="相对上一次告警涨幅">${trend.symbol}</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
+            ${mainAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const trend = repeatAlertTrend(item); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : "", trend.className].filter(Boolean).join(" "); const stockLabel = `${item.name}(${item.code})`; return `<div class="score-alert-item"><span class="${nameClasses}" title="${escapeHtml(stockLabel)}">${escapeHtml(stockLabel)}</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><span class="repeat-direction ${trend.className}" title="相对上一次告警涨幅">${trend.symbol}</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>` : "";
       el.reboundScoreAlerts.hidden = !reboundAlerts.length;
@@ -5991,7 +6000,7 @@
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>AI算力 · 激进观察</span><button class="score-alert-close" type="button" data-close-rebound-score-alerts>关闭</button></div>
           <div class="score-alert-list">
-            ${reboundAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 60; const dailyScore = hasNumber(item.dailyScore) ? Math.round(item.dailyScore) : null; const trend = repeatAlertTrend(item); const intradayTone = actualScore >= 60 ? "score-high" : "score-low"; const dailyTone = dailyScore !== null && dailyScore >= 60 ? "score-high" : "score-low"; return `<div class="score-alert-item rebound-alert-item"><span class="ai-compute-stock">${escapeHtml(item.name)}（${item.code}）</span><small title="${escapeHtml(item.industry || "AI算力")}">${escapeHtml(item.industry || "AI算力")}</small><span class="repeat-direction ${trend.className}">${trend.symbol}</span><span class="rebound-alert-score ${intradayTone}" title="当时分时分">分时${actualScore}</span><span class="rebound-alert-score ${dailyTone}" title="当时日线分">日线${dailyScore ?? "--"}</span><span class="consecutive">1天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
+            ${reboundAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 60; const dailyScore = hasNumber(item.dailyScore) ? Math.round(item.dailyScore) : null; const trend = repeatAlertTrend(item); const intradayTone = actualScore >= 60 ? "score-high" : "score-low"; const dailyTone = dailyScore !== null && dailyScore >= 60 ? "score-high" : "score-low"; const changeTone = hasNumber(item.changePct) && item.changePct < 0 ? "down" : ""; const stockLabel = `${item.name}(${item.code})`; return `<div class="score-alert-item rebound-alert-item"><span class="ai-compute-stock" title="${escapeHtml(stockLabel)}">${escapeHtml(stockLabel)}</span><small title="${escapeHtml(item.industry || "AI算力")}">${escapeHtml(item.industry || "AI算力")}</small><span class="repeat-direction ${trend.className}">${trend.symbol}</span><span class="rebound-alert-score ${intradayTone}" title="当时分时分">分时${actualScore}</span><span class="rebound-alert-score ${dailyTone}" title="当时日线分">日线${dailyScore ?? "--"}</span><span class="consecutive">1天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em class="${changeTone}">${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>` : "";
       el.scoreAlerts.querySelector("[data-close-score-alerts]")?.addEventListener("click", () => {

@@ -305,6 +305,9 @@ _nonmain_repeat_alert_quotes: Dict[Tuple[str, str], Dict[str, Any]] = {}
 _nonmain_confirmation_history: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
 _nonmain_candidate_entries: Dict[Tuple[str, str], Dict[str, Any]] = {}
 _score_observations: Dict[Tuple[str, str], Tuple[float, float]] = {}
+_alert_quality_streaks: Dict[Tuple[str, str], Tuple[float, float]] = {}
+_intraday_low_observations: Dict[Tuple[str, str], float] = {}
+_ai_rebound_scan_state: Dict[str, bool] = {"running": False}
 
 
 def is_intraday_alert_session(value: datetime) -> bool:
@@ -420,6 +423,20 @@ def midterm_simplified_market(code: str) -> bool:
 
 def normal_limit_price(previous_close: float) -> float:
     return float((Decimal(str(previous_close)) * Decimal("1.10")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def main_board_limit_up(quote: Dict[str, Any]) -> bool:
+    """Whether a main-board quote is currently sealed at its normal 10% limit.
+
+    首次评分告警仍然有效；这里只用于阻断涨停后的重复/持续告警，避免把
+    已经无法按常规价格追入的标的反复推送。
+    """
+    code = str(quote.get("code") or "")
+    price = number(quote.get("price"))
+    previous_close = number(quote.get("previousClose"))
+    if not is_main_board_code(code) or price is None or previous_close in (None, 0):
+        return False
+    return float(price) >= normal_limit_price(float(previous_close)) - 0.001
 
 
 INDUSTRY_BLACKLIST = frozenset({"环境治理", "环保设备", "轨交设备", "银行", "个护用品", "种植业", "油服工程"})
@@ -596,6 +613,7 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
     """交易时段后台扫描全市场，收盘后保存一次候选快照。"""
     captured_dates: set[str] = set()
     last_intraday_scan = 0.0
+    last_ai_rebound_scan = 0.0
     while not stop_event.wait(30):
         now = datetime.now(CHINA_TZ)
         if now.weekday() >= 5:
@@ -604,6 +622,14 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
         current_minutes = now.hour * 60 + now.minute
         in_session = 555 <= current_minutes < 690 or 780 <= current_minutes < 900
         try:
+            # AI 算力企稳反弹扫描完全独立：只读取 AI 算力已维护股票池，
+            # 且先于全市场扫描启动，避免重的全市场扫描延误反弹告警。
+            ai_rebound_session = 570 <= current_minutes < 690 or 780 <= current_minutes < 900
+            # AI 反弹池每分钟扫描一次；前端不打开时也照常生成持续告警。
+            if ai_rebound_session and time.monotonic() - last_ai_rebound_scan >= 60:
+                start_ai_rebound_scan()
+                last_ai_rebound_scan = time.monotonic()
+                print(f"AI算力反弹扫描已启动：{trade_date} {now.strftime('%H:%M:%S')}")
             if in_session and time.monotonic() - last_intraday_scan >= 25:
                 # 轻量扫描全市场快照；dynamic_snapshot 会记录首次达到阈值的时间，
                 # 不触发历史 K 线、概念和人气等页面级补充请求。
@@ -699,6 +725,13 @@ def process_nonmain_confirmation_alerts(quotes: List[Dict[str, Any]], updated_at
                 continue
             key = (trade_date, code)
             if is_main_board_code(code):
+                # 涨停个股不再持续告警：保留首次入选记录，但撤下重复提示。
+                if main_board_limit_up(quote):
+                    changed = changed or key in _nonmain_repeat_alert_times
+                    _nonmain_repeat_alert_times.pop(key, None)
+                    _nonmain_repeat_alert_names.pop(key, None)
+                    _nonmain_repeat_alert_quotes.pop(key, None)
+                    continue
                 if not screener.get("mainBoardElite"):
                     changed = changed or key in _nonmain_repeat_alert_times
                     _nonmain_repeat_alert_times.pop(key, None)
@@ -894,6 +927,11 @@ def get_today_alert_pool(market_key: str = "all", requested_codes: Optional[set]
         if requested_codes is not None and code not in requested_codes:
             continue
         if requested_codes is None and market_key != "all" and not code.startswith(MARKET_SCOPES[market_key]["prefixes"]):
+            continue
+        # 告警池读取的是历史事件，不能只依赖实时扫描时的过滤；否则规则
+        # 更新前写入的“告警时涨幅 >7%”记录仍会继续出现在池子里。
+        entry_change_pct = number(row[5])
+        if entry_change_pct is not None and entry_change_pct > 7:
             continue
         first_by_code.setdefault(code, {
             "code": code, "name": row[1] or code, "firstAlertTime": row[2],
@@ -1419,6 +1457,8 @@ PRIMARY_BUSINESS_CONCEPT_OVERRIDES = {
     "300408": "MLCC概念",
     "300563": "铜缆高速连接",
     "300852": "PCB概念",
+    "300903": "PCB",
+    "301132": "PCB",
     "605606": "玻璃玻纤",
     "688020": "PCB概念",
     "688143": "光纤概念",
@@ -1552,6 +1592,20 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
     ma20 = sum(closes[-20:]) / 20
     ma10_previous = sum(closes[-15:-5]) / 10
     ma20_previous = sum(closes[-25:-5]) / 20
+    # 用同样长度的“5 个交易日前均线”判断均线方向，而不是只看今天的
+    # MA5/10/20 排列。这样可以识别类似 301487 的均线同步下压状态。
+    ma_slopes: Dict[str, Optional[float]] = {}
+    for period in (5, 10, 20, 30):
+        if len(closes) >= period + 5:
+            current_average = sum(closes[-period:]) / period
+            previous_average = sum(closes[-period - 5:-5]) / period
+            ma_slopes[f"ma{period}"] = round(current_average - previous_average, 4)
+        else:
+            ma_slopes[f"ma{period}"] = None
+    all_ma_down = all(
+        ma_slopes.get(key) is not None and float(ma_slopes[key]) < 0
+        for key in ("ma5", "ma10", "ma20", "ma30")
+    )
     return_10 = return_pct(closes[-11], latest)
     return_20 = return_pct(closes[-21], latest)
     down_days = sum(
@@ -1693,9 +1747,11 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         score += 10
         signals.append("短线反弹未收复 MA10")
 
-    excluded = bearish_structure and cumulative_decline and (
+    # 均线全部向下是候选池与告警共用的硬排除项；它不等待累计跌幅、
+    # MACD 等额外条件成立，以避免下行趋势股被分时量价偶然抬入候选池。
+    excluded = all_ma_down or (bearish_structure and cumulative_decline and (
         persistent_down_days or deep_drawdown or failed_rebound
-    )
+    ))
     return {
         "available": True,
         "excluded": excluded,
@@ -1706,6 +1762,8 @@ def analyze_steady_decline(history: List[Dict[str, Any]]) -> Dict[str, Any]:
         "return20": round(return_20, 2),
         "drawdown20": round(drawdown_20, 2),
         "movingAverages": moving_averages,
+        "maSlopes": ma_slopes,
+        "allMaDown": all_ma_down,
         "macd": macd,
         "patternSignals": pattern_signals,
         "patternScore": min(40, pattern_score),
@@ -1753,6 +1811,20 @@ def filter_steady_decline_quotes(quotes: List[Dict[str, Any]]) -> Tuple[List[Dic
             continue
         filtered_quotes.append(quote)
     return filtered_quotes, excluded_count
+
+
+def hard_ma_downtrend(code: str) -> bool:
+    """Return whether a stock is in a four-moving-average downtrend.
+
+    This is intentionally called only for a stock that is about to qualify for
+    an alert.  Full-market scans remain lightweight, while candidates and all
+    emitted alerts share the same daily-trend hard filter.
+    """
+    try:
+        return bool(analyze_steady_decline(get_downtrend_history(code)).get("allMaDown"))
+    except MarketDataError:
+        # Data-source failures must not silently turn into a permanent hard ban.
+        return False
 
 
 def fetch_ths_stock_concepts(code: str) -> List[Dict[str, Any]]:
@@ -1955,6 +2027,37 @@ def dynamic_snapshot(
     score_velocity = (base_score_reference - previous_score) / elapsed_minutes
     _score_observations[observation_key] = (float(base_score_reference), time.monotonic())
     flow_ratio = (net_inflow / amount * 100) if net_inflow is not None and amount > 0 else 0.0
+    opening_price = number(row.get("f17"))
+    day_high = number(row.get("f15"))
+    day_low = number(row.get("f16"))
+    volume = number(row.get("f5"))
+    vwap = (amount / (volume * 100)) if volume and volume > 0 and amount > 0 else None
+    low_open = opening_price not in (None, 0) and previous_close not in (None, 0) and opening_price < previous_close
+    above_open_and_vwap = (not low_open) or (opening_price is not None and price >= opening_price and (vwap is None or price >= vwap))
+    quality_key = (trade_date, code)
+    with _cache_lock:
+        previous_low = _intraday_low_observations.get(quality_key)
+        low_rising = previous_low is not None and day_low is not None and day_low > previous_low
+        if day_low is not None:
+            _intraday_low_observations[quality_key] = day_low
+        streak_started, _ = _alert_quality_streaks.get(quality_key, (0.0, 0.0))
+        now_mono = time.monotonic()
+        if low_open and above_open_and_vwap:
+            if not streak_started:
+                streak_started = now_mono
+            _alert_quality_streaks[quality_key] = (streak_started, now_mono)
+        elif low_open:
+            _alert_quality_streaks.pop(quality_key, None)
+            streak_started = 0.0
+    reclaim_confirmed = (not low_open) or (streak_started and time.monotonic() - streak_started >= 180)
+    near_day_high = day_high is not None and day_high > 0 and (day_high - price) / day_high < 0.01
+    confirmation_passed = bool((volume_ratio or 0) >= 1.2 or (vwap is not None and price >= vwap) or low_rising)
+    alert_quality_blocked = bool(
+        change_pct > 7
+        or near_day_high
+        or not reclaim_confirmed
+        or not confirmation_passed
+    )
     # 告警专用评分：实时量价65% + 资金15% + 分时动能/MACD代理15% + 风险5%。
     # 全市场扫描不逐只请求分钟K线，分时动能代理由评分速度、量比、振幅和涨跌背离构成。
     price_volume_score = (
@@ -2020,8 +2123,14 @@ def dynamic_snapshot(
             and change_pct <= 8
         )
     )
-    alert_confirmed = (main_strategy_confirmed if is_main_board_code(code) else strategy_confirmed) and main_board_elite
-    alert_early = strategy_early and main_board_elite
+    alert_confirmed = (main_strategy_confirmed if is_main_board_code(code) else strategy_confirmed) and main_board_elite and not alert_quality_blocked
+    alert_early = strategy_early and main_board_elite and not alert_quality_blocked
+    # 告警并非只看当日的分时强弱：若 MA5/10/20/30 都在同步下行，
+    # 不允许进入任何候选/告警通道。只对已到达告警门槛的股票请求日线，
+    # 避免给全市场实时扫描叠加数千次 K 线请求。
+    if alert_confirmed and hard_ma_downtrend(code):
+        alert_confirmed = False
+        alert_early = False
     momentum_support = 0
     if score_velocity >= .15: momentum_support += 4
     if (volume_ratio or 0) >= 1.2: momentum_support += 3
@@ -4219,9 +4328,19 @@ def rebound_daily_score(stock: Dict[str, Any]) -> Dict[str, Any]:
 def rebound_intraday_score(stock: Dict[str, Any], intraday: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     points = list((intraday or {}).get("points") or [])
     prices = [float(item["price"]) for item in points if number(item.get("price")) is not None]
+    previous_close = number((intraday or {}).get("previousClose")) or number(stock.get("previousClose"))
+    opening_price = number(stock.get("open"))
+    if opening_price is None and points:
+        opening_price = number(points[0].get("price"))
+    opening_gap = return_pct(previous_close, opening_price) if previous_close not in (None, 0) and opening_price is not None else None
     if len(prices) < 5:
-        change = float(number(stock.get("changePct")) or 0)
-        return {"score": round(clamp(45 + change * 5)), "factors": {"available": False}}
+        # 早盘分钟线不足 5 根时，不再使用收盘/当前涨跌幅回退，避免把
+        # 低开股的全天数据误当成开盘时分时数据。
+        change = return_pct(opening_price, prices[-1]) if opening_price not in (None, 0) and prices else 0
+        return {"score": round(clamp(45 + change * 5)), "factors": {
+            "available": False, "openingPrice": opening_price,
+            "previousClose": previous_close, "openingGapPct": opening_gap,
+        }}
     current = prices[-1]
     average = sum(prices) / len(prices)
     recent = prices[-min(15, len(prices)):]
@@ -4234,7 +4353,10 @@ def rebound_intraday_score(stock: Dict[str, Any], intraday: Optional[Dict[str, A
     previous_volume = sum(volumes[-15:-5]) / max(1, len(volumes[-15:-5])) if len(volumes) > 5 else recent_volume
     volume_score = clamp(45 + (20 if recent_volume >= previous_volume * 1.2 else 0) - (10 if recent_volume < previous_volume * .7 else 0))
     score = round(position * .35 + structure * .30 + momentum * .20 + volume_score * .15)
-    return {"score": int(clamp(score)), "factors": {"position": round(position), "structure": round(structure), "momentum": round(momentum), "volume": round(volume_score)}}
+    return {"score": int(clamp(score)), "factors": {
+        "position": round(position), "structure": round(structure), "momentum": round(momentum), "volume": round(volume_score),
+        "openingPrice": opening_price, "previousClose": previous_close, "openingGapPct": opening_gap,
+    }}
 
 
 def get_rebound_scores(codes: List[str], concept_name: str = "", force_refresh: bool = False, enable_aggressive_alerts: bool = False) -> Dict[str, Any]:
@@ -4250,7 +4372,9 @@ def get_rebound_scores(codes: List[str], concept_name: str = "", force_refresh: 
     def calculate(code: str) -> Tuple[str, Dict[str, Any]]:
         stock = get_stock_data(code, force_refresh)
         history_rows = list(stock.get("history") or [])
-        score_trade_date = str(history_rows[-1].get("date") or trade_date) if history_rows else trade_date
+        # 腾讯日线在盘中可能仍停在上一交易日；分时反弹必须取当前交易日的
+        # 东方财富分钟线，不能用日线最后一根的日期，否则会退化为假分数。
+        score_trade_date = trade_date
         try:
             intraday = get_intraday_data(code, score_trade_date, force_refresh)
         except MarketDataError:
@@ -4269,6 +4393,13 @@ def get_rebound_scores(codes: List[str], concept_name: str = "", force_refresh: 
             now_local = datetime.now(CHINA_TZ)
             intraday_points = list((intraday or {}).get("points") or [])
             snapshot_minute = str(intraday_points[-1].get("time") or now_local.strftime("%H:%M"))[:5] if intraday_points else now_local.strftime("%H:%M")
+            live_price = number(intraday_points[-1].get("price")) if intraday_points else number(stock.get("price"))
+            intraday_previous_close = number((intraday or {}).get("previousClose"))
+            live_change_pct = (
+                return_pct(float(intraday_previous_close), float(live_price))
+                if intraday_previous_close not in (None, 0) and live_price is not None
+                else number(stock.get("changePct"))
+            )
             previous_score = None
             last_alert_time = None
             with open_backtest_db() as connection:
@@ -4285,32 +4416,55 @@ def get_rebound_scores(codes: List[str], concept_name: str = "", force_refresh: 
                 ).fetchone()
                 last_alert_time = str(latest_alert[0]) if latest_alert else None
                 connection.execute("INSERT OR REPLACE INTO rebound_intraday_scores(trade_date,minute,code,name,intraday_score,price,change_pct,factors_json,calculated_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                    (score_trade_date, snapshot_minute, code, stock.get("name") or code, intraday_result["score"], number(stock.get("price")), number(stock.get("changePct")), json.dumps(intraday_result.get("factors") or {}, ensure_ascii=False), now_local.isoformat()))
+                    (score_trade_date, snapshot_minute, code, stock.get("name") or code, intraday_result["score"], live_price, live_change_pct, json.dumps(intraday_result.get("factors") or {}, ensure_ascii=False), now_local.isoformat()))
                 connection.commit()
             score_time = f"{snapshot_minute}:00"
             last_seconds, current_seconds = _clock_seconds(last_alert_time), _clock_seconds(score_time)
-            crossed_up = previous_score is not None and float(previous_score) < 60 <= float(intraday_result["score"])
+            # 激进观察需同时满足较强的日线趋势与盘中反弹：分时分严格大于
+            # 60、日线分严格大于 65，避免日线未企稳时的短暂拉升进入告警。
+            daily_factors = daily.get("factors") or {}
+            daily_qualified = daily.get("score") is not None and float(daily["score"]) > 65
+            daily_sync = float(daily_factors.get("trend") or 0) >= 50 and float(daily_factors.get("macd") or 0) >= 50
+            intraday_factors = intraday_result.get("factors") or {}
+            intraday_confirmation = bool(
+                float(intraday_factors.get("volume") or 0) >= 50
+                or float(intraday_factors.get("position") or 0) >= 65
+                or float(intraday_factors.get("structure") or 0) >= 65
+            )
+            live_high = number(stock.get("high"))
+            rebound_quality = (
+                daily_qualified and daily_sync and intraday_confirmation
+                and float(intraday_result["score"]) > 60
+                and (live_price is None or live_price <= 0 or live_change_pct <= 7)
+                and not (live_high and live_price and (live_high - live_price) / live_high < .01)
+            )
+            # 09:30—09:35 仅记录分数，不触发反弹告警。
+            session_eligible = snapshot_minute > "09:35"
+            rebound_qualified = rebound_quality
+            crossed_up = previous_score is not None and float(previous_score) <= 60 < float(intraday_result["score"]) and rebound_quality
             repeat_due = (
-                float(intraday_result["score"]) >= 60
+                rebound_qualified
                 and last_seconds is not None and current_seconds is not None
-                and current_seconds - last_seconds >= 300
+                and current_seconds - last_seconds >= 60
             )
             if (
                 enable_aggressive_alerts
                 and is_intraday_alert_session(now_local)
+                and session_eligible
                 and score_trade_date == now_local.strftime("%Y-%m-%d")
                 and (crossed_up or repeat_due)
             ):
                 save_alert_event(
                     score_trade_date, code, str(stock.get("name") or code), f"rebound-60-{snapshot_minute.replace(':', '')}", 60,
-                    score_time, {"price": number(stock.get("price")), "changePct": number(stock.get("changePct"))},
+                    score_time, {"price": live_price, "changePct": live_change_pct},
                     float(intraday_result["score"]), 0, 0,
                     {
                         **(intraday_result.get("factors") or {}), "concept": concept_name,
                         "previousScore": previous_score, "dailyScore": daily.get("score"),
+                        "dailyQualified": daily_qualified,
                     }, None,
                 )
-        return code, {"code": code, "name": stock.get("name") or code, "dailyScore": daily.get("score"), "intradayScore": intraday_result.get("score"), "dailyFactors": daily.get("factors"), "intradayFactors": intraday_result.get("factors")}
+        return code, {"code": code, "name": stock.get("name") or code, "dailyScore": daily.get("score"), "intradayScore": intraday_result.get("score"), "dailyQualified": daily.get("score") is not None and float(daily["score"]) > 65, "reboundQualified": daily.get("score") is not None and float(daily["score"]) > 65 and intraday_result.get("score") is not None and float(intraday_result["score"]) > 60, "dailyFactors": daily.get("factors"), "intradayFactors": intraday_result.get("factors")}
     with ThreadPoolExecutor(max_workers=min(8, len(codes))) as executor:
         futures = [executor.submit(calculate, code) for code in codes]
         for future in as_completed(futures):
@@ -4320,6 +4474,48 @@ def get_rebound_scores(codes: List[str], concept_name: str = "", force_refresh: 
             except (MarketDataError, OSError, ValueError, sqlite3.Error):
                 continue
     return {"tradeDate": trade_date, "updatedAt": datetime.now(CHINA_TZ).isoformat(), "concept": concept_name, "sectorScore": sector_score, "scores": results}
+
+
+def ai_rebound_codes() -> List[str]:
+    """Return the maintained AI-compute universe from persisted daily-score coverage."""
+    with open_backtest_db() as connection:
+        rows = connection.execute(
+            "SELECT DISTINCT code FROM rebound_daily_scores WHERE length(code)=6 AND code GLOB '[0-9]*' ORDER BY code"
+        ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def scan_ai_rebound_alerts() -> None:
+    """Run the AI rebound scan server-side so alerts continue without an open browser tab."""
+    codes = ai_rebound_codes()
+    for start in range(0, len(codes), 80):
+        get_rebound_scores(
+            codes[start:start + 80],
+            concept_name="AI算力",
+            force_refresh=True,
+            enable_aggressive_alerts=True,
+        )
+
+
+def start_ai_rebound_scan() -> bool:
+    """Start one non-overlapping AI-universe rebound scan in the background."""
+    with _cache_lock:
+        if _ai_rebound_scan_state["running"]:
+            return False
+        _ai_rebound_scan_state["running"] = True
+
+    def run() -> None:
+        try:
+            scan_ai_rebound_alerts()
+            print("AI算力反弹扫描完成")
+        except (MarketDataError, OSError, ValueError, sqlite3.Error) as exc:
+            print(f"AI算力反弹扫描失败: {exc}")
+        finally:
+            with _cache_lock:
+                _ai_rebound_scan_state["running"] = False
+
+    threading.Thread(target=run, name="ai-rebound-scan", daemon=True).start()
+    return True
 
 
 def fetch_intraday_data(code: str, requested_date: str) -> Dict[str, Any]:
@@ -4480,7 +4676,9 @@ class AppHandler(BaseHTTPRequestHandler):
                     "changePct": row[4], "strategyScore": row[5],
                     "dailyScore": number(factors.get("dailyScore")),
                     "previousScore": previous_rebound_scores.get(code, number(factors.get("previousScore"))),
-                    "industry": f"AI算力 / {(factors.get('concept') or '企稳反弹')}",
+                    # 后续会统一拼接“行业 / 主营相关概念”；这里仅保留行业，
+                    # 避免形成“AI算力 / AI算力 / PCB概念”的重复层级。
+                    "industry": str(factors.get('concept') or 'AI算力'),
                 })
                 previous_rebound_scores[code] = number(row[5])
             # 防止规则修改前已写入内存/持久化的告警继续显示。
@@ -4491,7 +4689,20 @@ class AppHandler(BaseHTTPRequestHandler):
                     live_rows, _ = fetch_market_rows("all")
                     excluded_codes = {
                         str(row.get("f12") or "") for row in live_rows
-                        if high_open_fade(row) or intraday_limit_up_fade(row) or blacklisted_industry(row)
+                        if (
+                            high_open_fade(row)
+                            or intraday_limit_up_fade(row)
+                            or blacklisted_industry(row)
+                            # 主板涨停时，连同早先已写入的首次评分告警一并
+                            # 从“当前告警框”撤下；历史告警池仍保留首次记录。
+                            or (
+                                is_main_board_code(str(row.get("f12") or ""))
+                                and number(row.get("f2")) is not None
+                                and number(row.get("f18")) not in (None, 0)
+                                and float(number(row.get("f2")))
+                                >= normal_limit_price(float(number(row.get("f18")))) - 0.001
+                            )
+                        )
                     }
                     if excluded_codes:
                         alerts = [item for item in alerts if item["code"] not in excluded_codes]
@@ -4514,10 +4725,25 @@ class AppHandler(BaseHTTPRequestHandler):
                         ).fetchone()
                         alert["previousChangePct"] = number(previous[0]) if previous else None
             alerts.sort(key=lambda item: item["time"])
+            # 告警框只渲染各市场最新 15 条；对这小部分可见项补做均线硬过滤，
+            # 既能隐藏规则更新前的残留告警，也不会让接口为整天的历史告警逐只取 K 线。
+            visible_alert_codes = {
+                item["code"]
+                for item in (
+                    [item for item in alerts if is_main_board_code(item["code"]) and item["kind"] != "prediction"][-15:]
+                    + [item for item in alerts if not is_main_board_code(item["code"]) and item["kind"] != "prediction"][-15:]
+                )
+            }
+            if visible_alert_codes:
+                with ThreadPoolExecutor(max_workers=min(8, len(visible_alert_codes))) as executor:
+                    futures = {executor.submit(hard_ma_downtrend, code): code for code in visible_alert_codes}
+                    ma_down_codes = {futures[future] for future in as_completed(futures) if future.result()}
+                if ma_down_codes:
+                    alerts = [item for item in alerts if item["code"] not in ma_down_codes]
             # 告警框与盘中选股卡片使用同一题材口径：所属行业 / 第一关联概念。
-            # 只补充两个告警框各自最新 10 条，避免历史告警过多拖慢轮询。
-            latest_main = [item for item in alerts if is_main_board_code(item["code"]) and item["kind"] != "prediction"][-10:]
-            latest_nonmain = [item for item in alerts if not is_main_board_code(item["code"]) and item["kind"] != "prediction"][-10:]
+            # 只补充两个告警框各自最新 15 条，避免历史告警过多拖慢轮询。
+            latest_main = [item for item in alerts if is_main_board_code(item["code"]) and item["kind"] != "prediction"][-15:]
+            latest_nonmain = [item for item in alerts if not is_main_board_code(item["code"]) and item["kind"] != "prediction"][-15:]
             topic_targets = latest_main + latest_nonmain
             if topic_targets:
                 missing_industries = {item["code"] for item in topic_targets if not item.get("industry")}
