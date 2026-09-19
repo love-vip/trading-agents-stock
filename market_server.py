@@ -399,7 +399,10 @@ class MarketDataError(RuntimeError):
 
 
 def stock_symbol(code: str) -> str:
-    exchange = "sh" if code.startswith(("5", "6", "9")) else "sz"
+    if code.startswith(("4", "8", "92")):
+        exchange = "bj"
+    else:
+        exchange = "sh" if code.startswith(("5", "6", "9")) else "sz"
     return f"{exchange}{code}"
 
 
@@ -419,6 +422,18 @@ def main_board_code(code: str) -> bool:
 
 def bse_code(code: str) -> bool:
     return code.startswith(MARKET_SCOPES["bse"]["prefixes"])
+
+
+def remove_bse_small_float_cap_reason(code: str, reason: Any) -> str:
+    """北交所不适用“流通市值小于30亿”收盘黑名单规则。"""
+    text = str(reason or "")
+    if not bse_code(str(code)) or "流通市值小于30亿" not in text:
+        return text
+    return " / ".join(
+        part.strip()
+        for part in re.split(r"\s*/\s*|、|,|，", text)
+        if part.strip() and part.strip() != "流通市值小于30亿"
+    )
 
 
 def excluded_screener_industry(industry: Any) -> bool:
@@ -3131,6 +3146,9 @@ def get_industry_options() -> Dict[str, Any]:
             for row in rows
             if str(row.get("f100") or "").strip()
             and str(row.get("f100") or "").strip() not in CUSTOM_BLACKLIST_INDUSTRIES
+            and str(row.get("f100") or "").strip() != "其他电源设备Ⅱ"
+            and str(row.get("f100") or "").strip() != "家电零部件Ⅱ"
+            and str(row.get("f100") or "").strip() != "其他电子Ⅱ"
         },
         key=lambda value: value,
     )
@@ -3152,7 +3170,10 @@ def get_industry_blacklist() -> Dict[str, Any]:
     with open_backtest_db() as connection:
         rows_today = connection.execute("SELECT code,reason FROM daily_blacklist WHERE trade_date=?", (trade_date,)).fetchall()
         completed_today = connection.execute("SELECT 1 FROM daily_blacklist_runs WHERE trade_date=?", (trade_date,)).fetchone()
-    daily_reasons = {str(code): str(reason) for code, reason in rows_today}
+    daily_reasons = {
+        str(code): remove_bse_small_float_cap_reason(str(code), reason)
+        for code, reason in rows_today
+    }
     if cached_daily_reasons is not None:
         daily_reasons = dict(cached_daily_reasons)
     elif not completed_today:
@@ -3160,6 +3181,10 @@ def get_industry_blacklist() -> Dict[str, Any]:
         # 避免旧的“阴跌结构”继续滞留在黑名单中。
         previous_reasons = load_previous_blacklist_reasons(trade_date)
         daily_reasons = {**previous_reasons, **daily_reasons}
+    daily_reasons = {
+        str(code): remove_bse_small_float_cap_reason(str(code), reason)
+        for code, reason in daily_reasons.items()
+    }
     seen = set()
     for row in rows:
         code = str(row.get("f12") or "")
@@ -3302,7 +3327,7 @@ def get_whitelist_stocks(trade_date: Optional[str] = None) -> Dict[str, Any]:
             "netInflow": quote.get("netInflow"),
             "marketCap": quote.get("marketCap"),
             "floatMarketCap": quote.get("floatMarketCap"),
-            "industry": quote.get("actualIndustry") or "--",
+            "industry": {"688785": "半导体", "300153": "电源设备", "002534": "电源设备", "300870": "电源设备", "300491": "电源设备", "002518": "电源设备", "300475": "存储芯片", "300656": "半导体", "688662": "半导体", "001287": "存储芯片"}.get(str(quote.get("code") or ""), quote.get("actualIndustry") or "--"),
             "relatedConcepts": [concept for concept in (quote.get("relatedSectors") or []) if "报预增" not in str(concept)],
             "relatedConcept": next((concept for concept in (quote.get("relatedSectors") or []) if "报预增" not in str(concept)), "--"),
         })
@@ -3321,7 +3346,8 @@ def refresh_daily_blacklist(trade_date: str) -> None:
         name = str(quote.get("name") or "")
         industry = quote.get("actualIndustry")
         stock_reasons = []
-        if quote.get("floatMarketCap") is not None and quote["floatMarketCap"] < 3_000_000_000:
+        # 流通市值小于30亿只约束主板、创业板、科创板，北交所不适用该规则。
+        if not bse_code(str(quote.get("code") or "")) and quote.get("floatMarketCap") is not None and quote["floatMarketCap"] < 3_000_000_000:
             stock_reasons.append("流通市值小于30亿")
         if quote.get("amount") is None or quote.get("amount") < 100_000_000:
             stock_reasons.append("全天成交额不足1亿")
