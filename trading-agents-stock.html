@@ -160,6 +160,8 @@
       font-size: 11px;
       text-align: right;
     }
+    .nav-button .whitelist-market-count { min-width:0; font-size:9px; white-space:normal; line-height:1.45; letter-spacing:-.2px; }
+    .nav-button .menu-quantity-badge { min-width:0; padding:2px 6px; border:1px solid #e7b83d; border-radius:5px; background:#fff8d8; color:#9a6b00; font-size:10px; font-weight:700; line-height:1.35; white-space:normal; box-sizing:border-box; }
     .nav-index { color: var(--muted); font-size: 10px; white-space: nowrap; }
     .nav-index-change.positive { color: var(--red); }
     .nav-index-change.negative { color: var(--green); }
@@ -184,8 +186,15 @@
 
     .nav-submenu .nav-button {
       min-height: 38px;
-      font-size: 13px;
+      font-size: 12.48px;
     }
+    #whitelistTrendFilter option[value="多头排列"], #whitelistTrendFilter option[value="均线上行"], #whitelistTrendFilter option[value="短线转强"] { color: var(--red); }
+    #whitelistTrendFilter option[value="均线粘合"] { color: #a87916; }
+    #whitelistTrendFilter option[value="短线转弱"], #whitelistTrendFilter option[value="空头排列"] { color: var(--green); }
+    .whitelist-trend { display:inline-block; padding:2px 7px; border:1px solid currentColor; border-radius:5px; font-size:12px; line-height:1.35; white-space:nowrap; }
+    .whitelist-trend.trend-strong { color: var(--red); background:rgba(239,68,68,.08); }
+    .whitelist-trend.trend-neutral { color: #a87916; background:rgba(234,179,8,.12); }
+    .whitelist-trend.trend-weak { color: var(--green); background:rgba(16,185,129,.08); }
 
     .hot-sector-groups {
       display: grid;
@@ -2561,11 +2570,11 @@
     .cpo-profile-panel h3 { margin:0; padding:13px 14px; color:var(--text); font-size:15px; border-bottom:1px solid var(--line); }
     .cpo-profile-group { margin:10px; overflow:hidden; border:1px dashed color-mix(in srgb,var(--cpo-color) 70%,var(--line)); border-radius:10px; }
     .cpo-profile-group-title { padding:8px 10px; color:var(--text); background:color-mix(in srgb,var(--cpo-color) 14%,var(--panel-2)); font-size:12px; font-weight:900; }
-    .cpo-profile-table { display:grid; grid-template-columns:minmax(76px,.65fr) 54px 54px 72px 76px 62px minmax(72px,1fr); font-size:11px; }
+    .cpo-profile-table { display:grid; grid-template-columns:minmax(70px,.48fr) 68px 68px 72px 72px 82px 62px minmax(72px,1fr); font-size:11px; }
     #cpoProfileTable { display:grid; grid-template-columns:1fr; gap:10px; padding:10px; align-items:start; }
     #cpoProfileTable .cpo-profile-group { margin:0; min-width:0; }
     .cpo-profile-table > div { padding:8px 7px; border-bottom:1px solid var(--line); color:var(--muted); line-height:1.45; }
-    .cpo-profile-table > div:nth-child(7n+1) { color:var(--text); font-weight:800; }
+    .cpo-profile-table > div:nth-child(8n+1) { color:var(--text); font-weight:800; }
     .cpo-profile-table .profile-head { color:var(--muted); font-size:10px; font-weight:800; background:color-mix(in srgb,var(--line) 25%,transparent); }
     .cpo-intraday-mini { display:inline-flex; width:58px; height:25px; align-items:center; justify-content:center; overflow:hidden; color:var(--muted); font-size:9px; }
     .cpo-intraday-mini svg { width:56px; height:23px; display:block; }
@@ -2578,9 +2587,15 @@
     .concept-rank-table .rank-up { color:var(--red); font-weight:800; } .concept-rank-table .rank-down { color:var(--green); font-weight:800; }
     .cpo-price { color:var(--text)!important; font-weight:800; font-variant-numeric:tabular-nums; }
     .cpo-change.up { color:#d93645!important; font-weight:800; } .cpo-change.down { color:#078058!important; font-weight:800; }
+    .technology-return { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .technology-sort { border:0; padding:0; color:inherit; background:transparent; font:inherit; font-weight:inherit; cursor:pointer; white-space:nowrap; }
+    .technology-sort:hover { color:var(--accent); }
     .rebound-score { border:0; padding:0; color:var(--cyan); background:transparent; font:inherit; font-weight:900; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
     .rebound-score.daily { color:var(--amber); }
-    .profile-stock-link { border:0; padding:0; color:var(--text); background:transparent; font:inherit; font-weight:800; cursor:pointer; text-align:left; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; }
+    .profile-stock-link { display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; border:0; padding:0; color:var(--text); background:transparent; font:inherit; cursor:pointer; text-align:left; text-decoration:none; }
+    .profile-stock-name { display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700; }
+    .profile-stock-code { display:flex; align-items:center; gap:3px; color:var(--muted); font-size:10px; font-weight:600; line-height:1.25; white-space:nowrap; }
+    .profile-stock-code .market-badge { min-width:17px; height:16px; padding:0 3px; font-size:10px; }
     .profile-stock-link:hover,.profile-stock-link:focus-visible { color:var(--cyan); outline:none; }
     .daily-score-history { width:min(760px,92vw); }
     .daily-score-history table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -2599,7 +2614,123 @@
     .daily-score-chart-legend span { display:inline-flex; align-items:center; gap:6px; }
     .daily-score-chart-legend i { width:18px; height:3px; border-radius:3px; background:var(--series-color); }
     @media(max-width:1100px) { .cpo-panorama { width:100%; } }
-    @media(max-width:700px) { .cpo-panorama { width:100%; } .cpo-panorama-layout { grid-template-columns:1fr; } #cpoProfileTable { grid-template-columns:1fr; } .cpo-profile-table { min-width:650px; } }
+    @media(max-width:700px) { .cpo-panorama { width:100%; } .cpo-panorama-layout { grid-template-columns:1fr; } #cpoProfileTable { grid-template-columns:1fr; } .cpo-profile-table { min-width:680px; } }
+    .blacklist-view { position:relative; min-height:calc(100vh - 170px); overflow:hidden; background:var(--panel); color:var(--text); }
+    .blacklist-view::before,.blacklist-view::after { content:""; position:absolute; inset:-30%; pointer-events:none; background-image:radial-gradient(circle, rgba(116,202,255,.8) 0 1px, transparent 1.5px); background-size:83px 97px; opacity:.22; animation:star-drift 24s linear infinite; }
+    .blacklist-view::after { background-size:137px 151px; opacity:.14; animation-duration:38s; animation-direction:reverse; }
+    .blacklist-head,.blacklist-stars { position:relative; z-index:1; }
+    .blacklist-head { display:flex; align-items:end; justify-content:space-between; gap:16px; padding:8px 6px 16px; }
+    .blacklist-head h2 { margin:0; color:#fff; letter-spacing:.04em; text-shadow:0 0 18px rgba(93,191,255,.55); }
+    .blacklist-head p { margin:7px 0 0; color:#9eb8d8; font-size:13px; }
+    .blacklist-stars { min-height:calc(100vh - 270px); position:relative; perspective:900px; transform-style:preserve-3d; transform-origin:50% 50%; animation:blacklist-sphere-spin 34s linear infinite; }
+    .blacklist-stars:hover { animation-play-state:paused; }
+    .blacklist-stars::before { content:""; position:absolute; left:50%; top:50%; width:min(46vw,620px); height:min(72vw,620px); transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle at 42% 38%, rgba(255,245,177,.42) 0%, rgba(255,190,70,.25) 32%, rgba(255,119,38,.11) 62%, transparent 76%); filter:blur(16px); box-shadow:0 0 120px rgba(255,158,67,.42), inset 0 0 90px rgba(255,210,99,.18); pointer-events:none; }
+    .blacklist-stars::after { content:""; position:absolute; left:50%; top:50%; width:min(45vw,608px); height:min(70vw,608px); transform:translate(-50%,-50%); border:1px solid rgba(255,187,83,.30); border-radius:50%; box-shadow:0 0 32px rgba(255,144,49,.30), inset 0 0 38px rgba(255,178,62,.16); pointer-events:none; }
+    .blacklist-star { position:absolute; display:flex; align-items:center; gap:7px; padding:8px 12px; border:1px solid rgba(121,203,255,.35); border-radius:999px; background:rgba(8,24,49,.72); box-shadow:0 0 10px rgba(70,177,255,.35), inset 0 0 12px rgba(70,135,255,.12); white-space:nowrap; transform:translate3d(0,0,0) scale(var(--scale)); animation:star-float var(--duration) ease-in-out infinite alternate, star-pulse 3.5s ease-in-out infinite; animation-delay:var(--delay); }
+    .blacklist-star strong { color:#fff; font-size:14px; }
+    .blacklist-star small { color:#8fb3d9; font-size:12px; }
+    .blacklist-star em { font-style:normal; font-weight:700; font-size:13px; color:#7af0b1; }
+    .blacklist-star em.up { color:#ff7182; }
+    .blacklist-star.sun-core { border-color:rgba(255,211,105,.48); background:rgba(73,43,20,.72); box-shadow:0 0 12px rgba(255,184,70,.4), inset 0 0 12px rgba(255,178,57,.12); }
+    .blacklist-star.sun-ray { border-color:rgba(255,143,72,.42); background:rgba(42,29,27,.72); }
+    .blacklist-empty { position:absolute; inset:30% 0; text-align:center; color:#9eb8d8; }
+    .whitelist-table-wrap { overflow:auto; max-height:calc(100vh - 250px); }
+    .whitelist-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+    .whitelist-table th,.whitelist-table td { padding:11px 14px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+    .whitelist-table th { position:sticky; top:0; background:var(--panel); z-index:1; color:var(--muted); }
+    .whitelist-sort { border:0; background:transparent; color:inherit; font:inherit; font-weight:inherit; cursor:pointer; padding:0; }
+    .whitelist-sort:hover { color:var(--accent); }
+    .whitelist-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px; }
+    .whitelist-toolbar input,.whitelist-toolbar select { min-height:36px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); }
+    .whitelist-toolbar select[multiple][size="1"] { min-width:112px; }
+    .whitelist-toolbar .industry-filter { min-width:180px; }
+    .market-multi-source { display:none!important; }
+    .market-multi-select { position:relative; flex:0 0 180px; }
+    .market-multi-trigger { display:flex; width:100%; min-height:36px; align-items:center; justify-content:space-between; gap:8px; padding:7px 11px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; cursor:pointer; text-align:left; }
+    .market-multi-trigger span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .market-multi-trigger b { color:var(--muted); font-size:16px; line-height:1; }
+    .market-multi-menu { display:none; position:absolute; z-index:40; top:calc(100% + 5px); left:0; width:100%; padding:5px; border:1px solid var(--line); border-radius:8px; background:var(--panel); box-shadow:0 12px 28px rgba(15,23,42,.18); }
+    .market-multi-menu.open { display:grid; gap:2px; }
+    .market-multi-menu label { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:5px; color:var(--text); cursor:pointer; white-space:nowrap; }
+    .market-multi-menu label:hover { background:color-mix(in srgb,var(--accent) 10%,transparent); }
+    .market-multi-menu input { width:16px; height:16px; accent-color:var(--accent); }
+    .market-distribution-panel { float:right; width:min(54%,720px); min-width:390px; margin:0 0 14px 20px; padding:13px 15px 11px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); box-sizing:border-box; }
+    .market-distribution-panel .market-distribution-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:9px; }
+    .market-distribution-panel .market-distribution-head strong { color:var(--text); font-size:15px; }
+    .market-distribution-panel .market-distribution-head span { color:var(--muted); font-size:10px; }
+    .market-distribution-panel .market-distribution-bars { display:grid; grid-template-columns:repeat(11,minmax(22px,1fr)); align-items:end; gap:5px; height:58px; min-height:0; padding:0 2px 4px; border-bottom:1px solid var(--line); box-sizing:border-box; }
+    .market-distribution-panel .market-distribution-item { display:flex; min-width:0; height:100%; flex-direction:column; align-items:center; justify-content:flex-end; gap:3px; }
+    .market-distribution-panel .market-distribution-count { min-height:14px; color:var(--muted); font-size:10px; font-weight:800; font-variant-numeric:tabular-nums; }
+    .market-distribution-panel .market-distribution-bar-wrap { display:flex; width:100%; height:38px; align-items:flex-end; justify-content:center; }
+    .market-distribution-panel .market-distribution-bar { display:block; width:min(26px,78%); min-width:0; min-height:2px; gap:0; border-radius:7px 7px 0 0; background:var(--muted); text-align:initial; }
+    .market-distribution-panel .market-distribution-bar.down { background:linear-gradient(180deg,#43c99a,#14a873); }
+    .market-distribution-panel .market-distribution-bar.up { background:linear-gradient(180deg,#ff747d,#ed3948); }
+    .market-distribution-panel .market-distribution-label { color:var(--muted); font-size:9px; line-height:1; white-space:nowrap; }
+    .market-distribution-panel .market-distribution-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px 16px; padding-top:9px; color:var(--muted); font-size:10px; }
+    .market-distribution-panel .market-distribution-summary span { white-space:nowrap; }
+    .market-distribution-panel .market-distribution-summary b { margin-left:3px; color:var(--text); font-size:13px; font-variant-numeric:tabular-nums; }
+    .market-distribution-panel .market-distribution-summary .up b { color:var(--red); }
+    .market-distribution-panel .market-distribution-summary .down b { color:var(--green); }
+    .blacklist-view .whitelist-table-wrap, #whitelistView .whitelist-table-wrap { clear:both; }
+    @media(max-width:900px) { .market-distribution-panel { float:none; width:100%; min-width:0; margin:0 0 12px; } .market-distribution-panel .market-distribution-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    .blacklist-reason-help { flex:1; min-width:360px; padding:8px 14px; border:1px solid rgba(245,158,11,.25); border-radius:8px; background:rgba(245,158,11,.07); color:var(--muted); font-size:12px; line-height:1.45; }
+    .blacklist-reason-help { position:relative; cursor:help; }
+    .blacklist-reason-help strong { color:var(--text); margin-right:8px; font-size:13px; }
+    .blacklist-reason-tooltip { display:none; position:absolute; z-index:30; left:0; top:calc(100% + 8px); width:min(680px, calc(100vw - 80px)); padding:14px 16px; border:1px solid rgba(245,158,11,.45); border-radius:10px; background:var(--panel); box-shadow:0 12px 32px rgba(15,23,42,.2); color:var(--text); font-size:12px; line-height:1.65; white-space:normal; }
+    .blacklist-reason-help:hover .blacklist-reason-tooltip,.blacklist-reason-help:focus-within .blacklist-reason-tooltip { display:block; }
+    .blacklist-reason-tooltip h4 { margin:0 0 7px; font-size:14px; }
+    .blacklist-reason-tooltip p { margin:4px 0; }
+    .blacklist-reason-tooltip ul { margin:3px 0 7px 18px; padding:0; }
+    .blacklist-reason-tags { display:flex; flex-wrap:wrap; gap:4px; white-space:normal; }
+    .blacklist-reason-tag { display:inline-flex; align-items:center; padding:2px 5px; border:1px solid rgba(245,158,11,.35); border-radius:4px; background:rgba(245,158,11,.08); color:var(--muted); font-size:10px; line-height:1.25; }
+    .whitelist-name { display:flex; align-items:center; gap:7px; font-weight:700; }
+    .whitelist-code { display:block; margin-top:3px; color:var(--muted); font-size:12px; }
+    .market-badge { display:inline-flex; min-width:20px; height:18px; padding:0 4px; align-items:center; justify-content:center; border-radius:4px; background:#f4bd35; color:#563d00; font-size:12px; font-style:normal; font-weight:800; box-sizing:border-box; }
+    .whitelist-concepts { display:flex; flex-wrap:wrap; gap:4px; max-height:38px; overflow:hidden; white-space:normal; align-content:flex-start; }
+    .whitelist-concept-tag { display:inline-flex; padding:2px 7px; border:1px solid #0ea5e9; border-radius:5px; color:#087ea4; background:rgba(125,211,252,.22); font-size:8.5px; line-height:1.35; white-space:nowrap; }
+    .whitelist-mini { display:inline-flex; width:82px; height:28px; align-items:center; justify-content:center; color:var(--muted); font-size:10px; }
+    .whitelist-mini[data-whitelist-intraday] { border-left:3px solid #f59e0b; padding-left:4px; }
+    .whitelist-mini svg { width:80px; height:26px; display:block; }
+    .whitelist-table th:nth-child(1),.whitelist-table td:nth-child(1) { width:100px; min-width:100px; max-width:100px; }
+    .whitelist-table th:nth-child(2),.whitelist-table td:nth-child(2),.whitelist-table th:nth-child(3),.whitelist-table td:nth-child(3),.whitelist-table th:nth-child(4),.whitelist-table td:nth-child(4) { width:9%; }
+    .whitelist-table th:nth-child(5),.whitelist-table td:nth-child(5) { width:12%; }
+    .whitelist-table th:nth-child(6),.whitelist-table td:nth-child(6) { width:8%; }
+    .whitelist-table th:nth-child(7),.whitelist-table td:nth-child(7) { width:9%; }
+    .whitelist-table th:nth-child(8),.whitelist-table td:nth-child(8) { width:10%; }
+    .whitelist-table th:nth-child(9),.whitelist-table td:nth-child(9) { width:14%; }
+    .whitelist-table th:nth-child(10),.whitelist-table td:nth-child(10) { width:20%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(5),#whitelistTableWrap .whitelist-table td:nth-child(5) { width:9%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(4),#whitelistTableWrap .whitelist-table td:nth-child(4) { width:10.8%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(6),#whitelistTableWrap .whitelist-table td:nth-child(6) { width:8%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(7),#whitelistTableWrap .whitelist-table td:nth-child(7) { width:9.6%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(8),#whitelistTableWrap .whitelist-table td:nth-child(8) { width:9.6%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(9),#whitelistTableWrap .whitelist-table td:nth-child(9) { width:8%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(10),#whitelistTableWrap .whitelist-table td:nth-child(10) { width:9%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(11),#whitelistTableWrap .whitelist-table td:nth-child(11) { width:14%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(12),#whitelistTableWrap .whitelist-table td:nth-child(12) { width:16%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(8),#whitelistTableWrap .whitelist-table td:nth-child(8) { width:7.68%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(12),#whitelistTableWrap .whitelist-table td:nth-child(12) { width:17.6%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(11),#whitelistTableWrap .whitelist-table td:nth-child(11) { width:15.4%; }
+    #whitelistTableWrap .whitelist-table th:nth-child(3),#whitelistTableWrap .whitelist-table td:nth-child(3),
+    #whitelistTableWrap .whitelist-table th:nth-child(4),#whitelistTableWrap .whitelist-table td:nth-child(4),
+    #whitelistTableWrap .whitelist-table th:nth-child(5),#whitelistTableWrap .whitelist-table td:nth-child(5),
+    #whitelistTableWrap .whitelist-table th:nth-child(12),#whitelistTableWrap .whitelist-table td:nth-child(12) { padding:8px 10px; }
+    #whitelistTableWrap .whitelist-table td:nth-child(3),#whitelistTableWrap .whitelist-table td:nth-child(4),#whitelistTableWrap .whitelist-table td:nth-child(5),#whitelistTableWrap .whitelist-table td:nth-child(12) { vertical-align:middle; }
+    #whitelistTableWrap .whitelist-table td:nth-child(3) .whitelist-mini,#whitelistTableWrap .whitelist-table td:nth-child(4) .whitelist-mini,#whitelistTableWrap .whitelist-table td:nth-child(5) .whitelist-mini { width:100%; height:42px; }
+    #whitelistTableWrap .whitelist-table td:nth-child(3) .whitelist-mini svg,#whitelistTableWrap .whitelist-table td:nth-child(4) .whitelist-mini svg,#whitelistTableWrap .whitelist-table td:nth-child(5) .whitelist-mini svg { width:100%; height:40px; }
+    #whitelistTableWrap .whitelist-table td:nth-child(12) .whitelist-concepts { max-height:none; min-height:42px; align-content:center; align-items:center; }
+    #blacklistTableWrap .whitelist-table th:nth-child(5),#blacklistTableWrap .whitelist-table td:nth-child(5) { width:9.6%; }
+    #blacklistTableWrap .whitelist-table th:nth-child(6),#blacklistTableWrap .whitelist-table td:nth-child(6) { width:6.4%; }
+    #blacklistTableWrap .whitelist-table th:nth-child(7),#blacklistTableWrap .whitelist-table td:nth-child(7) { width:7.2%; }
+    #blacklistTableWrap .whitelist-table th:nth-child(8),#blacklistTableWrap .whitelist-table td:nth-child(8) { width:8%; }
+    #blacklistTableWrap .whitelist-table th:nth-child(9),#blacklistTableWrap .whitelist-table td:nth-child(9) { width:12%; }
+    #blacklistTableWrap .whitelist-table th:nth-child(10),#blacklistTableWrap .whitelist-table td:nth-child(10) { width:8%; }
+    #blacklistTableWrap .whitelist-table th:nth-child(11),#blacklistTableWrap .whitelist-table td:nth-child(11) { width:13%; }
+    #blacklistTableWrap .whitelist-table th:nth-child(12),#blacklistTableWrap .whitelist-table td:nth-child(12) { width:11.2%; white-space:normal; }
+    @keyframes star-float { to { transform:translate3d(var(--dx),var(--dy),0) scale(var(--scale)); } }
+    @keyframes star-pulse { 50% { box-shadow:0 0 18px rgba(70,177,255,.65), inset 0 0 16px rgba(70,135,255,.2); } }
+    @keyframes blacklist-sphere-spin { 0% { transform:rotateY(-8deg) rotateZ(-1deg); } 50% { transform:rotateY(8deg) rotateZ(1deg); } 100% { transform:rotateY(-8deg) rotateZ(-1deg); } }
+    @keyframes star-drift { to { transform:translate3d(6%,4%,0) rotate(8deg); } }
   </style>
 </head>
 <body>
@@ -2625,7 +2756,7 @@
         </button>
         <div class="nav-submenu" id="sectorNav"></div>
         <button class="nav-button" id="technologyNav" type="button" aria-expanded="true" aria-controls="technologySubmenu"><span>AI算力</span><span class="nav-count">产业链</span></button>
-        <div class="nav-submenu" id="technologySubmenu"><button class="nav-button" id="cpoPanoramaNav" type="button"><span>CPO</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges.CPO)}" data-technology-change="CPO">${hasNumber(technologyConceptChanges.CPO) ? formatPct(technologyConceptChanges.CPO) : "--"}</span></span></button><button class="nav-button" id="pcbPanoramaNav" type="button"><span>PCB</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges.PCB)}" data-technology-change="PCB">${hasNumber(technologyConceptChanges.PCB) ? formatPct(technologyConceptChanges.PCB) : "--"}</span></span></button><button class="nav-button" id="fiberPanoramaNav" type="button"><span>光纤</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges["光纤"])}" data-technology-change="光纤">${hasNumber(technologyConceptChanges["光纤"]) ? formatPct(technologyConceptChanges["光纤"]) : "--"}</span></span></button><button class="nav-button" id="chipPanoramaNav" type="button"><span>存储芯片</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges["存储芯片"])}" data-technology-change="存储芯片">${hasNumber(technologyConceptChanges["存储芯片"]) ? formatPct(technologyConceptChanges["存储芯片"]) : "--"}</span></span></button><button class="nav-button" id="computeChipPanoramaNav" type="button"><span>AI芯片</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges["算力芯片"])}" data-technology-change="算力芯片">${hasNumber(technologyConceptChanges["算力芯片"]) ? formatPct(technologyConceptChanges["算力芯片"]) : "--"}</span></span></button></div>
+        <div class="nav-submenu" id="technologySubmenu"><button class="nav-button" id="cpoPanoramaNav" type="button"><span>CPO</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges.CPO)}" data-technology-change="CPO">${hasNumber(technologyConceptChanges.CPO) ? formatPct(technologyConceptChanges.CPO) : "--"}</span></span></button><button class="nav-button" id="pcbPanoramaNav" type="button"><span>PCB</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges.PCB)}" data-technology-change="PCB">${hasNumber(technologyConceptChanges.PCB) ? formatPct(technologyConceptChanges.PCB) : "--"}</span></span></button><button class="nav-button" id="fiberPanoramaNav" type="button"><span>光纤</span><span class="nav-count">全景 <span class="nav-index-change ${quoteClass(technologyConceptChanges["光纤"])}" data-technology-change="光纤">${hasNumber(technologyConceptChanges["光纤"]) ? formatPct(technologyConceptChanges["光纤"]) : "--"}</span></span></button><button class="nav-button" id="chipPanoramaNav" type="button"><span>芯片</span><span class="nav-count">ETF <span class="nav-index-change" data-technology-etf-change="芯片">--</span></span></button><button class="nav-button" id="semiconductorPanoramaNav" type="button"><span>半导体</span><span class="nav-count">ETF <span class="nav-index-change" data-technology-etf-change="半导体">--</span></span></button></div>
         <button class="nav-button" id="hotSectorNav" type="button" aria-expanded="false" aria-controls="hotSectorGroups">
           <span>热门板块</span><span class="nav-count">概念</span>
         </button>
@@ -2873,6 +3004,16 @@
       <div class="section-head"><div><h2>概念排行</h2><span class="sector-strength-note">东方财富概念板块实时涨幅排名</span></div><span class="tag" id="conceptRankUpdated">更新时间：--</span></div>
       <div class="concept-rank-table-wrap"><table class="concept-rank-table"><thead><tr><th>排名</th><th>概念名称</th><th>板块涨跌幅</th><th>最新指数</th><th>上涨 / 下跌家数</th><th>涨跌停家数</th><th>领涨个股</th><th>主力资金净流入</th></tr></thead><tbody id="conceptRankBody"><tr><td colspan="8">正在加载概念排行…</td></tr></tbody></table></div>
     </section>
+    <section class="panel blacklist-view" id="blacklistView" aria-label="黑名单" hidden>
+      <div class="section-head"><div><h2>盘中选股 · 黑名单</h2><span class="sector-strength-note">银行、保险、地产、ST及收盘规则排除个股</span></div><span class="tag" id="blacklistUpdated">正在读取…</span></div>
+      <div class="whitelist-toolbar"><select id="blacklistMarket" multiple size="1" aria-label="多选筛选黑名单市场"><option value="all" selected>全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select><input id="blacklistSearch" type="search" placeholder="搜索名称或代码" aria-label="搜索黑名单名称或代码"><select id="blacklistIndustryFilter" class="industry-filter" aria-label="按行业筛选黑名单"><option value="all">全部行业</option></select><select id="blacklistReasonFilter" aria-label="筛选黑名单原因"><option value="all">全部原因</option><option value="custom">自定义黑名单</option><option value="downtrend">阴跌结构</option><option value="industry">行业约束</option><option value="low_turnover">换手率低于2%</option><option value="low_amount">全天成交额不足1亿</option><option value="small_float_cap">流通市值小于30亿</option></select><div class="blacklist-reason-help" tabindex="0"><strong>什么叫阴跌？</strong><span>不是单日暴跌，而是价格持续走弱。鼠标悬浮查看完整判定规则。</span><div class="blacklist-reason-tooltip"><h4>阴跌结构判定规则</h4><p><strong>1. 均线空头结构</strong></p><ul><li>最新价低于 MA10、MA20</li><li>MA10 低于 MA20</li><li>MA10、MA20 都比 5 个交易日前更低</li></ul><p><strong>2. 累计跌幅</strong>：近 10 个交易日跌幅 ≤ -4%，且近 20 个交易日跌幅 ≤ -7%。</p><p><strong>3. 下跌天数</strong>：最近 10 个交易日中，下跌天数 ≥ 6 天。</p><p><strong>4. 回撤较深</strong>：当前价格距离近 20 日高点回撤 ≥ 8%。</p><p><strong>5. 反弹无效</strong>：当前价格仍低于 MA10，且最近 5 日从低点反弹幅度 ≤ 2.5%。</p><p><strong>6. 趋势破位</strong>：当前价格低于 MA20、MA20 向下，且当前价格跌破近 10 个交易日最低价。</p><p><strong>实际排除条件更严格</strong>：5/10/20/30 日均线全部向下直接排除；或发生趋势破位直接排除；或“均线空头 + 近10/20日累计走弱”同时伴随下跌天数偏多、回撤较深或反弹无效时排除。</p></div></div><span class="tag" id="blacklistFilterCount">--</span></div>
+      <div class="whitelist-table-wrap" id="blacklistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近60日MACD</th><th>行业</th><th><button class="whitelist-sort" data-blacklist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-blacklist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><button class="whitelist-sort" data-blacklist-sort="netInflow" data-label="净流入">净流入</button></th><th>总市值/流通值</th><th>换手率</th><th>关联概念</th><th>黑名单原因</th></tr></thead><tbody id="blacklistBody"><tr><td colspan="12">正在加载黑名单…</td></tr></tbody></table></div>
+    </section>
+    <section class="panel limit-up-view" id="whitelistView" aria-label="白名单" hidden>
+      <div class="section-head"><div><h2>盘中选股 · 白名单</h2><span class="sector-strength-note">已扣除当前生效黑名单后的可参与扫描个股</span></div><span class="tag" id="whitelistUpdated">正在读取…</span></div>
+      <div class="whitelist-toolbar"><select id="whitelistMarket" multiple size="1" aria-label="多选筛选白名单市场"><option value="all" selected>全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select><input id="whitelistSearch" type="search" placeholder="搜索个股名称或代码" aria-label="搜索白名单个股"><select id="whitelistIndustryFilter" class="industry-filter" aria-label="按行业筛选白名单"><option value="all">全部行业</option></select><select id="whitelistTrendFilter" aria-label="筛选趋势"><option value="all">全部趋势</option><option value="多头排列">多头排列</option><option value="空头排列">空头排列</option><option value="均线上行">均线上行</option><option value="均线粘合">均线粘合</option><option value="短线转强">短线转强</option><option value="短线转弱">短线转弱</option></select><div class="blacklist-reason-help" tabindex="0"><strong>什么是趋势？</strong><span>鼠标悬浮查看各趋势的判定规则。</span><div class="blacklist-reason-tooltip"><h4>白名单趋势判定规则</h4><p><strong>1. 多头排列</strong>：MA5 ＞ MA10 ＞ MA20 ＞ MA30，短中期均线呈多头结构。</p><p><strong>2. 空头排列</strong>：MA5 ＜ MA10 ＜ MA20 ＜ MA30，短中期均线呈空头结构。</p><p><strong>3. 均线上行</strong>：均线未完全形成多头排列，但 MA5、MA10 或 MA20 相比前一交易日整体抬升。</p><p><strong>4. 均线粘合</strong>：MA5、MA10、MA20、MA30 的间距较小，趋势方向暂不明确。</p><p><strong>5. 短线转强</strong>：短期均线向上，且 MA5 开始上穿或明显靠近 MA10，短线动能改善。</p><p><strong>6. 短线转弱</strong>：短期均线向下，或 MA5 开始下穿、远离 MA10，短线动能减弱。</p><p>说明：趋势分类基于最近 30 个交易日收盘价计算；历史数据不足时，系统不会纳入上述趋势分类。</p></div></div><span class="tag" id="whitelistFilterCount">--</span></div>
+      <div class="whitelist-table-wrap" id="whitelistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近60日MACD</th><th>均线分布</th><th>趋势</th><th>行业</th><th><button class="whitelist-sort" data-whitelist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-whitelist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><button class="whitelist-sort" data-whitelist-sort="netInflow" data-label="净流入">净流入</button></th><th>总市值/流通值</th><th>关联概念</th></tr></thead><tbody id="whitelistBody"><tr><td colspan="12">正在加载白名单…</td></tr></tbody></table></div>
+    </section>
     <section class="panel cpo-panorama" id="cpoPanoramaView" hidden aria-label="CPO产业链全景">
       <h2>A股光引擎概念 · 产业链分层全景</h2>
       <p class="cpo-intro">光引擎与高速光模块产业链观察 · 按产业环节分组 · 名单来源：用户提供的参考图（2026-09-09）</p>
@@ -2891,16 +3032,16 @@
       <div class="cpo-panorama-layout"><div id="fiberPanoramaGroups"></div><aside class="cpo-profile-panel"><h3>个股 · 价格 / 涨幅 / 光纤逻辑</h3><div id="fiberProfileTable"><div style="grid-column:1/-1">正在加载行情…</div></div></aside></div>
       <p class="cpo-footnote">分组按产业链环节整理，企业可能跨多个环节；业务进展以公司最新披露为准。</p>
     </section>
-    <section class="panel cpo-panorama" id="chipPanoramaView" hidden aria-label="存储芯片产业链全景">
-      <h2>A股存储芯片概念 · 产业链分层全景</h2>
+    <section class="panel cpo-panorama" id="chipPanoramaView" hidden aria-label="芯片产业链全景">
+      <h2>A股芯片概念 · 产业链分层全景</h2>
       <p class="cpo-intro">存储是 AI 算力“数据仓库”，按设计原厂、模组主控、封装测试、设备材料分层。</p>
-      <div class="cpo-panorama-layout"><div id="chipPanoramaGroups"></div><aside class="cpo-profile-panel"><h3>个股 · 价格 / 涨幅 / 存储芯片逻辑</h3><div id="chipProfileTable"><div style="grid-column:1/-1">正在加载行情…</div></div></aside></div>
+      <div class="cpo-panorama-layout"><div id="chipPanoramaGroups"></div><aside class="cpo-profile-panel"><h3>个股 · 价格 / 涨幅 / 芯片逻辑</h3><div id="chipProfileTable"><div style="grid-column:1/-1">正在加载行情…</div></div></aside></div>
       <p class="cpo-footnote">分组按产业链环节整理，企业可能跨多个环节；业务进展以公司最新披露为准。</p>
     </section>
-    <section class="panel cpo-panorama" id="computeChipPanoramaView" hidden aria-label="算力芯片产业链全景">
-      <h2>A股AI芯片概念 · 产业链分层全景</h2>
-      <p class="cpo-intro">AI算力芯片是国产算力“大脑”，按核心芯片、配套芯片、服务器整机与制造设备分层。</p>
-      <div class="cpo-panorama-layout"><div id="computeChipPanoramaGroups"></div><aside class="cpo-profile-panel"><h3>个股 · 价格 / 涨幅 / AI芯片逻辑</h3><div id="computeChipProfileTable"><div style="grid-column:1/-1">正在加载行情…</div></div></aside></div>
+    <section class="panel cpo-panorama" id="semiconductorPanoramaView" hidden aria-label="半导体产业链全景">
+      <h2>A股半导体概念 · 产业链分层全景</h2>
+      <p class="cpo-intro">覆盖半导体设备、材料、零部件与先进制造环节。</p>
+      <div class="cpo-panorama-layout"><div id="semiconductorPanoramaGroups"></div><aside class="cpo-profile-panel"><h3>个股 · 价格 / 涨幅 / 半导体逻辑</h3><div id="semiconductorProfileTable"><div style="grid-column:1/-1">正在加载行情…</div></div></aside></div>
       <p class="cpo-footnote">分组按产业链环节整理，企业可能跨多个环节；业务进展以公司最新披露为准。</p>
     </section>
     </main>
@@ -3209,6 +3350,7 @@
     };
 
     const technologyConceptChanges = {};
+    const technologyEtfChanges = {};
     const state = {
       strategy: "balanced",
       sector: "overview",
@@ -3228,6 +3370,7 @@
       scoreAlertAbove: {},
       scoreAlertFetchAt: 0,
       scoreAlertReady: false,
+      alertPanelDismissed: { growth: false, main: false, rebound: false },
       reboundAlertFetchAt: 0,
       scoreTrace: { code: null, status: "idle", data: [] },
       marketDate: null,
@@ -3236,7 +3379,28 @@
       marketSource: null,
       marketIndices: {},
       marketScope: "all",
-      pageView: "screener",
+      pageView: "whitelist",
+      blacklistStocks: [],
+      blacklistShown: 100,
+      whitelistStocks: [],
+      whitelistShown: 0,
+      whitelistSortKey: "changePct",
+      whitelistSortDir: "desc",
+      whitelistSearch: "",
+      whitelistTrendFilter: "all",
+      whitelistTrendCache: {},
+      whitelistTrendScanRunning: false,
+      whitelistMarket: ["all"],
+      whitelistIndustryFilter: "all",
+      blacklistSearch: "",
+      blacklistReasonFilter: "all",
+      blacklistMarket: ["all"],
+      blacklistIndustryFilter: "all",
+      blacklistSortKey: "changePct",
+      blacklistSortDir: "desc",
+      whitelistChartCache: {},
+      whitelistStockDataCache: {},
+      whitelistStockDataPromises: {},
       indexAnalysis: null,
       sectorMoneyFlow: null,
       hotConcept: null,
@@ -3250,6 +3414,8 @@
       downtrendExcludedCount: null,
       limitUpExcludedCount: null,
       marketCapExcludedCount: null,
+      industryExcludedCount: null,
+      previousBlacklistExcludedCount: null,
       sectorStrength: [],
       sectorRefreshError: null,
       limitUpCandidates: [],
@@ -3351,6 +3517,21 @@
       sectorToggle: document.getElementById("sectorToggle"),
       sectorNav: document.getElementById("sectorNav"),
       sectorTotal: document.getElementById("sectorTotal"),
+      whitelistView: document.getElementById("whitelistView"),
+      whitelistBody: document.getElementById("whitelistBody"),
+      whitelistTableWrap: document.getElementById("whitelistTableWrap"),
+      blacklistTableWrap: document.getElementById("blacklistTableWrap"),
+      whitelistUpdated: document.getElementById("whitelistUpdated"),
+      whitelistSearch: document.getElementById("whitelistSearch"),
+      whitelistTrendFilter: document.getElementById("whitelistTrendFilter"),
+      whitelistMarket: document.getElementById("whitelistMarket"),
+      whitelistIndustryFilter: document.getElementById("whitelistIndustryFilter"),
+      whitelistFilterCount: document.getElementById("whitelistFilterCount"),
+      blacklistSearch: document.getElementById("blacklistSearch"),
+      blacklistReasonFilter: document.getElementById("blacklistReasonFilter"),
+      blacklistMarket: document.getElementById("blacklistMarket"),
+      blacklistIndustryFilter: document.getElementById("blacklistIndustryFilter"),
+      blacklistFilterCount: document.getElementById("blacklistFilterCount"),
       pageTitle: document.getElementById("pageTitle"),
       pageDescription: document.getElementById("pageDescription"),
       sectorMode: document.getElementById("sectorMode"),
@@ -3378,6 +3559,10 @@
     let screenerRefreshNextAt = null;
     let hotGroupRefreshTimer = null;
     let limitUpRefreshTimer = null;
+    let listRefreshInFlight = false;
+    let technologyRefreshInFlight = false;
+    let technologyTableSortKey = "";
+    let technologyTableSortDir = "desc";
     let limitUpRefreshNextAt = null;
     let limitUpRefreshInFlight = false;
     let midtermPollTimer = null;
@@ -3526,8 +3711,14 @@
         const marketCapNote = state.marketCapExcludedCount
           ? `；流通市值不超过 30 亿 ${state.marketCapExcludedCount.toLocaleString("zh-CN")} 只`
           : "";
+        const industryNote = state.industryExcludedCount
+          ? `；行业/ST排除 ${state.industryExcludedCount.toLocaleString("zh-CN")} 只`
+          : "";
+        const blacklistNote = state.previousBlacklistExcludedCount
+          ? `；前一交易日黑名单排除 ${state.previousBlacklistExcludedCount.toLocaleString("zh-CN")} 只`
+          : "";
         const scopeName = state.pageView === "hot-concept" ? state.hotConcept : market.label;
-        el.dynamicStatus.textContent = `${scopeName}已扫描 ${state.scannedCount.toLocaleString("zh-CN")} 只，展示 ${(state.matchedCount || 0).toLocaleString("zh-CN")} 只${marketCapNote}${downtrendNote}${limitUpNote}。${state.pageView === "hot-concept" ? "" : refreshNote}`;
+        el.dynamicStatus.textContent = `${scopeName}已扫描 ${state.scannedCount.toLocaleString("zh-CN")} 只，展示 ${(state.matchedCount || 0).toLocaleString("zh-CN")} 只${blacklistNote}${industryNote}${marketCapNote}${downtrendNote}${limitUpNote}。${state.pageView === "hot-concept" ? "" : refreshNote}`;
       } else {
         el.dynamicStatus.textContent = `${market.label}实时扫描已就绪；调整条件后点击筛选更新候选。${refreshNote}`;
       }
@@ -3558,15 +3749,15 @@
       if (state.pageView === "chip-panorama") {
         el.pageTitle.textContent = "AI算力 · 芯片";
         el.pageDescription.textContent = "存储芯片设计、模组主控、封装测试与设备材料，产业链分层全景。";
-        el.sectorMode.textContent = "AI算力：存储芯片概念";
-        document.title = "AI算力 · 存储芯片";
+        el.sectorMode.textContent = "AI算力：芯片";
+        document.title = "AI算力 · 芯片";
         return;
       }
-      if (state.pageView === "compute-chip-panorama") {
-        el.pageTitle.textContent = "AI算力 · AI芯片";
-        el.pageDescription.textContent = "核心算力芯片、配套芯片、服务器整机与制造设备，产业链分层全景。";
-        el.sectorMode.textContent = "AI算力：AI芯片";
-        document.title = "AI算力 · AI芯片";
+      if (state.pageView === "semiconductor-panorama") {
+        el.pageTitle.textContent = "AI算力 · 半导体";
+        el.pageDescription.textContent = "半导体设备、材料、零部件与先进制造，产业链分层全景。";
+        el.sectorMode.textContent = "AI算力：半导体";
+        document.title = "AI算力 · 半导体";
         return;
       }
       if (state.pageView === "midterm") {
@@ -3611,6 +3802,20 @@
         document.title = "概念排行";
         return;
       }
+      if (state.pageView === "blacklist") {
+        el.pageTitle.textContent = "盘中选股 · 黑名单";
+        el.pageDescription.textContent = "银行、保险、地产行业个股不参与盘中筛选与告警。";
+        el.sectorMode.textContent = "盘中选股：黑名单";
+        document.title = "盘中选股 · 黑名单";
+        return;
+      }
+      if (state.pageView === "whitelist") {
+        el.pageTitle.textContent = "盘中选股 · 白名单";
+        el.pageDescription.textContent = "已扣除当前生效黑名单后的可参与扫描个股。";
+        el.sectorMode.textContent = "盘中选股：白名单";
+        document.title = "盘中选股 · 白名单";
+        return;
+      }
       const market = currentMarketScope();
       el.pageTitle.textContent = `${market.label}动态选股`;
       el.pageDescription.textContent = `${market.description} 基于实时成交、涨跌、换手与振幅生成候选，入选后可继续查看历史 K 线。`;
@@ -3618,13 +3823,519 @@
       document.title = `${market.label}动态选股`;
     }
 
+    function renderBlacklistStars() {
+      const root = document.getElementById("blacklistStars");
+      if (!state.blacklistStocks.length) {
+        root.innerHTML = '<div class="blacklist-empty">暂无黑名单行情</div>';
+        return;
+      }
+      const total = state.blacklistStocks.length;
+      const coreCount = total;
+      root.innerHTML = state.blacklistStocks.map((stock, index) => {
+        const isCore = true;
+        const goldenAngle = 137.508;
+        const radius = 29 * Math.sqrt((index + .5) / coreCount);
+        const theta = index * goldenAngle * Math.PI / 180;
+        let x = 50 + Math.cos(theta) * radius * .72;
+        let y = 50 + Math.sin(theta) * radius;
+        const angle = (index * 17) % 360;
+        x = Math.max(1, Math.min(99, x));
+        y = Math.max(2, Math.min(98, y));
+        const scale = (0.78 + ((index * 17) % 38) / 100).toFixed(2);
+        const tone = hasNumber(stock.changePct) && stock.changePct >= 0 ? "up" : "";
+        return `<span class="blacklist-star sun-core" title="${escapeHtml(stock.reason || stock.industry || "黑名单")}" style="left:${x}%;top:${y}%;--scale:${scale};--dx:${((index % 5) - 2) * 2}px;--dy:${((index % 7) - 3) * 2}px;--duration:${(4 + index % 6)}s;--delay:-${(index % 9) / 2}s;transform:rotate(${angle}deg) scale(${scale})"><strong>${escapeHtml(stock.name)}</strong></span>`;
+      }).join("");
+    }
+
+    function chineseInitials(value) {
+      const initials = "ABCDEFGHJKLMNOPQRSTWXYZ";
+      const thresholds = [45217, 45253, 45761, 46318, 46826, 47010, 47297, 47614, 48118, 49062, 49324, 49896, 50371, 50614, 50622, 50906, 51387, 51446, 52218, 52698, 52980, 53689, 54481, 55290];
+      return String(value || "").split("").map(char => {
+        const code = char.charCodeAt(0);
+        if (/[A-Za-z0-9]/.test(char)) return char;
+        if (code < 0x4e00 || code > 0x9fff) return "";
+        let index = 0;
+        while (index < thresholds.length && code >= thresholds[index]) index += 1;
+        return initials[index] || "";
+      }).join("").toLowerCase();
+    }
+
+    function initMarketMultiSelect(selectId) {
+      const select = document.getElementById(selectId);
+      if (!select || select.dataset.multiReady === "1") return;
+      select.dataset.multiReady = "1";
+      select.classList.add("market-multi-source");
+      const wrapper = document.createElement("div");
+      wrapper.className = "market-multi-select";
+      wrapper.dataset.marketSelect = selectId.replace(/Market$/, "").toLowerCase();
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "market-multi-trigger";
+      trigger.setAttribute("aria-haspopup", "listbox");
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.innerHTML = "<span></span><b>⌄</b>";
+      const menu = document.createElement("div");
+      menu.className = "market-multi-menu";
+      menu.setAttribute("role", "listbox");
+      menu.setAttribute("aria-multiselectable", "true");
+      [...select.options].forEach(option => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = option.value;
+        checkbox.checked = option.selected;
+        label.append(checkbox, document.createTextNode(option.textContent));
+        menu.appendChild(label);
+      });
+      wrapper.append(trigger, menu);
+      select.parentElement.insertBefore(wrapper, select);
+
+      const syncDisplay = values => {
+        const normalized = values.includes("all") || !values.length ? ["all"] : values;
+        const labels = normalized.map(value => select.querySelector(`option[value="${value}"]`)?.textContent || value);
+        trigger.querySelector("span").textContent = labels.join("、");
+        trigger.title = labels.join("、");
+        menu.querySelectorAll("input").forEach(input => { input.checked = normalized.includes(input.value); });
+      };
+      const selectedValues = () => [...menu.querySelectorAll("input:checked")].map(input => input.value);
+      syncDisplay(selectedValues());
+      trigger.addEventListener("click", event => {
+        event.stopPropagation();
+        const open = menu.classList.toggle("open");
+        trigger.setAttribute("aria-expanded", String(open));
+      });
+      menu.addEventListener("click", event => event.stopPropagation());
+      menu.addEventListener("change", event => {
+        const changed = event.target;
+        if (!(changed instanceof HTMLInputElement)) return;
+        const values = selectedValues();
+        if (changed.value === "all" && changed.checked) {
+          menu.querySelectorAll("input").forEach(input => { input.checked = input.value === "all"; });
+        } else if (changed.value !== "all" && changed.checked) {
+          menu.querySelector('input[value="all"]').checked = false;
+        } else if (!values.length || (values.length === 1 && values[0] === "all")) {
+          menu.querySelector('input[value="all"]').checked = true;
+        }
+        const normalized = selectedValues();
+        [...select.options].forEach(option => { option.selected = normalized.includes(option.value); });
+        syncDisplay(normalized);
+        select.dispatchEvent(new Event("change", {bubbles:true}));
+      });
+      document.addEventListener("click", () => {
+        menu.classList.remove("open");
+        trigger.setAttribute("aria-expanded", "false");
+      });
+    }
+
+    function normalizeMarketSelection(select, previousSelection = ["all"]) {
+      const selected = [...select.selectedOptions].map(option => option.value);
+      if (!selected.length) {
+        select.querySelector('option[value="all"]').selected = true;
+        return ["all"];
+      }
+      if (selected.includes("all") && selected.length > 1) {
+        const previous = Array.isArray(previousSelection) ? previousSelection : [previousSelection];
+        const keepAll = previous.includes("all");
+        select.querySelectorAll("option").forEach(option => { option.selected = keepAll ? option.value === "all" : selected.includes(option.value) && option.value !== "all"; });
+        return keepAll ? ["all"] : selected.filter(value => value !== "all");
+      }
+      return selected;
+    }
+
+    function marketSelectionMatches(selection, market) {
+      const values = Array.isArray(selection) ? selection : [selection];
+      return !values.length || values.includes("all") || values.includes(market);
+    }
+
+    function setIndustryFilterOptions(select, industries, currentValue) {
+      if (!select) return;
+      const values = ["all", ...(industries || [])];
+      select.innerHTML = values.map(value => `<option value="${escapeHtml(value)}">${value === "all" ? "全部行业" : escapeHtml(value)}</option>`).join("");
+      select.value = values.includes(currentValue) ? currentValue : "all";
+    }
+
+    function refreshWhitelistIndustryFilterOptions() {
+      const industries = [...new Set((state.whitelistStocks || [])
+        .map(stock => String(stock.industry || stock.actualIndustry || "").trim())
+        .filter(industry => industry && industry !== "--"))]
+        .sort((a, b) => a.localeCompare(b, "zh-CN"));
+      setIndustryFilterOptions(el.whitelistIndustryFilter, industries, state.whitelistIndustryFilter);
+      if (!industries.includes(state.whitelistIndustryFilter)) state.whitelistIndustryFilter = "all";
+    }
+
+    async function loadIndustryFilterOptions() {
+      try {
+        const response = await fetch("/api/industries", {cache:"no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "行业列表加载失败");
+        const industries = Array.isArray(payload.industries) ? payload.industries : [];
+        setIndustryFilterOptions(el.blacklistIndustryFilter, industries, state.blacklistIndustryFilter);
+        refreshWhitelistIndustryFilterOptions();
+      } catch (error) {
+        console.warn("行业筛选列表加载失败", error);
+      }
+    }
+
+    function renderMarketDistribution(viewId, stocks, title) {
+      const view = document.getElementById(viewId);
+      if (!view) return;
+      let panel = view.querySelector(".market-distribution-panel");
+      if (!panel) {
+        panel = document.createElement("section");
+        panel.className = "market-distribution-panel";
+        const sectionHead = view.querySelector(".section-head");
+        if (sectionHead) sectionHead.insertAdjacentElement("afterend", panel);
+      }
+      const stockLimitPct = stock => {
+        const code = String(stock?.code || "");
+        const name = String(stock?.name || "");
+        if (/ST|退/.test(name)) return 5;
+        if (code.startsWith("300") || code.startsWith("301") || code.startsWith("688") || code.startsWith("689")) return 20;
+        if (code.startsWith("4") || code.startsWith("8") || code.startsWith("92")) return 30;
+        return 10;
+      };
+      const buckets = [
+        {label:"跌停", tone:"down", test:(value, limit) => value <= -(limit - 0.5)},
+        {label:">7", tone:"down", test:(value, limit) => value > -(limit - 0.5) && value <= -7},
+        {label:"5-7", tone:"down", test:value => value > -7 && value <= -5},
+        {label:"3-5", tone:"down", test:value => value > -5 && value <= -3},
+        {label:"0-3", tone:"down", test:value => value < -0.005 && value > -3},
+        {label:"0", tone:"flat", test:value => Math.abs(value) <= 0.005},
+        {label:"0-3", tone:"up", test:value => value > 0.005 && value < 3},
+        {label:"3-5", tone:"up", test:value => value >= 3 && value < 5},
+        {label:"5-7", tone:"up", test:value => value >= 5 && value < 7},
+        {label:">7", tone:"up", test:(value, limit) => value >= 7 && value < limit - 0.5},
+        {label:"涨停", tone:"up", test:(value, limit) => value >= limit - 0.5},
+      ];
+      const counts = buckets.map(() => 0);
+      let up = 0, down = 0, limitUp = 0, limitDown = 0;
+      (stocks || []).forEach(stock => {
+        const value = Number(stock.changePct);
+        if (!Number.isFinite(value)) return;
+        const limitPct = stockLimitPct(stock);
+        const bucketIndex = buckets.findIndex(bucket => bucket.test(value, limitPct));
+        if (bucketIndex >= 0) counts[bucketIndex] += 1;
+        if (value > 0.005) up += 1;
+        else if (value < -0.005) down += 1;
+        const isLimitUp = value >= limitPct - 0.5;
+        const isLimitDown = value <= -(limitPct - 0.5);
+        if (isLimitUp) {
+          limitUp += 1;
+        }
+        if (isLimitDown) limitDown += 1;
+      });
+      const max = Math.max(...counts, 1);
+      const bars = buckets.map((bucket, index) => `<div class="market-distribution-item"><span class="market-distribution-count">${counts[index].toLocaleString("zh-CN")}</span><span class="market-distribution-bar-wrap"><i class="market-distribution-bar ${bucket.tone}" style="height:${Math.max(2, counts[index] / max * 38).toFixed(1)}px"></i></span><span class="market-distribution-label">${bucket.label}</span></div>`).join("");
+      panel.innerHTML = `<div class="market-distribution-head"><strong>涨跌分布</strong><span>${escapeHtml(title)} · ${new Date().toLocaleTimeString("zh-CN", {hour12:false})}</span></div><div class="market-distribution-bars">${bars}</div><div class="market-distribution-summary"><span class="up">上涨<b>${up.toLocaleString("zh-CN")}</b></span><span class="down">下跌<b>${down.toLocaleString("zh-CN")}</b></span><span class="up">涨停<b>${limitUp.toLocaleString("zh-CN")}</b></span><span class="down">跌停<b>${limitDown.toLocaleString("zh-CN")}</b></span></div>`;
+    }
+
+    function blacklistReasonMatches(reason, reasonFilter) {
+      return reasonFilter === "all"
+        || (reasonFilter === "small_float_cap" && reason.includes("流通市值小于30亿"))
+        || (reasonFilter === "downtrend" && reason.includes("阴跌"))
+        || (reasonFilter === "custom" && reason.includes("自定义黑名单"))
+        || (reasonFilter === "low_amount" && reason.includes("成交额不足1亿"))
+        || (reasonFilter === "low_turnover" && reason.includes("换手率低于2%"))
+        || (reasonFilter === "industry" && (reason.includes("行业") || reason.includes("银行/保险/地产")));
+    }
+
+    function blacklistFilteredStocks(includeReason = true) {
+      const keyword = state.blacklistSearch.trim().toLowerCase();
+      const industryFilter = state.blacklistIndustryFilter;
+      return state.blacklistStocks.filter(stock => {
+        const code = String(stock.code || "");
+        const market = code.startsWith("300") || code.startsWith("301") ? "chinext" : code.startsWith("688") || code.startsWith("689") ? "star" : code.startsWith("8") || code.startsWith("4") ? "bse" : "main";
+        const reason = String(stock.reason || "");
+        const industry = String(stock.industry || stock.actualIndustry || "");
+        const searchable = `${stock.name || ""} ${stock.nameInitials || chineseInitials(stock.name)} ${code} ${stock.industry || ""} ${reason}`.toLowerCase();
+        return marketSelectionMatches(state.blacklistMarket, market) && (industryFilter === "all" || industry === industryFilter) && (!includeReason || blacklistReasonMatches(reason, state.blacklistReasonFilter)) && (!keyword || searchable.includes(keyword));
+      });
+    }
+
+    function updateBlacklistReasonOptions() {
+      const select = el.blacklistReasonFilter;
+      if (!select) return;
+      const baseStocks = blacklistFilteredStocks(false);
+      const counts = {};
+      ["custom", "downtrend", "industry", "low_turnover", "low_amount", "small_float_cap"].forEach(value => {
+        counts[value] = baseStocks.filter(stock => blacklistReasonMatches(String(stock.reason || ""), value)).length;
+      });
+      select.querySelectorAll("option").forEach(option => {
+        const value = option.value;
+        if (value === "all") option.textContent = `全部原因（${baseStocks.length.toLocaleString("zh-CN")}）`;
+        else if (Object.prototype.hasOwnProperty.call(counts, value)) option.textContent = `${option.textContent.replace(/（[\d,]+）$/, "")}（${counts[value].toLocaleString("zh-CN")}）`;
+      });
+    }
+
+    function renderBlacklistTable() {
+      const body = document.getElementById("blacklistBody");
+      updateBlacklistReasonOptions();
+      const filtered = blacklistFilteredStocks(true);
+      const rows = [...filtered].sort((a, b) => {
+        const av = Number(a[state.blacklistSortKey]);
+        const bv = Number(b[state.blacklistSortKey]);
+        if (!Number.isFinite(av) && !Number.isFinite(bv)) return 0;
+        if (!Number.isFinite(av)) return 1;
+        if (!Number.isFinite(bv)) return -1;
+        return state.blacklistSortDir === "asc" ? av - bv : bv - av;
+      }).slice(0, state.blacklistShown || 100);
+      el.blacklistFilterCount.textContent = `匹配 ${filtered.length.toLocaleString("zh-CN")} 只`;
+      document.querySelectorAll("[data-blacklist-sort]").forEach(button => {
+        button.textContent = `${button.dataset.label}${button.dataset.blacklistSort === state.blacklistSortKey ? (state.blacklistSortDir === "asc" ? " ↑" : " ↓") : ""}`;
+      });
+      body.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") ? "北" : ""; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}` : "--"; const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const reasons = String(stock.reason || "--").split(/[\/、,，]+/).map(reason => reason.trim()).filter(Boolean); const reasonMarkup = reasons.length ? `<span class="blacklist-reason-tags">${reasons.map(reason => `<i class="blacklist-reason-tag">${escapeHtml(reason)}</i>`).join("")}</span>` : "--"; return `<tr><td><span class="whitelist-name">${escapeHtml(stock.name || code)}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${escapeHtml(stock.industry || "--")}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td><td>${hasNumber(stock.turnover) ? `${Number(stock.turnover).toFixed(2)}%` : "--"}</td><td>${conceptMarkup}</td><td>${reasonMarkup}</td></tr>`; }).join("") : '<tr><td colspan="12">暂无黑名单个股</td></tr>';
+      renderMarketDistribution("blacklistView", filtered, `黑名单 · ${state.blacklistReasonFilter === "all" ? "全部原因" : (el.blacklistReasonFilter?.selectedOptions?.[0]?.textContent || "当前原因")}`);
+      loadWhitelistMiniCharts();
+    }
+
+    async function openBlacklist(forceRefresh = false) {
+      clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
+      if (state.chartOpen) closeChartModal();
+      state.pageView = "blacklist";
+      renderSectorNavigation(); render();
+      if (state.blacklistStocks.length && !forceRefresh) return;
+      const root = document.getElementById("blacklistBody");
+      root.innerHTML = '<tr><td colspan="12">正在加载黑名单行情…</td></tr>';
+      try {
+        const response = await fetch(`/api/blacklist${forceRefresh ? "?refresh=1" : ""}`, {cache:"no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "黑名单行情加载失败");
+        state.blacklistStocks = payload.stocks || [];
+        state.blacklistShown = Math.min(100, state.blacklistStocks.length);
+        document.getElementById("blacklistUpdated").textContent = `共 ${state.blacklistStocks.length} 只 · ${new Date(payload.updatedAt).toLocaleTimeString("zh-CN", {hour12:false})}`;
+        renderBlacklistTable();
+        renderSectorNavigation();
+      } catch (error) {
+        root.innerHTML = `<tr><td colspan="12">${escapeHtml(error.message || "黑名单行情加载失败")}</td></tr>`;
+      }
+    }
+
+    function whitelistFilteredStocks(includeTrend = true) {
+      const keyword = state.whitelistSearch.trim().toLowerCase();
+      const industryFilter = state.whitelistIndustryFilter;
+      return state.whitelistStocks.filter(stock => {
+        const code = String(stock.code || "");
+        const market = code.startsWith("300") || code.startsWith("301") ? "chinext" : code.startsWith("688") || code.startsWith("689") ? "star" : code.startsWith("8") || code.startsWith("4") ? "bse" : "main";
+        const matchesMarket = marketSelectionMatches(state.whitelistMarket, market);
+        const industry = String(stock.industry || stock.actualIndustry || "");
+        const matchesIndustry = industryFilter === "all" || industry === industryFilter;
+        const searchable = `${stock.name || ""} ${stock.nameInitials || chineseInitials(stock.name)} ${code}`.toLowerCase();
+        const matchesSearch = !keyword || searchable.includes(keyword);
+        const matchesTrend = !includeTrend || state.whitelistTrendFilter === "all" || (state.whitelistTrendFilter === "unavailable" ? !state.whitelistTrendCache[code] || state.whitelistTrendCache[code] === "--" : state.whitelistTrendCache[code] === state.whitelistTrendFilter);
+        return matchesMarket && matchesIndustry && matchesSearch && matchesTrend;
+      });
+    }
+
+    function renderWhitelistRows() {
+      updateWhitelistTrendOptions();
+      const filtered = whitelistFilteredStocks(true);
+      const rows = [...filtered].sort((a, b) => {
+        if (!state.whitelistSortKey) return 0;
+        const av = Number(a[state.whitelistSortKey]);
+        const bv = Number(b[state.whitelistSortKey]);
+        if (!Number.isFinite(av) && !Number.isFinite(bv)) return 0;
+        if (!Number.isFinite(av)) return 1;
+        if (!Number.isFinite(bv)) return -1;
+        return state.whitelistSortDir === "asc" ? av - bv : bv - av;
+      }).slice(0, state.whitelistShown || 100);
+      el.whitelistFilterCount.textContent = `匹配 ${filtered.length.toLocaleString("zh-CN")} 只`;
+      document.querySelectorAll("[data-whitelist-sort]").forEach(button => {
+        button.textContent = `${button.dataset.label}${button.dataset.whitelistSort === state.whitelistSortKey ? (state.whitelistSortDir === "asc" ? " ↑" : " ↓") : ""}`;
+      });
+      el.whitelistBody.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") ? "北" : ""; const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}` : "--"; return `<tr><td><span class="whitelist-name">${escapeHtml(stock.name || code)}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${escapeHtml(stock.industry || "--")}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td><td>${conceptMarkup}</td></tr>`; }).join("") : '<tr><td colspan="10">暂无匹配个股</td></tr>';
+      el.whitelistBody.querySelectorAll("tr").forEach(row => {
+        const nameCell = row.cells[0];
+        const code = nameCell?.querySelector(".whitelist-code")?.textContent?.replace(/[^0-9]/g, "");
+        const distributionCell = document.createElement("td");
+        distributionCell.innerHTML = `<span class="whitelist-mini" data-whitelist-ma="${escapeHtml(code || "")}">--</span>`;
+        const trendCell = document.createElement("td");
+        trendCell.innerHTML = `<span class="whitelist-trend" data-whitelist-trend="${escapeHtml(code || "")}">--</span>`;
+        row.insertBefore(distributionCell, row.cells[4]);
+        row.insertBefore(trendCell, row.cells[5]);
+      });
+      renderMarketDistribution("whitelistView", filtered, `白名单 · ${state.whitelistTrendFilter === "all" ? "全部趋势" : state.whitelistTrendFilter}`);
+      loadWhitelistMiniCharts();
+    }
+
+    function updateWhitelistTrendOptions() {
+      const select = el.whitelistTrendFilter;
+      if (!select) return;
+      const trendOrder = ["all", "多头排列", "均线上行", "短线转强", "均线粘合", "短线转弱", "空头排列"];
+      [...select.options].sort((a, b) => trendOrder.indexOf(a.value) - trendOrder.indexOf(b.value)).forEach(option => select.appendChild(option));
+      const counts = {};
+      const baseStocks = whitelistFilteredStocks(false);
+      baseStocks.forEach(stock => {
+        const trend = state.whitelistTrendCache[String(stock.code || "")];
+        if (trend) counts[trend] = (counts[trend] || 0) + 1;
+      });
+      select.querySelectorAll("option").forEach(option => {
+        const value = option.value;
+        if (value === "all") option.textContent = `全部趋势（${baseStocks.length.toLocaleString("zh-CN")}）`;
+        else option.textContent = `${value}（${counts[value] || 0}）`;
+      });
+    }
+
+    function applyWhitelistTrendStyle(node, trend) {
+      if (!node) return;
+      node.classList.remove("trend-strong", "trend-neutral", "trend-weak");
+      if (["多头排列", "均线上行", "短线转强"].includes(trend)) node.classList.add("trend-strong");
+      else if (trend === "均线粘合") node.classList.add("trend-neutral");
+      else if (["短线转弱", "空头排列"].includes(trend)) node.classList.add("trend-weak");
+    }
+
+    function miniLine(values, color) {
+      if (!values || values.length < 2) return "--";
+      const min = Math.min(...values), max = Math.max(...values), span = Math.max(max - min, 0.0001);
+      const points = values.map((value, index) => `${1 + index * 78 / (values.length - 1)},${24 - ((value - min) / span) * 20}`).join(" ");
+      return `<svg viewBox="0 0 80 26" aria-hidden="true"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+    function miniMacdBars(values) {
+      if (!values || values.length < 2) return "--";
+      const max = Math.max(...values.map(value => Math.abs(value)), 0.0001);
+      const width = 80 / values.length;
+      const zero = 13;
+      const bars = values.map((value, index) => {
+        const height = Math.max(1, Math.abs(value) / max * 11);
+        const y = value >= 0 ? zero - height : zero;
+        return `<rect x="${(index * width).toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, width - .7).toFixed(2)}" height="${height.toFixed(2)}" rx=".7" fill="${value >= 0 ? "var(--rising)" : "var(--falling)"}"/>`;
+      }).join("");
+      return `<svg viewBox="0 0 80 26" aria-hidden="true"><path d="M0 13H80" stroke="var(--chart-grid)" stroke-width=".7"/>${bars}</svg>`;
+    }
+    function miniKline(rows) {
+      if (!rows || rows.length < 2) return "--";
+      const values = rows.map(row => Number(row.close)).filter(Number.isFinite);
+      if (values.length < 2) return "--";
+      const min = Math.min(...rows.map(row => Number(row.low)).filter(Number.isFinite));
+      const max = Math.max(...rows.map(row => Number(row.high)).filter(Number.isFinite));
+      const span = Math.max(max - min, .0001); const width = 80 / rows.length;
+      const candles = rows.map((row, index) => { const high = Number(row.high), low = Number(row.low), open = Number(row.open), close = Number(row.close); if (![high,low,open,close].every(Number.isFinite)) return ""; const y = value => 24 - (value - min) / span * 20; const color = close >= open ? "var(--rising)" : "var(--falling)"; const x = index * width + width / 2; const bodyY = Math.min(y(open), y(close)); return `<path d="M${x.toFixed(2)} ${y(high).toFixed(2)}V${y(low).toFixed(2)}" stroke="${color}" stroke-width=".8"/><rect x="${(x - Math.max(1,width*.28)).toFixed(2)}" y="${bodyY.toFixed(2)}" width="${Math.max(1,width*.56).toFixed(2)}" height="${Math.max(1,Math.abs(y(open)-y(close))).toFixed(2)}" fill="${color}"/>`; }).join("");
+      const ma5 = rows.map((row, index) => { if (index < 4) return null; const values = rows.slice(index - 4, index + 1).map(item => Number(item.close)); return values.every(Number.isFinite) ? values.reduce((sum, value) => sum + value, 0) / 5 : null; });
+      const maPoints = ma5.map((value, index) => value === null ? null : `${(index * width + width / 2).toFixed(2)},${(24 - (value - min) / span * 20).toFixed(2)}`).filter(Boolean).join(" ");
+      return `<svg viewBox="0 0 80 26" aria-hidden="true">${candles}${maPoints ? `<polyline points="${maPoints}" fill="none" stroke="var(--amber)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>` : ""}</svg>`;
+    }
+    function classifyWhitelistTrend(closes) {
+      if (!closes || closes.length < 30) return "--";
+      const ma = period => closes.slice(-period).reduce((sum, value) => sum + value, 0) / period;
+      const values = {ma5:ma(5), ma10:ma(10), ma20:ma(20), ma30:ma(30)};
+      const previous = period => closes.slice(-period - 5, -5).reduce((sum, value) => sum + value, 0) / period;
+      const down = [5,10,20,30].every(period => values[`ma${period}`] < previous(period));
+      const up = [5,10,20,30].every(period => values[`ma${period}`] > previous(period));
+      if (values.ma5 > values.ma10 && values.ma10 > values.ma20 && values.ma20 > values.ma30) return "多头排列";
+      if (values.ma5 < values.ma10 && values.ma10 < values.ma20 && values.ma20 < values.ma30) return "空头排列";
+      if (down) return "均线下行";
+      if (up) return "均线上行";
+      const gap = (Math.max(...Object.values(values)) - Math.min(...Object.values(values))) / values.ma20;
+      if (gap <= .04) return "均线粘合";
+      return values.ma5 > values.ma10 ? "短线转强" : "短线转弱";
+    }
+    function miniMaDistribution(closes) {
+      if (!closes || closes.length < 30) return "--";
+      const colors = ["#06b6d4", "#8b5cf6", "#eab308", "#d946ef"];
+      const periods = [5, 10, 20, 30];
+      const series = periods.map(period => closes.map((_, index) => index < period - 1 ? null : closes.slice(index - period + 1, index + 1).reduce((sum, value) => sum + value, 0) / period));
+      const values = series.flat().filter(Number.isFinite); const min = Math.min(...values), max = Math.max(...values), span = Math.max(max - min, .0001);
+      const lines = series.map((line, lineIndex) => { const points = line.map((value, index) => value === null ? null : `${(index * 78 / (closes.length - 1) + 1).toFixed(2)},${(24 - (value - min) / span * 20).toFixed(2)}`).filter(Boolean).join(" "); return `<polyline points="${points}" fill="none" stroke="${colors[lineIndex]}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>`; }).join("");
+      return `<svg viewBox="0 0 80 26" aria-label="MA5 MA10 MA20 MA30 均线分布">${lines}</svg>`;
+    }
+    function getWhitelistStockData(code) {
+      if (state.whitelistStockDataCache[code]) return Promise.resolve(state.whitelistStockDataCache[code]);
+      if (state.whitelistStockDataPromises[code]) return state.whitelistStockDataPromises[code];
+      const promise = fetch(`/api/stock?code=${encodeURIComponent(code)}&refresh=1`, {cache:"no-store"})
+        .then(async response => {
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "股票历史行情加载失败");
+          state.whitelistStockDataCache[code] = payload;
+          return payload;
+        })
+        .finally(() => { delete state.whitelistStockDataPromises[code]; });
+      state.whitelistStockDataPromises[code] = promise;
+      return promise;
+    }
+    async function loadAllWhitelistTrends() {
+      if (state.whitelistTrendScanRunning || !state.whitelistStocks.length) return;
+      state.whitelistTrendScanRunning = true;
+      for (let start = 0; start < state.whitelistStocks.length; start += 12) {
+        const batch = state.whitelistStocks.slice(start, start + 12);
+        await Promise.all(batch.map(async stock => {
+          const code = String(stock.code || "");
+          if (!code || state.whitelistTrendCache[code]) return;
+          try {
+            const payload = await getWhitelistStockData(code);
+            const closes = (payload.quote?.history || []).slice(-30).map(item => Number(item.close)).filter(Number.isFinite);
+            state.whitelistTrendCache[code] = classifyWhitelistTrend(closes);
+          } catch { state.whitelistTrendCache[code] = "--"; }
+        }));
+        if (state.pageView === "whitelist") renderWhitelistRows();
+      }
+      state.whitelistTrendScanRunning = false;
+    }
+    async function loadWhitelistMiniCharts() {
+      const nodes = [...document.querySelectorAll("[data-whitelist-intraday]")];
+      for (let start = 0; start < nodes.length; start += 12) {
+        const batch = nodes.slice(start, start + 12);
+        await Promise.all(batch.map(async node => {
+        const code = node.dataset.whitelistIntraday; const klineNode = document.querySelector(`[data-whitelist-kline="${code}"]`); const macdNode = document.querySelector(`[data-whitelist-macd="${code}"]`); const trendNode = document.querySelector(`[data-whitelist-trend="${code}"]`); const maNode = document.querySelector(`[data-whitelist-ma="${code}"]`);
+        if (state.whitelistChartCache[code]) { node.innerHTML = state.whitelistChartCache[code].intraday; klineNode.innerHTML = state.whitelistChartCache[code].kline; macdNode.innerHTML = state.whitelistChartCache[code].macd; if (trendNode) { trendNode.textContent = state.whitelistChartCache[code].trend || "--"; applyWhitelistTrendStyle(trendNode, state.whitelistChartCache[code].trend); } if (maNode) maNode.innerHTML = state.whitelistChartCache[code].ma || "--"; return; }
+        try {
+          const today = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Shanghai"}).format(new Date());
+          const [intradayResponse, stock] = await Promise.all([fetch(`/api/intraday?code=${code}&date=${today}&refresh=1`, {cache:"no-store"}), getWhitelistStockData(code)]);
+          const intraday = await intradayResponse.json();
+          if (!intradayResponse.ok) throw new Error(intraday.error || "分时行情加载失败");
+          const prices = (intraday.points || []).map(item => Number(item.price)).filter(Number.isFinite);
+          const history = (stock.quote?.history || []).slice(-30);
+          const macdHistory = (stock.quote?.history || []).slice(-90);
+          const closes = history.map(item => Number(item.close)).filter(Number.isFinite);
+          const macdCloses = macdHistory.map(item => Number(item.close)).filter(Number.isFinite);
+          const ema = (values, period) => { const multiplier = 2 / (period + 1); let previous = values[0]; return values.map((value, index) => { previous = index ? (value - previous) * multiplier + previous : value; return previous; }); };
+          const fast = ema(macdCloses, 12), slow = ema(macdCloses, 26); const dif = fast.map((value, index) => value - slow[index]); const dea = ema(dif, 9); const histogram = dif.map((value, index) => (value - dea[index]) * 2);
+          const intradayMarkup = miniLine(prices, prices.length > 1 && prices[prices.length - 1] >= prices[0] ? "var(--rising)" : "var(--falling)");
+          const macdMarkup = miniMacdBars(histogram); const klineMarkup = miniKline(history); const trend = classifyWhitelistTrend(closes); const ma = miniMaDistribution(closes);
+          state.whitelistChartCache[code] = {intraday:intradayMarkup, kline:klineMarkup, macd:macdMarkup, trend, ma}; state.whitelistTrendCache[code] = trend; node.innerHTML = intradayMarkup; klineNode.innerHTML = klineMarkup; macdNode.innerHTML = macdMarkup; if (trendNode) { trendNode.textContent = trend; applyWhitelistTrendStyle(trendNode, trend); } if (maNode) maNode.innerHTML = ma;
+        } catch { node.textContent = "--"; if (klineNode) klineNode.textContent = "--"; if (macdNode) macdNode.textContent = "--"; }
+        }));
+      }
+    }
+
+    function updateWhitelistSort(key) {
+      if (state.whitelistSortKey === key) state.whitelistSortDir = state.whitelistSortDir === "desc" ? "asc" : "desc";
+      else { state.whitelistSortKey = key; state.whitelistSortDir = "desc"; }
+      document.querySelectorAll("[data-whitelist-sort]").forEach(button => {
+        const active = button.dataset.whitelistSort === state.whitelistSortKey;
+        button.textContent = `${button.dataset.label}${active ? (state.whitelistSortDir === "asc" ? " ↑" : " ↓") : ""}`;
+      });
+      renderWhitelistRows();
+    }
+
+    function updateBlacklistSort(key) {
+      if (state.blacklistSortKey === key) state.blacklistSortDir = state.blacklistSortDir === "desc" ? "asc" : "desc";
+      else { state.blacklistSortKey = key; state.blacklistSortDir = "desc"; }
+      renderBlacklistTable();
+    }
+
+    async function openWhitelist(forceRefresh = false) {
+      clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
+      state.pageView = "whitelist"; state.whitelistShown = 100; renderSectorNavigation(); render();
+      if (state.whitelistStocks.length && !forceRefresh) return;
+      try {
+        const response = await fetch(`/api/whitelist${forceRefresh ? "?refresh=1" : ""}`, {cache:"no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "白名单加载失败");
+        state.whitelistStocks = payload.stocks || [];
+        refreshWhitelistIndustryFilterOptions();
+        state.whitelistShown = Math.min(100, state.whitelistStocks.length);
+        el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · ${new Date(payload.updatedAt).toLocaleTimeString("zh-CN", {hour12:false})}`;
+        renderWhitelistRows();
+        loadAllWhitelistTrends();
+      } catch (error) { el.whitelistBody.innerHTML = `<tr><td colspan="8">${escapeHtml(error.message || "白名单加载失败")}</td></tr>`; }
+    }
+
     function renderSectorNavigation() {
-      document.getElementById("technologyNav").classList.toggle("active", ["cpo-panorama", "pcb-panorama", "fiber-panorama", "chip-panorama", "compute-chip-panorama"].includes(state.pageView));
+      document.getElementById("technologyNav").classList.toggle("active", ["cpo-panorama", "pcb-panorama", "fiber-panorama", "chip-panorama", "semiconductor-panorama"].includes(state.pageView));
       document.getElementById("cpoPanoramaNav").classList.toggle("active", state.pageView === "cpo-panorama");
       document.getElementById("pcbPanoramaNav").classList.toggle("active", state.pageView === "pcb-panorama");
       document.getElementById("fiberPanoramaNav").classList.toggle("active", state.pageView === "fiber-panorama");
       document.getElementById("chipPanoramaNav").classList.toggle("active", state.pageView === "chip-panorama");
-      document.getElementById("computeChipPanoramaNav").classList.toggle("active", state.pageView === "compute-chip-panorama");
+      document.getElementById("semiconductorPanoramaNav").classList.toggle("active", state.pageView === "semiconductor-panorama");
       const entries = Object.entries(marketScopes);
       const [primary, ...secondary] = entries;
       el.overviewNav?.classList.toggle("active", state.pageView === "screener" && state.marketScope === primary[0]);
@@ -3635,15 +4346,32 @@
       el.hotSectorNav.classList.toggle("active", state.pageView === "hot-concept");
       el.limitUpNav?.classList.toggle("active", state.pageView === "limit-up");
       if (el.overviewCount) el.overviewCount.textContent = "";
-      el.sectorTotal.textContent = secondary.length;
+      el.sectorTotal.textContent = hasNumber(state.scannedCount)
+        ? state.scannedCount.toLocaleString("zh-CN")
+        : "--";
       el.sectorNav.innerHTML = secondary.map(([key, market]) => `
         <button class="nav-button${state.pageView === "screener" && state.marketScope === key ? " active" : ""}" type="button" data-market="${key}">
           <span>${market.label}</span><span class="nav-index"><span>${state.marketIndices[key]?.name || "指数"}</span> <span class="nav-index-change ${quoteClass(state.marketIndices[key]?.changePct)}">${hasNumber(state.marketIndices[key]?.changePct) ? formatPct(state.marketIndices[key].changePct) : "--"}</span></span>
         </button>
-      `).join("");
+      `).join("") + `<button class="nav-button${state.pageView === "blacklist" ? " active" : ""}" type="button" id="blacklistNav"><span>黑名单</span><span class="nav-count menu-quantity-badge">${state.blacklistStocks.length || "0"}</span></button>`;
       el.sectorNav.querySelectorAll("[data-market]").forEach((button) => {
         button.addEventListener("click", () => navigateMarket(button.dataset.market));
       });
+      document.getElementById("blacklistNav")?.addEventListener("click", () => openBlacklist());
+      const whitelistCounts = {main: 0, chinext: 0, star: 0, bse: 0};
+      state.whitelistStocks.forEach(stock => {
+        const code = String(stock.code || "");
+        const market = code.startsWith("300") || code.startsWith("301") ? "chinext" : code.startsWith("688") || code.startsWith("689") ? "star" : code.startsWith("8") || code.startsWith("4") ? "bse" : "main";
+        whitelistCounts[market] += 1;
+      });
+      const whitelistCountText = state.whitelistStocks.length
+        ? state.whitelistStocks.length.toLocaleString("zh-CN")
+        : "0";
+      el.sectorNav.insertAdjacentHTML("beforeend", `<button class="nav-button${state.pageView === "whitelist" ? " active" : ""}" type="button" id="whitelistNav"><span>白名单</span><span class="nav-count menu-quantity-badge whitelist-market-count">${whitelistCountText}</span></button>`);
+      const blacklistNav = document.getElementById("blacklistNav");
+      const whitelistNav = document.getElementById("whitelistNav");
+      if (blacklistNav && whitelistNav) el.sectorNav.insertBefore(whitelistNav, blacklistNav);
+      document.getElementById("whitelistNav")?.addEventListener("click", () => openWhitelist());
       el.hotSectorGroups.innerHTML = Object.entries(hotSectorGroups).map(([group, concepts]) => `
         <div class="hot-sector-group">
           <span class="hot-sector-group-title">${escapeHtml(group)}${state.hotGroupLoading === group ? " · 加载中" : ""}</span>
@@ -3730,6 +4458,8 @@
         state.downtrendExcludedCount = 0;
         state.limitUpExcludedCount = 0;
         state.marketCapExcludedCount = 0;
+        state.industryExcludedCount = 0;
+        state.previousBlacklistExcludedCount = 0;
         state.marketDate = payload.marketDate;
         state.marketUpdatedAt = payload.updatedAt;
         state.marketSource = payload.source;
@@ -3758,6 +4488,8 @@
       state.downtrendExcludedCount = null;
       state.limitUpExcludedCount = null;
       state.marketCapExcludedCount = null;
+      state.industryExcludedCount = null;
+      state.previousBlacklistExcludedCount = null;
       state.marketScope = marketKey;
       state.pageView = "screener";
       state.minScore = Math.max(state.marketRegime?.minScore ?? 70, state.minScore);
@@ -3975,7 +4707,7 @@
       } else {
         const maxCount = Math.max(...distribution.bins.map((item) => Number(item.count) || 0), 1);
         const stat = (label, value, tone = "") => `<span class="market-distribution-stat">${label}<b class="${tone}">${value ?? "--"}</b></span>`;
-        el.indexAnalysisDistribution.innerHTML = `<div class="market-distribution-head"><div><strong>涨跌分布</strong><div class="market-distribution-mood">${escapeHtml(data.mood || "市场状态待确认")}</div></div><span>${formatUpdatedAt(data.updatedAt)}</span></div><div class="market-distribution-bars">${distribution.bins.map((item) => { const height = Math.max(3, (Number(item.count) || 0) / maxCount * 100); return `<div class="market-distribution-bar ${item.side}"><strong class="market-distribution-count">${item.count}</strong><span class="market-distribution-column"><i style="height:${height.toFixed(1)}%"></i></span><span class="market-distribution-label">${escapeHtml(item.label)}</span></div>`; }).join("")}</div><div class="market-distribution-stats">${stat("上涨", distribution.rising, "up")}${stat("涨停", distribution.limitUp, "up")}${stat("非一字涨停", Math.max(0, (distribution.limitUp || 0) - (distribution.oneWordLimitUp || 0)), "up")}${stat("平家", distribution.flat)}${stat("下跌", distribution.falling, "down")}${stat("跌停", distribution.limitDown, "down")}${stat("炸板", distribution.friedBoard, "down")}${stat("停牌", distribution.suspended)}</div>`;
+        el.indexAnalysisDistribution.innerHTML = `<div class="market-distribution-head"><div><strong>涨跌分布</strong><div class="market-distribution-mood">${escapeHtml(data.mood || "市场状态待确认")}</div></div><span>${formatUpdatedAt(data.updatedAt)}</span></div><div class="market-distribution-bars">${distribution.bins.map((item) => { const height = Math.max(3, (Number(item.count) || 0) / maxCount * 100); return `<div class="market-distribution-bar ${item.side}"><strong class="market-distribution-count">${item.count}</strong><span class="market-distribution-column"><i style="height:${height.toFixed(1)}%"></i></span><span class="market-distribution-label">${escapeHtml(item.label)}</span></div>`; }).join("")}</div><div class="market-distribution-stats">${stat("上涨", distribution.rising, "up")}${stat("涨停", distribution.limitUp, "up")}${stat("下跌", distribution.falling, "down")}${stat("跌停", distribution.limitDown, "down")}${stat("炸板", distribution.friedBoard, "down")}${stat("停牌", distribution.suspended)}</div>`;
       }
       const flows = Array.isArray(state.sectorMoneyFlow?.items)
         ? state.sectorMoneyFlow.items
@@ -4258,6 +4990,8 @@
       state.downtrendExcludedCount = payload.downtrendExcludedCount ?? null;
       state.limitUpExcludedCount = payload.limitUpExcludedCount ?? null;
       state.marketCapExcludedCount = payload.marketCapExcludedCount ?? null;
+      state.industryExcludedCount = payload.industryExcludedCount ?? null;
+      state.previousBlacklistExcludedCount = payload.previousBlacklistExcludedCount ?? null;
       state.marketRegime = payload.marketRegime || {label: "常态", minScore: 70};
       state.minScore = state.marketRegime.minScore === 60 ? Math.min(state.minScore, 60) : Math.max(state.minScore, 70);
       state.sectorStrength = Array.isArray(payload.sectorStrength) ? payload.sectorStrength : [];
@@ -4265,6 +4999,7 @@
       state.marketDate = payload.marketDate;
       state.marketUpdatedAt = payload.updatedAt;
       state.marketSource = payload.source;
+      renderSectorNavigation();
       if (payload.sector) {
         const target = payload.sector.key === "overview"
           ? state.overview
@@ -4295,7 +5030,14 @@
           includeAll: "0"
         });
         if (forceRefresh) query.set("refresh", "1");
-        const response = await fetch(`/api/screener?${query}`, { cache: "no-store" });
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 12000);
+        let response;
+        try {
+          response = await fetch(`/api/screener?${query}`, { cache: "no-store", signal: controller.signal });
+        } finally {
+          window.clearTimeout(timeout);
+        }
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         if (requestedKey !== marketRequestKey()) return;
@@ -4303,7 +5045,7 @@
       } catch (error) {
         if (requestedKey !== marketRequestKey()) return;
         state.marketStatus = "error";
-        state.marketMessage = error.message || "无法获取行情";
+        state.marketMessage = error.name === "AbortError" ? "行情接口响应较慢，请点击右上角刷新重试" : (error.message || "无法获取行情");
         state.marketSource = null;
       } finally {
         if (requestedKey === marketRequestKey()) {
@@ -4363,17 +5105,34 @@
     async function loadTechnologyConceptChanges() {
       try {
         const response = await fetch(`/api/hot-concept-summary?names=${encodeURIComponent("CPO,PCB,光纤,存储芯片,算力芯片")}`, {cache:"no-store"});
-        if (!response.ok) return;
-        const payload = await response.json();
-        (payload.concepts || []).forEach((item) => {
-          const value = Number(item.averageChangePct);
-          technologyConceptChanges[item.concept] = Number.isFinite(value) ? value : null;
-          document.querySelectorAll(`[data-technology-change="${CSS.escape(item.concept)}"]`).forEach((node) => {
-            node.textContent = Number.isFinite(value) ? formatPct(value) : "--";
-            node.classList.toggle("positive", Number.isFinite(value) && value > 0);
-            node.classList.toggle("negative", Number.isFinite(value) && value < 0);
+        if (response.ok) {
+          const payload = await response.json();
+          (payload.concepts || []).forEach((item) => {
+            const value = Number(item.averageChangePct);
+            technologyConceptChanges[item.concept] = Number.isFinite(value) ? value : null;
+            document.querySelectorAll(`[data-technology-change="${CSS.escape(item.concept)}"]`).forEach((node) => {
+              node.textContent = Number.isFinite(value) ? formatPct(value) : "--";
+              node.classList.toggle("positive", Number.isFinite(value) && value > 0);
+              node.classList.toggle("negative", Number.isFinite(value) && value < 0);
+            });
           });
-        });
+        }
+        const etfMappings = {"半导体":"588170", "芯片":"589100"};
+        await Promise.all(Object.entries(etfMappings).map(async ([theme, code]) => {
+          try {
+            const response = await fetch(`/api/stock?code=${code}`, {cache:"no-store"});
+            const payload = await response.json();
+            const value = Number(payload.quote?.changePct);
+            technologyEtfChanges[theme] = Number.isFinite(value) ? value : null;
+            document.querySelectorAll(`[data-technology-etf-change="${CSS.escape(theme)}"]`).forEach((node) => {
+              node.textContent = Number.isFinite(value) ? formatPct(value) : "--";
+              node.classList.toggle("positive", Number.isFinite(value) && value > 0);
+              node.classList.toggle("negative", Number.isFinite(value) && value < 0);
+            });
+          } catch {
+            // ETF行情不可用时保留占位，不影响产业链页面。
+          }
+        }));
       } catch (error) {
         // 板块涨跌幅属于辅助信息，接口异常时保留菜单，不阻断页面。
       }
@@ -4544,8 +5303,11 @@
     function weightedScore(stock) {
       const serverStrategyScore = Number(stock.screener?.strategyScores?.[state.strategy]);
       if (Number.isFinite(serverStrategyScore)) return Math.round(serverStrategyScore);
-      const weights = strategies[state.strategy].weights;
+      const weights = strategies[state.strategy]?.weights;
       const b = stock.base;
+      // K 线遮罩层打开的临时股票只有历史行情，没有盘中选股评分字段，
+      // 不应参与主选股列表的评分计算，否则切换黑/白名单页面会中断渲染。
+      if (!weights || !b) return -Infinity;
       const positive =
         b.trend * weights.trend +
         b.momentum * weights.momentum +
@@ -5005,8 +5767,38 @@
       }));
     }
 
-    async function loadVisibleReboundScores() {
-      const tables = [...document.querySelectorAll(".cpo-profile-table:not([data-rebound-ready])")];
+    async function loadVisibleTechnologyReturns() {
+      const returnColumnByKey = {return3:1, return5:2, return10:3};
+      const applyTechnologyTableSort = () => {
+        if (!technologyTableSortKey) return;
+        const columnIndex = returnColumnByKey[technologyTableSortKey];
+        document.querySelectorAll(".cpo-profile-table[data-returns-ready]").forEach((table) => {
+          const cells = [...table.children];
+          if (cells.length < 8 || !columnIndex) return;
+          const header = cells.slice(0, 8);
+          const rows = [];
+          for (let index = 8; index + 7 < cells.length; index += 8) rows.push(cells.slice(index, index + 8));
+          rows.sort((left, right) => {
+            const leftValue = Number(left[columnIndex].querySelector("[data-tech-return-value]")?.dataset.techReturnValue);
+            const rightValue = Number(right[columnIndex].querySelector("[data-tech-return-value]")?.dataset.techReturnValue);
+            if (!Number.isFinite(leftValue) && !Number.isFinite(rightValue)) return 0;
+            if (!Number.isFinite(leftValue)) return 1;
+            if (!Number.isFinite(rightValue)) return -1;
+            return technologyTableSortDir === "asc" ? leftValue - rightValue : rightValue - leftValue;
+          });
+          table.replaceChildren(...header, ...rows.flat());
+        });
+        document.querySelectorAll("[data-technology-sort]").forEach((button) => {
+          const label = button.dataset.label || button.textContent.replace(/\s+[↑↓]$/, "");
+          button.textContent = `${label}${button.dataset.technologySort === technologyTableSortKey ? (technologyTableSortDir === "asc" ? " ↑" : " ↓") : ""}`;
+        });
+      };
+      const updateTechnologyTableSort = (key) => {
+        if (technologyTableSortKey === key) technologyTableSortDir = technologyTableSortDir === "desc" ? "asc" : "desc";
+        else { technologyTableSortKey = key; technologyTableSortDir = "desc"; }
+        applyTechnologyTableSort();
+      };
+      const tables = [...document.querySelectorAll(".cpo-profile-table:not([data-returns-ready])")];
       const codes = [];
       tables.forEach((table) => {
         const cells = [...table.children];
@@ -5015,34 +5807,53 @@
         const rows = [];
         for (let index = 5; index + 4 < cells.length; index += 5) rows.push(cells.slice(index, index + 5));
         table.innerHTML = "";
-        [heads[0], Object.assign(document.createElement("div"), {className:"profile-head", textContent:"分时分"}), Object.assign(document.createElement("div"), {className:"profile-head", textContent:"日线分"}), ...heads.slice(1)].forEach(cell => table.appendChild(cell));
+        const returnHeads = [["return3", "近3日涨幅"], ["return5", "近5日涨幅"], ["return10", "近10日涨幅"]].map(([key, text]) => {
+          const cell = Object.assign(document.createElement("div"), {className:"profile-head"});
+          const button = Object.assign(document.createElement("button"), {className:"technology-sort", type:"button", textContent:text});
+          button.dataset.technologySort = key;
+          button.dataset.label = text;
+          button.addEventListener("click", () => updateTechnologyTableSort(key));
+          cell.appendChild(button);
+          return cell;
+        });
+        [heads[0], ...returnHeads, ...heads.slice(1)].forEach(cell => table.appendChild(cell));
         rows.forEach((row) => {
           const stockLink = row[0].querySelector("[data-open-stock-chart]");
           const code = stockLink?.dataset.openStockChart || row[0].querySelector("small")?.textContent?.trim();
-          const name = stockLink?.dataset.stockName || [...row[0].childNodes].find(node => node.nodeType === Node.TEXT_NODE)?.textContent?.trim() || code;
           if (code) codes.push(code);
-          const intradayCell = document.createElement("div");
-          intradayCell.innerHTML = `<button class="rebound-score" data-rebound-intraday="${escapeHtml(code || "")}" data-rebound-name="${escapeHtml(name || "")}" title="查看当日分时分走势">--</button>`;
-          const dailyCell = document.createElement("div");
-          dailyCell.innerHTML = `<button class="rebound-score daily" data-daily-score-code="${escapeHtml(code || "")}" data-rebound-name="${escapeHtml(name || "")}" title="查看历史日线分">--</button>`;
-          [row[0], intradayCell, dailyCell, ...row.slice(1)].forEach(cell => table.appendChild(cell));
+          const returnCells = [3, 5, 10].map(days => {
+            const cell = document.createElement("div");
+            cell.innerHTML = `<span class="technology-return" data-tech-return="${days}" data-tech-return-code="${escapeHtml(code || "")}">--</span>`;
+            return cell;
+          });
+          [row[0], ...returnCells, ...row.slice(1)].forEach(cell => table.appendChild(cell));
         });
-        table.dataset.reboundReady = "1";
+        table.dataset.returnsReady = "1";
       });
       const uniqueCodes = [...new Set(codes)];
-      if (!uniqueCodes.length) return;
+      if (!uniqueCodes.length) {
+        applyTechnologyTableSort();
+        return;
+      }
       try {
-        const conceptByPage = {"cpo-panorama":"CPO","pcb-panorama":"PCB","fiber-panorama":"光纤","chip-panorama":"存储芯片","compute-chip-panorama":"算力芯片"};
-        const params = new URLSearchParams({codes:uniqueCodes.join(","), concept:conceptByPage[state.pageView] || ""});
+        const params = new URLSearchParams({codes:uniqueCodes.join(",")});
         if (aiComputeSessionActive()) params.set("refresh", "1");
-        const response = await fetch(`/api/rebound-scores?${params}`, {cache:"no-store"});
+        const response = await fetch(`/api/technology-returns?${params}`, {cache:"no-store"});
         const payload = await response.json();
         if (!response.ok) return;
-        Object.values(payload.scores || {}).forEach((item) => {
-          document.querySelectorAll(`[data-rebound-intraday="${item.code}"]`).forEach(node => node.textContent = hasNumber(item.intradayScore) ? Math.round(item.intradayScore) : "--");
-          document.querySelectorAll(`[data-daily-score-code="${item.code}"]`).forEach(node => node.textContent = hasNumber(item.dailyScore) ? Math.round(item.dailyScore) : "--");
+        Object.values(payload.returns || {}).forEach((item) => {
+          [3, 5, 10].forEach(days => {
+            document.querySelectorAll(`[data-tech-return="${days}"][data-tech-return-code="${item.code}"]`).forEach(node => {
+              const value = item[`return${days}`];
+              node.textContent = hasNumber(value) ? formatPct(value) : "--";
+              node.dataset.techReturnValue = hasNumber(value) ? String(Number(value)) : "";
+              node.classList.toggle("positive", hasNumber(value) && value > 0);
+              node.classList.toggle("negative", hasNumber(value) && value < 0);
+            });
+          });
         });
-      } catch { /* 分数接口失败不影响行情表格 */ }
+      } catch { /* 近期涨幅接口失败时保留 --，不影响其他行情列 */ }
+      applyTechnologyTableSort();
     }
 
     async function loadDailyScoreHistory(code, page = 1, stockName = "") {
@@ -5146,7 +5957,7 @@
     });
 
     async function loadConceptIntradayMiniCharts() {
-      loadVisibleReboundScores();
+      loadVisibleTechnologyReturns();
       const date = state.marketDate || new Date().toISOString().slice(0, 10);
       const nodes = [...document.querySelectorAll("[data-cpo-mini-code]")];
       await Promise.all(nodes.map(async (node) => {
@@ -5238,9 +6049,10 @@
       const volume = { top: 340, bottom: 410 };
       const macd = { top: 450, bottom: 560 };
       const movingAverages = [
-        { key: "ma10", label: "MA10", color: "var(--amber)" },
-        { key: "ma20", label: "MA20", color: "var(--cyan)" },
-        { key: "ma30", label: "MA30", color: "var(--violet)" }
+        { key: "ma10", label: "MA10", color: "#8b5cf6" },
+        { key: "ma20", label: "MA20", color: "#eab308" },
+        { key: "ma30", label: "MA30", color: "#d946ef" },
+        { key: "ma5", label: "MA5", color: "#06b6d4" }
       ];
       const highs = rows.map((row) => row.high);
       const lows = rows.map((row) => row.low);
@@ -5335,7 +6147,7 @@
             : null)
           .filter(Boolean)
           .join(" ");
-        return points ? `<polyline points="${points}" fill="none" stroke="${average.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` : "";
+        return points ? `<polyline points="${points}" fill="none" stroke="${average.color}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>` : "";
       }).join("");
       const labelIndexes = new Set(Array.from({ length: 6 }, (_, index) =>
         Math.round((rows.length - 1) * index / 5)
@@ -5465,9 +6277,10 @@
             <div class="modal-chart-legend">
               <span style="color:var(--rising)"><i></i>上涨</span>
               <span style="color:var(--falling)"><i></i>下跌</span>
-              <span style="color:var(--amber)"><i></i>MA10</span>
-              <span style="color:var(--cyan)"><i></i>MA20</span>
-              <span style="color:var(--violet)"><i></i>MA30</span>
+              <span style="color:#06b6d4"><i></i>MA5:${hasNumber(view.rows.at(-1)?.ma5) ? view.rows.at(-1).ma5.toFixed(2) : "--"}</span>
+              <span style="color:#8b5cf6"><i></i>MA10:${hasNumber(view.rows.at(-1)?.ma10) ? view.rows.at(-1).ma10.toFixed(2) : "--"}</span>
+              <span style="color:#eab308"><i></i>MA20:${hasNumber(view.rows.at(-1)?.ma20) ? view.rows.at(-1).ma20.toFixed(2) : "--"}</span>
+              <span style="color:#d946ef"><i></i>MA30:${hasNumber(view.rows.at(-1)?.ma30) ? view.rows.at(-1).ma30.toFixed(2) : "--"}</span>
             </div>
             <div class="daily-kline-interaction${state.dailyView.drag ? " dragging" : ""}">
               ${klineChart(stock)}
@@ -5556,7 +6369,18 @@
       if (!stock || stock._chartHistoryLoading) return;
       stock._chartHistoryLoading = true;
       try {
-        const response = await fetch(`/api/stock?code=${encodeURIComponent(stock.code)}`, { cache: "no-store" });
+        // 打开遮罩层时要求后端走一次“快失败 + 备用源竞速”，避免沿用异常的空结果。
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+        let response;
+        try {
+          response = await fetch(`/api/stock?code=${encodeURIComponent(stock.code)}&refresh=1`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
         const payload = await response.json();
         if (!response.ok || !payload.quote) throw new Error(payload.error || `HTTP ${response.status}`);
         const latest = stocks.find((item) => item.code === stock.code);
@@ -5881,7 +6705,7 @@
 
     function isAiComputeStock(code) {
       const value = String(code || "");
-      return [cpoCodes, pcbCodes, fiberCodes, chipCodes, computeChipCodes].some((group) =>
+      return [cpoCodes, pcbCodes, fiberCodes].some((group) =>
         Array.isArray(group) && group.some((stock) => String(stock.code) === value)
       );
     }
@@ -5979,7 +6803,7 @@
       const reboundAlerts = groupedAlerts.filter((item) => item.kind === "rebound-60").sort(byAlertTime).slice(-15);
       const mainAlerts = groupedAlerts.filter((item) => isMainBoardAlert(item.code) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-15);
       const growthAlerts = groupedAlerts.filter((item) => /^(300|301|688|689|4|8|92)/.test(String(item.code || "")) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-15);
-      el.scoreAlerts.hidden = !growthAlerts.length;
+      el.scoreAlerts.hidden = state.alertPanelDismissed.growth || !growthAlerts.length;
       el.scoreAlerts.innerHTML = growthAlerts.length ? `
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>创业板 / 科创板 / 北交所告警</span><button class="score-alert-close" type="button" data-close-score-alerts>关闭</button></div>
@@ -5987,7 +6811,7 @@
             ${growthAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const trend = repeatAlertTrend(item); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : "", trend.className].filter(Boolean).join(" "); const stockLabel = `${item.name}(${item.code})`; return `<div class="score-alert-item"><span class="${nameClasses}" title="${escapeHtml(stockLabel)}">${escapeHtml(stockLabel)}</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><span class="repeat-direction ${trend.className}" title="相对上一次告警涨幅">${trend.symbol}</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>` : "";
-      el.mainScoreAlerts.hidden = !mainAlerts.length;
+      el.mainScoreAlerts.hidden = state.alertPanelDismissed.main || !mainAlerts.length;
       el.mainScoreAlerts.innerHTML = mainAlerts.length ? `
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>主板优选告警</span><button class="score-alert-close" type="button" data-close-main-score-alerts>关闭</button></div>
@@ -5995,7 +6819,7 @@
             ${mainAlerts.map((item) => { const actualScore = hasNumber(item.score) ? Math.round(item.score) : 70; const label = item.kind === "prediction" ? `预警${item.maxThreshold}%` : item.kind === "score-repeat" ? `持续${actualScore}分` : `评分${actualScore}`; const consecutive = Math.max(1, Number(item.consecutiveDays) || 0); const trend = repeatAlertTrend(item); const nameClasses = [isAiComputeStock(item.code) ? "ai-compute-stock" : "", item.kind === "score-repeat" || consecutive >= 2 ? "repeated-alert-stock" : "", trend.className].filter(Boolean).join(" "); const stockLabel = `${item.name}(${item.code})`; return `<div class="score-alert-item"><span class="${nameClasses}" title="${escapeHtml(stockLabel)}">${escapeHtml(stockLabel)}</span><small title="${escapeHtml(item.industry || "--")}">${escapeHtml(item.industry || "--")}</small><span class="repeat-direction ${trend.className}" title="相对上一次告警涨幅">${trend.symbol}</span><small>${label}</small><span class="consecutive">${consecutive}天</span><b>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</b><em>${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</em><time>${escapeHtml(item.time)}</time></div>`; }).join("")}
           </div>
         </div>` : "";
-      el.reboundScoreAlerts.hidden = !reboundAlerts.length;
+      el.reboundScoreAlerts.hidden = state.alertPanelDismissed.rebound || !reboundAlerts.length;
       el.reboundScoreAlerts.innerHTML = reboundAlerts.length ? `
         <div class="score-alert-panel">
           <div class="score-alert-head"><span>AI算力 · 激进观察</span><button class="score-alert-close" type="button" data-close-rebound-score-alerts>关闭</button></div>
@@ -6009,11 +6833,11 @@
           state.scoreAlerts.forEach((item) => dismissed.add(`${item.code}:${item.kind}:${item.threshold}:${item.time}`));
           localStorage.setItem("scoreAlertDismissedKeys", JSON.stringify([...dismissed].slice(-500)));
         } catch {}
-        state.scoreAlerts = state.scoreAlerts.filter((item) => isMainBoardAlert(item.code) || item.kind === "rebound-60");
+        state.alertPanelDismissed.growth = true;
         render();
       });
       el.mainScoreAlerts.querySelector("[data-close-main-score-alerts]")?.addEventListener("click", () => {
-        state.scoreAlerts = state.scoreAlerts.filter((item) => !isMainBoardAlert(item.code) || item.kind === "rebound-60");
+        state.alertPanelDismissed.main = true;
         render();
       });
       el.reboundScoreAlerts.querySelector("[data-close-rebound-score-alerts]")?.addEventListener("click", () => {
@@ -6022,7 +6846,7 @@
           reboundAlerts.forEach((item) => dismissed.add(`${item.code}:${item.kind}:${item.threshold}:${item.time}`));
           localStorage.setItem("scoreAlertDismissedKeys", JSON.stringify([...dismissed].slice(-500)));
         } catch {}
-        state.scoreAlerts = state.scoreAlerts.filter((item) => item.kind !== "rebound-60");
+        state.alertPanelDismissed.rebound = true;
         render();
       });
     }
@@ -6089,7 +6913,10 @@
           state.scoreAlertAbove[`${item.code}:${kind}:${threshold}`] = true;
         });
         state.scoreAlertReady = true;
-        if (remoteAdded) playScoreAlertSound();
+        if (remoteAdded) {
+          state.alertPanelDismissed = { growth: false, main: false, rebound: false };
+          playScoreAlertSound();
+        }
         render();
       } catch {
         // 提示接口不可用时不影响行情页面。
@@ -6099,7 +6926,7 @@
     function render() {
       const showLoading = (state.marketStatus === "loading" && !stocks.length)
         || (state.pageView === "midterm" && ["loading", "running"].includes(state.midtermScan?.status) && !state.midtermCandidates.length);
-      el.pageLoading.hidden = ["cpo-panorama", "pcb-panorama", "fiber-panorama", "chip-panorama", "compute-chip-panorama"].includes(state.pageView) || !showLoading;
+      el.pageLoading.hidden = ["cpo-panorama", "pcb-panorama", "fiber-panorama", "chip-panorama", "semiconductor-panorama"].includes(state.pageView) || !showLoading;
       if (showLoading) el.pageLoadingText.textContent = state.pageView === "midterm"
         ? (state.midtermScan?.message || "正在加载中期选股池")
         : (state.marketMessage || "正在加载行情数据");
@@ -6112,12 +6939,15 @@
       el.limitUpView.hidden = state.pageView !== "limit-up";
       el.indexAnalysisView.hidden = state.pageView !== "index-analysis";
       document.getElementById("conceptRankView").hidden = state.pageView !== "concept-rank";
+      document.getElementById("blacklistView").hidden = state.pageView !== "blacklist";
+      document.getElementById("whitelistView").hidden = state.pageView !== "whitelist";
       document.getElementById("cpoPanoramaView").hidden = state.pageView !== "cpo-panorama";
       document.getElementById("pcbPanoramaView").hidden = state.pageView !== "pcb-panorama";
       document.getElementById("fiberPanoramaView").hidden = state.pageView !== "fiber-panorama";
       document.getElementById("chipPanoramaView").hidden = state.pageView !== "chip-panorama";
-      document.getElementById("computeChipPanoramaView").hidden = state.pageView !== "compute-chip-panorama";
+      document.getElementById("semiconductorPanoramaView").hidden = state.pageView !== "semiconductor-panorama";
       syncDynamicControls();
+      if (state.pageView === "whitelist") renderWhitelistRows();
       el.scoreValue.textContent = state.minScore;
       renderMarketStatus();
       renderWeights();
@@ -6216,7 +7046,6 @@
           : state.pageView === "pcb-panorama" ? pcbCodes
           : state.pageView === "fiber-panorama" ? fiberCodes
           : state.pageView === "chip-panorama" ? chipCodes
-          : state.pageView === "compute-chip-panorama" ? computeChipCodes
           : state.pageView === "hot-concept" ? stocks.map((stock) => stock.code)
           : [];
         if (pageCodes.length) query.set("codes", [...new Set(pageCodes.map((item) => typeof item === "string" ? item : item.code).filter(Boolean))].join(","));
@@ -6265,6 +7094,8 @@
       state.downtrendExcludedCount = null;
       state.limitUpExcludedCount = null;
       state.marketCapExcludedCount = null;
+      state.industryExcludedCount = null;
+      state.previousBlacklistExcludedCount = null;
       state.reviewed = false;
       state.selectedCode = null;
       el.strategy.value = state.strategy;
@@ -6416,6 +7247,8 @@
         state.downtrendExcludedCount = null;
         state.limitUpExcludedCount = null;
         state.marketCapExcludedCount = null;
+        state.industryExcludedCount = null;
+        state.previousBlacklistExcludedCount = null;
         loadMarketData(true);
       });
     });
@@ -6435,6 +7268,14 @@
       if (state.pageView === "limit-up") scheduleLimitUpRefresh();
       if (!el.hotSectorGroups.hidden) scheduleHotGroupRefresh();
     });
+
+    window.setInterval(() => {
+      if (!marketSessionState().active || listRefreshInFlight) return;
+      if (state.pageView !== "whitelist" && state.pageView !== "blacklist") return;
+      listRefreshInFlight = true;
+      const refresh = state.pageView === "whitelist" ? openWhitelist(true) : openBlacklist(true);
+      Promise.resolve(refresh).finally(() => { listRefreshInFlight = false; });
+    }, 10000);
 
     window.setInterval(() => {
       if (state.pageView === "sector-strength") {
@@ -6460,7 +7301,9 @@
     }, 1000);
 
     function stockProfileNameLink(stock) {
-      return `<button class="profile-stock-link" type="button" data-open-stock-chart="${escapeHtml(stock.code)}" data-stock-name="${escapeHtml(stock.name)}" title="点击查看${escapeHtml(stock.name)}K线图">${escapeHtml(stock.name)}（${escapeHtml(stock.code)}）</button>`;
+      const code = String(stock.code || "");
+      const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") ? "北" : "";
+      return `<button class="profile-stock-link" type="button" data-open-stock-chart="${escapeHtml(code)}" data-stock-name="${escapeHtml(stock.name)}" title="点击查看${escapeHtml(stock.name)}K线图"><span class="profile-stock-name">${escapeHtml(stock.name)}</span><span class="profile-stock-code">${badge ? `<i class="market-badge">${badge}</i>` : ""}${escapeHtml(code)}</span></button>`;
     }
 
     function openStockChartByCode(code, stockName = "") {
@@ -6483,7 +7326,8 @@
     document.getElementById("cpoPanoramaGroups").innerHTML = cpoLayers.map(([title, description, color, members]) => `<section class="cpo-layer" style="--cpo-color:${color}"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="cpo-stock-tags">${members.split(",").map(member => { const [name, code] = member.split(" "); return `<span class="cpo-stock-tag">${escapeHtml(name)}<small>${code}</small></span>`; }).join("")}</div></section>`).join("");
     const cpoDescriptions = {"300394":"800G/1.6T光引擎与FAU配套，光模块核心供应链。","300308":"高速光模块龙头，覆盖1.6T硅光光引擎。","300502":"高速光模块厂商，LPO/CPO并行布局。","002281":"光芯片、器件与光模块产业链布局。","000988":"CPO光引擎方案及400G/lane解决方案。","603083":"高速光模块与硅光，LPO/CPO双路线。","300548":"高速光模块与光器件相关布局。","688205":"高速光模块及光器件。","301205":"光模块与光器件相关配套。","688498":"高端光芯片 IDM 厂商。","688048":"激光芯片、AWG芯片及薄膜铌酸锂器件。","688313":"光芯片及光器件相关产品。","300620":"激光芯片、AWG芯片与光学器件。","920045":"光学器件与光通信相关业务。","688807":"光芯片及光通信器件。","300570":"MPO/MTP高密度光纤连接器。","688195":"WSS滤光片等核心光学元件。","688167":"激光器及光学器件。","300757":"CPO光电子封装设备。","688312":"硅光晶圆测试设备。","688808":"光电测试仪器。","688025":"光电封装与测试设备。"};
     const cpoCodes = cpoLayers.flatMap(([, , , members]) => members.split(",").map(member => { const parts = member.split(" "); return {name:parts[0], code:parts[1]}; }));
-    async function fetchMissingConceptQuotes(codes, quotes) { const known = new Set(quotes.map(quote => String(quote.code))); const missing = codes.filter(stock => !known.has(stock.code)); const results = await Promise.all(missing.map(async stock => { try { const response = await fetch(`/api/stock?code=${stock.code}`, {cache:"no-store"}); const payload = await response.json(); return response.ok && payload.quote ? payload.quote : null; } catch { return null; } })); return quotes.concat(results.filter(Boolean)); }
+    function technologyQuoteForDisplay(quote) { if (!quote) return {}; return quote.liveQuote === false ? {...quote, price:null, changePct:null} : quote; }
+    async function fetchMissingConceptQuotes(codes, quotes) { const known = new Set(quotes.map(quote => String(quote.code))); const missing = codes.filter(stock => !known.has(stock.code)); const results = await Promise.all(missing.map(async stock => { try { const response = await fetch(`/api/stock?code=${stock.code}&refresh=1`, {cache:"no-store"}); const payload = await response.json(); if (!response.ok || !payload.quote) return null; return technologyQuoteForDisplay(payload.quote); } catch { return null; } })); return quotes.concat(results.filter(Boolean)); }
     function sortLayerMembers(layers, byCode) { return layers.map(([title, description, color, members]) => [title, description, color, members.split(",").sort((a, b) => { const ac = Number(byCode[a.split(" ")[1]]?.changePct); const bc = Number(byCode[b.split(" ")[1]]?.changePct); return (Number.isFinite(bc) ? bc : -Infinity) - (Number.isFinite(ac) ? ac : -Infinity); }).join(",")]); }
     function renderLayerTags(targetId, layers) { document.getElementById(targetId).innerHTML = layers.map(([title, description, color, members]) => `<section class="cpo-layer" style="--cpo-color:${color}"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p><div class="cpo-stock-tags">${members.split(",").map(member => { const [name, code] = member.split(" "); return `<span class="cpo-stock-tag">${escapeHtml(name)}<small>${code}</small></span>`; }).join("")}</div></section>`).join(""); }
     function renderCpoProfiles(quotes = []) { const byCode = Object.fromEntries(quotes.map(quote => [String(quote.code), quote])); const sortedLayers = sortLayerMembers(cpoLayers, byCode); renderLayerTags("cpoPanoramaGroups", sortedLayers, quotes); const table = (members) => `<div class="cpo-profile-table"><div class="profile-head">个股</div><div class="profile-head">分时</div><div class="profile-head">价格</div><div class="profile-head">涨幅</div><div class="profile-head">基本介绍</div>${members.split(",").map(member => { const parts = member.split(" "); const stock = {name:parts[0], code:parts[1]}; const quote = byCode[stock.code] || {}; const change = Number(quote.changePct); const tone = Number.isFinite(change) ? (change >= 0 ? "up" : "down") : ""; return `<div>${stockProfileNameLink(stock)}</div><div><span class="cpo-intraday-mini" data-cpo-mini-code="${stock.code}">加载</span></div><div class="cpo-price">${hasNumber(quote.price) ? formatPrice(quote.price) : "--"}</div><div class="cpo-change ${tone}">${Number.isFinite(change) ? formatPct(change) : "--"}</div><div>${escapeHtml(cpoDescriptions[stock.code] || "CPO产业链相关企业，具体业务以公司披露为准。")}</div>`; }).join("")}</div>`; document.getElementById("cpoProfileTable").innerHTML = sortedLayers.map(([title, , color, members]) => `<section class="cpo-profile-group" style="--cpo-color:${color}"><div class="cpo-profile-group-title">${escapeHtml(title)}</div>${table(members)}</section>`).join(""); loadConceptIntradayMiniCharts(); }
@@ -6550,33 +7394,33 @@
       renderSectorNavigation(); render();
       fetch("/api/hot-concept?name=存储芯片", {cache:"no-store"}).then(response => response.json()).then(async payload => { const quotes = payload.quotes || []; renderChipProfiles(quotes); renderChipProfiles(await fetchMissingConceptQuotes(chipCodes, quotes)); }).catch(() => fetchMissingConceptQuotes(chipCodes, []).then(renderChipProfiles));
     });
-    const computeChipLayers = [
-      ["① 核心算力芯片（壁垒最高 · 国产替代核心主力）", "海光信息为国产算力中军；寒武纪为国产AI芯片龙头。", "#80cfdf", "海光信息 688041,寒武纪 688256,龙芯中科 688047,景嘉微 300474,沐曦股份 688802,国芯科技 688589"],
-      ["② 配套芯片（接口 · 互联 · IP · 存力）", "澜起科技为内存接口芯片龙头；盛科通信、裕太微覆盖交换芯片与以太网PHY。", "#eeb397", "澜起科技 688008,盛科通信 688702,裕太微 688515,芯原股份 688521,兆易创新 603986,香农芯创 300475"],
-      ["③ 服务器整机 / 异腾生态（算力落地载体）", "工业富联为AI服务器ODM龙头；中科曙光、浪潮信息为国产服务器代表。", "#89a9f1", "工业富联 601138,中科曙光 603019,浪潮信息 000977,拓维信息 002261,高新发展 000628,紫光股份 000938"],
-      ["④ 制造 / 设备 / EDA（算力芯片底座）", "中芯国际为晶圆代工龙头；北方华创、中微公司提供核心设备，华大九天为EDA代表。", "#7ecfb3", "中芯国际 688981,华虹公司 688347,北方华创 002371,中微公司 688012,华大九天 301269"]
+    const semiconductorLayers = [
+      ["① 半导体设备 / 设备平台（核心设备）", "覆盖刻蚀、薄膜沉积、清洗、涂胶显影与检测设备。", "#80cfdf", "中微公司 688012,拓荆科技 688072,芯源微 688037,华峰测控 688200,盛美上海 688082,微导纳米 688147,先锋精科 688605,艾森股份 688720,中科飞测 688361"],
+      ["② 半导体材料 / 气体（关键材料）", "覆盖硅片、电子特气、高纯材料与关键工艺材料。", "#eeb397", "安集科技 688019,沪硅产业 688126,中船特气 688146,天岳先进 688234,有研硅 688432,中巨芯 688549,神工股份 688233,金宏气体 688106,上海合晶 688584,欧莱新材 688530"],
+      ["③ 零部件 / 工艺配套（设备核心部件）", "覆盖精密零部件、封装材料、掩模版与工艺配套。", "#89a9f1", "富创精密 688409,华海清科 688120,华海诚科 688535,龙图光罩 688721,格科微 688727"],
+      ["④ 晶圆制造 / 先进制造（产业链落地）", "覆盖晶圆制造与先进产能配套环节。", "#7ecfb3", "西安奕材 688783,卓锦股份 688545"]
     ];
-    const computeChipDescriptions = {"688041":"国产算力中军，CPU+DCU双线。","688256":"国产AI芯片龙头，训练与推理芯片。","688047":"自主龙架构指令集CPU。","300474":"国产通用GPU与军工算力。","688802":"兼容CUDA的训练芯片。","688589":"RISC-V/PowerPC多指令集CPU内核。","688008":"内存接口芯片龙头。","688702":"国产交换芯片与以太网PHY。","688515":"以太网PHY与接口芯片。","688521":"芯片IP授权与一站式设计平台。","603986":"存储芯片与算力配套。","300475":"利基存储与算力分销。","601138":"AI服务器ODM龙头。","603019":"国产服务器与算力平台。","000977":"服务器整机与算力基础设施。","002261":"服务器整机与行业应用。","000628":"国产服务器与算力生态。","000938":"服务器与网络基础设施。","688981":"晶圆代工与先进制程。","688347":"晶圆代工与特色工艺。","002371":"刻蚀、薄膜等半导体设备。","688012":"刻蚀与薄膜沉积设备。","301269":"国产EDA工具。"};
-    const computeChipCodes = computeChipLayers.flatMap(([, , , members]) => members.split(",").map(member => { const parts = member.split(" "); return {name:parts[0], code:parts[1]}; }));
-    function renderComputeChipProfiles(quotes = []) { const byCode = Object.fromEntries(quotes.map(quote => [String(quote.code), quote])); const sortedLayers = sortLayerMembers(computeChipLayers, byCode); renderLayerTags("computeChipPanoramaGroups", sortedLayers); const table = (members) => `<div class="cpo-profile-table"><div class="profile-head">个股</div><div class="profile-head">分时</div><div class="profile-head">价格</div><div class="profile-head">涨幅</div><div class="profile-head">基本介绍</div>${members.split(",").map(member => { const parts = member.split(" "); const stock = {name:parts[0], code:parts[1]}; const quote = byCode[stock.code] || {}; const change = Number(quote.changePct); const tone = Number.isFinite(change) ? (change >= 0 ? "up" : "down") : ""; return `<div>${stockProfileNameLink(stock)}</div><div><span class="cpo-intraday-mini" data-cpo-mini-code="${stock.code}">加载</span></div><div class="cpo-price">${hasNumber(quote.price) ? formatPrice(quote.price) : "--"}</div><div class="cpo-change ${tone}">${Number.isFinite(change) ? formatPct(change) : "--"}</div><div>${escapeHtml(computeChipDescriptions[stock.code] || "AI芯片产业链相关企业，具体业务以公司披露为准。")}</div>`; }).join("")}</div>`; document.getElementById("computeChipProfileTable").innerHTML = sortedLayers.map(([title, , color, members]) => `<section class="cpo-profile-group" style="--cpo-color:${color}"><div class="cpo-profile-group-title">${escapeHtml(title)}</div>${table(members)}</section>`).join(""); loadConceptIntradayMiniCharts(); }
-    document.getElementById("computeChipPanoramaNav").addEventListener("click", () => {
+    const semiconductorCodes = semiconductorLayers.flatMap(([, , , members]) => members.split(",").map(member => { const parts = member.split(" "); return {name:parts[0], code:parts[1]}; }));
+    function renderSemiconductorProfiles(quotes = []) { const byCode = Object.fromEntries(quotes.map(quote => [String(quote.code), quote])); const sortedLayers = sortLayerMembers(semiconductorLayers, byCode); renderLayerTags("semiconductorPanoramaGroups", sortedLayers); const table = (members) => `<div class="cpo-profile-table"><div class="profile-head">个股</div><div class="profile-head">分时</div><div class="profile-head">价格</div><div class="profile-head">涨幅</div><div class="profile-head">基本介绍</div>${members.split(",").map(member => { const parts = member.split(" "); const stock = {name:parts[0], code:parts[1]}; const quote = byCode[stock.code] || {}; const change = Number(quote.changePct); const tone = Number.isFinite(change) ? (change >= 0 ? "up" : "down") : ""; return `<div>${stockProfileNameLink(stock)}</div><div><span class="cpo-intraday-mini" data-cpo-mini-code="${stock.code}">加载</span></div><div class="cpo-price">${hasNumber(quote.price) ? formatPrice(quote.price) : "--"}</div><div class="cpo-change ${tone}">${Number.isFinite(change) ? formatPct(change) : "--"}</div><div>半导体产业链相关企业，具体业务以公司最新披露为准。</div>`; }).join("")}</div>`; document.getElementById("semiconductorProfileTable").innerHTML = sortedLayers.map(([title, , color, members]) => `<section class="cpo-profile-group" style="--cpo-color:${color}"><div class="cpo-profile-group-title">${escapeHtml(title)}</div>${table(members)}</section>`).join(""); loadConceptIntradayMiniCharts(); }
+    document.getElementById("semiconductorPanoramaNav").addEventListener("click", () => {
       clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
       if (state.chartOpen) closeChartModal();
-      state.pageView = "compute-chip-panorama";
+      state.pageView = "semiconductor-panorama";
       renderSectorNavigation(); render();
-      fetch("/api/hot-concept?name=算力芯片", {cache:"no-store"}).then(response => response.json()).then(async payload => { const quotes = payload.quotes || []; renderComputeChipProfiles(quotes); renderComputeChipProfiles(await fetchMissingConceptQuotes(computeChipCodes, quotes)); }).catch(() => fetchMissingConceptQuotes(computeChipCodes, []).then(renderComputeChipProfiles));
+      fetch("/api/hot-concept?name=半导体", {cache:"no-store"}).then(response => response.json()).then(async payload => { const quotes = payload.quotes || []; renderSemiconductorProfiles(quotes); renderSemiconductorProfiles(await fetchMissingConceptQuotes(semiconductorCodes, quotes)); }).catch(() => fetchMissingConceptQuotes(semiconductorCodes, []).then(renderSemiconductorProfiles));
     });
-
     async function refreshTechnologyPanorama() {
+      if (technologyRefreshInFlight) return;
       const configs = {
         "cpo-panorama": ["CPO", cpoCodes, renderCpoProfiles],
         "pcb-panorama": ["PCB", pcbCodes, renderPcbProfiles],
         "fiber-panorama": ["光纤", fiberCodes, renderFiberProfiles],
         "chip-panorama": ["存储芯片", chipCodes, renderChipProfiles],
-        "compute-chip-panorama": ["算力芯片", computeChipCodes, renderComputeChipProfiles]
+        "semiconductor-panorama": ["半导体", semiconductorCodes, renderSemiconductorProfiles]
       };
       const config = configs[state.pageView];
       if (!config) return;
+      technologyRefreshInFlight = true;
       try {
         const response = await fetch(`/api/hot-concept?name=${encodeURIComponent(config[0])}&refresh=1`, {cache:"no-store"});
         if (!response.ok) return;
@@ -6585,13 +7429,15 @@
         config[2](await fetchMissingConceptQuotes(config[1], quotes));
       } catch (error) {
         // 页面保留上一份行情，等待下一次刷新。
+      } finally {
+        technologyRefreshInFlight = false;
       }
     }
 
     async function refreshAiAggressiveAlerts() {
       if (!isLiveAlertSession() || Date.now() - state.reboundAlertFetchAt < 45000) return;
       state.reboundAlertFetchAt = Date.now();
-      const allAiStocks = [cpoCodes, pcbCodes, fiberCodes, chipCodes, computeChipCodes].flat();
+      const allAiStocks = [cpoCodes, pcbCodes, fiberCodes, chipCodes, semiconductorCodes].flat();
       const codes = [...new Set(allAiStocks.map((item) => String(item.code || "")).filter(Boolean))];
       try {
         for (let index = 0; index < codes.length; index += 80) {
@@ -6648,22 +7494,64 @@
       state.pageView = "concept-rank";
       renderSectorNavigation(); render(); loadConceptRank();
     });
+    el.whitelistTableWrap.addEventListener("scroll", () => {
+      if (state.pageView !== "whitelist" || state.whitelistShown >= state.whitelistStocks.length) return;
+      const nearBottom = el.whitelistTableWrap.scrollTop + el.whitelistTableWrap.clientHeight >= el.whitelistTableWrap.scrollHeight - 120;
+      if (nearBottom) { state.whitelistShown = Math.min(state.whitelistStocks.length, state.whitelistShown + 100); renderWhitelistRows(); }
+    });
+    el.blacklistTableWrap.addEventListener("scroll", () => {
+      if (state.pageView !== "blacklist") return;
+      const nearBottom = el.blacklistTableWrap.scrollTop + el.blacklistTableWrap.clientHeight >= el.blacklistTableWrap.scrollHeight - 120;
+      if (nearBottom && state.blacklistShown < state.blacklistStocks.length) {
+        state.blacklistShown = Math.min(state.blacklistStocks.length, state.blacklistShown + 100);
+        renderBlacklistTable();
+      }
+    });
+    function bindStockTableDoubleClick(tableWrap, bodySelector) {
+      tableWrap.addEventListener("dblclick", event => {
+        const row = event.target.closest("tbody tr");
+        if (!row || !tableWrap.contains(row)) return;
+        const codeNode = row.querySelector(".whitelist-code");
+        const code = (codeNode?.textContent || "").replace(/[^0-9]/g, "");
+        if (!/^\d{6}$/.test(code)) return;
+        const name = row.querySelector(".whitelist-name")?.textContent?.trim() || "";
+        event.preventDefault();
+        openStockChartByCode(code, name);
+      });
+    }
+    bindStockTableDoubleClick(el.whitelistTableWrap, "#whitelistBody");
+    bindStockTableDoubleClick(el.blacklistTableWrap, "#blacklistBody");
+    document.querySelectorAll("[data-whitelist-sort]").forEach(button => button.addEventListener("click", () => updateWhitelistSort(button.dataset.whitelistSort)));
+    document.querySelectorAll("[data-blacklist-sort]").forEach(button => button.addEventListener("click", () => updateBlacklistSort(button.dataset.blacklistSort)));
+    initMarketMultiSelect("whitelistMarket");
+    initMarketMultiSelect("blacklistMarket");
+    el.whitelistSearch.addEventListener("input", event => { state.whitelistSearch = event.target.value; state.whitelistShown = 100; renderWhitelistRows(); });
+    el.whitelistTrendFilter.addEventListener("change", event => { state.whitelistTrendFilter = event.target.value; state.whitelistShown = 100; renderWhitelistRows(); });
+    el.whitelistIndustryFilter.addEventListener("change", event => { state.whitelistIndustryFilter = event.target.value; state.whitelistShown = 100; renderWhitelistRows(); });
+    el.whitelistMarket.addEventListener("change", event => { state.whitelistMarket = normalizeMarketSelection(event.target, state.whitelistMarket); state.whitelistShown = 100; renderWhitelistRows(); });
+    el.blacklistSearch.addEventListener("input", event => { state.blacklistSearch = event.target.value; state.blacklistShown = 100; renderBlacklistTable(); });
+    el.blacklistReasonFilter.addEventListener("change", event => { state.blacklistReasonFilter = event.target.value; state.blacklistShown = 100; renderBlacklistTable(); });
+    el.blacklistIndustryFilter.addEventListener("change", event => { state.blacklistIndustryFilter = event.target.value; state.blacklistShown = 100; renderBlacklistTable(); });
+    el.blacklistMarket.addEventListener("change", event => { state.blacklistMarket = normalizeMarketSelection(event.target, state.blacklistMarket); state.blacklistShown = 100; renderBlacklistTable(); });
 
     applyTheme(savedTheme(), false);
     render();
+    loadIndustryFilterOptions();
     loadTechnologyConceptChanges();
     window.setInterval(() => {
-      if (aiComputeSessionActive()) {
+      if (marketSessionState().active) {
         loadTechnologyConceptChanges();
         refreshTechnologyPanorama();
         refreshAiAggressiveAlerts();
       }
-    }, 60000);
+    }, 10000);
     refreshAiAggressiveAlerts();
     loadSectors();
     loadMarketIndices();
     // 收盘后只停止定时刷新，首次进入仍需读取服务端最近一次行情快照。
     loadMarketData();
+    // 初始行情加载会通过 loadSectors() 进入一次默认选股页，最后再切回白名单作为默认主页。
+    openWhitelist();
   </script>
 </body>
 </html>
