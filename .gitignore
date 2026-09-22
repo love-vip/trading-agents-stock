@@ -1,4 +1,5 @@
 __pycache__/
+.env.local
 data/auction/
 data/backtest.sqlite
 data/backtest.sqlite-shm

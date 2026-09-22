@@ -304,17 +304,18 @@
       margin-bottom: 18px;
     }
 
-    .score-alerts { position: fixed; z-index: 40; top: 18px; right: 10px; width: min(542px, calc(100vw - 20px)); min-width: 0; max-width: calc(100vw - 20px); }
+    .score-alerts { position: fixed; z-index: 40; top: 18px; right: 10px; width: min(560px, calc((100vw - 48px) / 3)); min-width: 0; max-width: calc(100vw - 20px); }
     /* 中期选股已从左侧导航移除，保留内部兼容逻辑避免影响历史数据。 */
     #midtermNav { display: none !important; }
     .score-alerts[hidden] { display: none; }
+    body:has(#previewPriceAlertsToggle:checked) .score-alerts { display: block !important; }
     .score-alerts-main { left: 10px; right: auto; }
-    .score-alerts-rebound { left: 50%; right: auto; top: 18px; width: min(574px, calc(100vw - 20px)); transform: translateX(-50%); }
-    .score-alert-panel { border: 1px solid rgba(245, 158, 11, .45); border-radius: 10px; padding: 10px; background: var(--panel-strong); box-shadow: 0 12px 30px rgba(0,0,0,.25); }
-    .score-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; }
+    .score-alerts-rebound { left: 50%; right: auto; top: 18px; width: min(560px, calc((100vw - 48px) / 3)); transform: translateX(-50%); }
+    .score-alert-panel { max-height: 300px; box-sizing: border-box; border: 1px solid rgba(245, 158, 11, .45); border-radius: 10px; padding: 8px 9px; background: var(--panel-strong); box-shadow: 0 8px 22px rgba(0,0,0,.2); overflow: visible; }
+    .score-alert-head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; background: var(--panel-strong); }
     .score-alert-close { border: 0; border-radius: 5px; padding: 2px 7px; color: var(--muted); background: rgba(255,255,255,.08); }
-    .score-alert-list { display: grid; gap: 5px; max-height: 330px; margin-top: 8px; overflow-y: auto; }
-    .score-alert-item { display: grid; width: 100%; grid-template-columns: 110px 145px 18px 45px 28px 45px 52px 65px; align-items: center; column-gap: 2px; row-gap: 3px; color: var(--text); font-size: 12px; }
+    .score-alert-list { display: grid; gap: 4.4px; margin-top: 6px; overflow: visible; }
+    .score-alert-item { display: grid; width: 100%; grid-template-columns: 110px 145px 18px 45px 28px 45px 52px 65px; align-items: center; column-gap: 2px; row-gap: 4.4px; color: var(--text); font-size: 12px; }
     .score-alert-item.rebound-alert-item { grid-template-columns: 120px 120px 18px 45px 45px 28px 45px 52px 65px; }
     .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .score-alert-item > span:first-child { overflow: hidden; text-overflow: ellipsis; }
@@ -334,13 +335,29 @@
     .score-alert-item small { overflow: hidden; white-space: nowrap; color: var(--muted); font-size: 11px; }
     .score-alert-item > small:first-of-type { overflow: hidden; text-overflow: ellipsis; text-align: left; }
     .score-alert-item .consecutive { color: var(--cyan); font-weight: 800; text-align: right; }
-    @media (max-width: 1680px) {
-      .score-alerts-rebound { top: 258px; }
-    }
-    @media (max-width: 1120px) {
+    .price-alert-item { grid-template-columns:68px 30px 54px 58px 60px minmax(72px,1fr) minmax(62px,129px); column-gap:6px; }
+    .price-alert-stock { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:2px; overflow:hidden; }
+    .price-alert-stock-name { display:block; width:100%; overflow:hidden; color:var(--text); font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+    .price-alert-stock-meta { display:flex; align-items:center; gap:4px; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; line-height:1; }
+    .price-alert-stock-meta .market-badge { min-width:16px; height:15px; padding:0 3px; border-radius:4px; font-size:9px; }
+    .price-alert-item > b,.price-alert-item > em { white-space:nowrap; }
+    .price-alert-item > span,.price-alert-item > b,.price-alert-item > em,.price-alert-item > small { text-align:left; justify-self:stretch; }
+    .price-alert-item .price-alert-direction { text-align:left; }
+    .price-alert-item .alert-prediction { min-width:0; padding:0 0 0 6px; white-space:pre-line; overflow-wrap:anywhere; color:var(--muted); border-left:1px dashed var(--line); font-size:10px; line-height:1.35; }
+    .price-alert-item .macd-alert-signal-red { color:var(--red); font-weight:900; }
+    .price-alert-item .macd-alert-signal-green { color:var(--green); font-weight:900; }
+    .price-alert-item.price-alert-columns { color:var(--muted); font-size:11px; padding-bottom:6px; }
+    .minute-signal { display:inline-block; border:1px solid currentColor; border-radius:5px; padding:2px 5px; font-size:11px; color:var(--muted); }
+    .minute-signal.strong { color:var(--red); } .minute-signal.weak { color:var(--green); }
+    .minute-inline { display:block; margin-top:4px; }
+    .price-alert-direction { text-align:center; font-size:16px; font-weight:900; }
+    .price-alert-direction.up { color:var(--red); }
+    .price-alert-direction.down { color:var(--green); }
+    @media (max-width: 1320px) {
+      .score-alerts { width: min(560px, calc(100vw - 20px)); }
       .score-alerts-main { top: 18px; }
       .score-alerts { top: 250px; }
-      .score-alerts-rebound { top: 482px; }
+      .score-alerts-rebound { top: 622px; }
     }
     .alert-pool-modal[hidden] { display: none; }
     .alert-pool-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 28px; }
@@ -377,6 +394,8 @@
       font-size: 13px;
       margin-bottom: 8px;
     }
+
+    .eyebrow #quoteSource { flex: 0 1 auto; }
 
     h1 {
       margin: 0;
@@ -446,6 +465,13 @@
       background: rgba(255, 255, 255, 0.045);
       font-size: 13px;
       white-space: nowrap;
+    }
+
+    #quoteSource {
+      max-width: min(360px, 28vw);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .dot {
@@ -2103,7 +2129,7 @@
 
     .chart-modal-content {
       min-height: 0;
-      overflow: auto;
+      overflow: hidden;
       padding: 12px 20px 20px;
     }
 
@@ -2113,6 +2139,11 @@
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: rgba(5, 8, 14, 0.64);
+    }
+
+    /* 日 K 图固定在遮罩层剩余空间内；两副 MACD 不通过内层滚动展示。 */
+    .daily-modal-chart {
+      min-height: 0;
     }
 
     .modal-chart-meta,
@@ -2344,8 +2375,13 @@
     .modal-chart svg {
       width: 100%;
       height: auto;
-      min-height: 420px;
+      min-height: 0;
       display: block;
+    }
+
+    .daily-modal-chart svg {
+      height: min(620px, calc(100vh - 300px));
+      min-height: 420px;
     }
 
     .chart-loading,
@@ -2689,18 +2725,28 @@
     .whitelist-name.mid-price-name { color:#F486A4; }
     .whitelist-etf-badge { display:inline-block; padding:0 4px; margin-left:2px; border:1px solid #ef4444; border-radius:4px; color:#ef4444; background:transparent; font-size:9px; font-style:normal; font-weight:800; line-height:12px; vertical-align:0; white-space:nowrap; box-sizing:border-box; }
     .whitelist-etf-badge.yellow-etf-badge { border-color:#F1C500; color:#6b5600; background:transparent; }
-    .whitelist-focus-badge { display:inline-block; padding:2px 5px; margin-left:2px; border:1px solid currentColor; border-radius:5px; color:var(--red); background:rgba(239,68,68,.08); font-size:9px; font-style:normal; font-weight:700; line-height:1.35; white-space:nowrap; vertical-align:.12em; box-sizing:border-box; }
+    .whitelist-focus-badge { display:inline-block; padding:2px 5px; margin-left:2px; border:1px solid currentColor; border-radius:5px; color:var(--red); background:rgba(239,68,68,.08); font-size:9px; font-style:normal; font-weight:700; line-height:1.35; white-space:nowrap; vertical-align:.12em; box-sizing:border-box; cursor:text; }
+    .whitelist-focus-badge:hover { filter:brightness(1.08); }
+    .whitelist-label-editor { width:58px; min-width:0; margin-left:2px; padding:1px 4px; border:1px solid var(--amber); border-radius:5px; outline:0; background:var(--panel-strong); color:var(--text); font:700 10px/1.35 inherit; vertical-align:.12em; box-sizing:border-box; }
     .whitelist-risk-icon { color:#d34947; font-size:1em; line-height:1; vertical-align:-.02em; margin-right:1px; font-family:Arial, sans-serif; }
     .whitelist-focus-icon { color:inherit; font-size:1em; line-height:1; vertical-align:-.02em; margin-right:1px; font-family:Arial, sans-serif; }
     .whitelist-focus-badge.trend-neutral { color:#a87916; background:rgba(234,179,8,.12); }
     .whitelist-focus-badge.trend-weak { color:var(--green); background:rgba(16,185,129,.08); }
+    .whitelist-label-add { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-left:2px; padding:0; border:1px solid currentColor; border-radius:50%; color:var(--muted); background:transparent; opacity:.22; font-size:12px; line-height:1; cursor:pointer; vertical-align:.08em; box-sizing:border-box; }
+    .whitelist-label-add:hover,.whitelist-label-add:focus-visible { opacity:1; color:var(--amber); outline:none; }
     .whitelist-code { display:block; margin-top:3px; color:var(--muted); font-size:12px; }
     .market-badge { display:inline-flex; min-width:20px; height:18px; padding:0 4px; align-items:center; justify-content:center; border-radius:4px; background:#f4bd35; color:#563d00; font-size:12px; font-style:normal; font-weight:800; box-sizing:border-box; }
     .whitelist-concepts { display:flex; flex-wrap:wrap; gap:4px; max-height:38px; overflow:hidden; white-space:normal; align-content:flex-start; }
     .whitelist-concept-tag { display:inline-flex; padding:2px 7px; border:1px solid var(--green); border-radius:5px; color:var(--green); background:rgba(16,185,129,.08); font-size:9.35px; line-height:1.35; white-space:nowrap; }
+    .whitelist-concept-cell { position:relative; display:block; min-height:38px; padding:0 17px 1px 0; }
+    .whitelist-concept-remove { position:absolute; right:0; bottom:0; display:inline-grid; width:15px; height:15px; padding:0; place-items:center; border:0; border-radius:4px; color:var(--muted); background:transparent; cursor:pointer; font-size:15px; line-height:1; opacity:0; pointer-events:none; transition:opacity .15s ease, color .15s ease, background .15s ease; }
+    .whitelist-concept-cell:hover .whitelist-concept-remove,.whitelist-concept-remove:focus-visible { opacity:1; pointer-events:auto; color:var(--red); background:rgba(239,68,68,.1); outline:0; }
     .whitelist-mini { display:inline-flex; width:82px; height:28px; align-items:center; justify-content:center; color:var(--muted); font-size:10px; }
     .whitelist-mini[data-whitelist-intraday] { border-left:3px solid #f59e0b; padding-left:4px; }
     .whitelist-mini svg { width:80px; height:26px; display:block; }
+    .whitelist-macd-pair { display:inline-flex; flex-direction:column; justify-content:center; width:82px; height:28px; gap:0; box-sizing:border-box; }
+    .whitelist-macd-pair .whitelist-macd-mini { display:block; width:82px; height:14px; box-sizing:border-box; }
+    .whitelist-macd-pair svg { width:80px; height:12px; display:block; }
     .whitelist-table th:nth-child(1),.whitelist-table td:nth-child(1) { width:100px; min-width:100px; max-width:100px; }
     .whitelist-table th:nth-child(2),.whitelist-table td:nth-child(2),.whitelist-table th:nth-child(3),.whitelist-table td:nth-child(3),.whitelist-table th:nth-child(4),.whitelist-table td:nth-child(4) { width:9%; }
     .whitelist-table th:nth-child(5),.whitelist-table td:nth-child(5) { width:12%; }
@@ -2783,7 +2829,14 @@
           <span>板块强度</span><span class="nav-count">今日</span>
         </button>
       </nav>
-      <div class="nav-foot">每次仅扫描所选市场的实时快照。入选候选在打开图表时按需加载历史 K 线。</div>
+      <div class="nav-foot">每次仅扫描所选市场的实时快照。入选候选在打开图表时按需加载历史 K 线。<input id="previewPriceAlertsToggle" type="checkbox" hidden><label class="btn" id="previewPriceAlertsBtn" for="previewPriceAlertsToggle" aria-label="预览告警样式">预览告警样式</label></div>
+      <script>
+        window.previewPriceAlertsFallback = function () {
+          const rows = { main: ['示例主板', '↑', '10.60', '+2.31%', '10.42', '示例行业'], growth: ['示例创业板', '↓', '20.18', '-2.14%', '20.36', '示例行业'], starBse: ['示例科创 / 北交所', '↑', '30.72', '+4.08%', '30.25', '半导体'] };
+          const render = (id, title, key) => { const item = rows[key]; const node = document.getElementById(id); if (!node) return; const code = key === 'growth' ? '300001' : key === 'starBse' ? '688001' : '600000'; const badge = key === 'growth' ? '创' : key === 'starBse' ? '科' : ''; node.hidden = false; node.innerHTML = '<div class="score-alert-panel"><div class="score-alert-head"><span>' + title + '</span><button class="score-alert-close" type="button" onclick="this.closest(\'.score-alerts\').hidden=true">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item"><span class="price-alert-stock"><strong class="price-alert-stock-name">' + item[0] + '</strong><small class="price-alert-stock-meta">' + (badge ? '<i class="market-badge">' + badge + '</i>' : '') + code + '</small></span><span class="price-alert-direction ' + (item[1] === '↑' ? 'up' : 'down') + '">' + item[1] + '</span><b>' + item[2] + '</b><em class="' + (item[1] === '↓' ? 'down' : '') + '">' + item[3] + '</em><small>' + item[4] + '</small><small>' + item[5] + '</small><div class="alert-prediction">量价预测待更新</div></div></div></div>'; };
+          render('mainScoreAlerts', '主板个股告警', 'main'); render('reboundScoreAlerts', '创业板个股告警', 'growth'); render('scoreAlerts', '科创 / 北交所个股告警', 'starBse');
+        };
+      </script>
     </aside>
 
     <main class="shell">
@@ -2807,9 +2860,9 @@
         <span class="pill" id="marketUpdated">更新时间：--</span>
       </div>
     </header>
-    <div class="score-alerts" id="scoreAlerts" hidden aria-live="polite"></div>
-    <div class="score-alerts score-alerts-main" id="mainScoreAlerts" hidden aria-live="polite"></div>
-    <div class="score-alerts score-alerts-rebound" id="reboundScoreAlerts" hidden aria-live="polite"></div>
+    <div class="score-alerts" id="scoreAlerts" hidden aria-live="polite"><div class="score-alert-panel"><div class="score-alert-head"><span>科创 / 北交所个股告警</span><button class="score-alert-close" type="button" onclick="this.closest('.score-alerts').hidden=true">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item"><span class="price-alert-stock"><strong class="price-alert-stock-name">示例科创</strong><small class="price-alert-stock-meta"><i class="market-badge">科</i>688001</small></span><span class="price-alert-direction up">↑</span><b>30.72</b><em>+4.08%</em><small>30.25</small><small>半导体</small><div class="alert-prediction">量价预测待更新</div></div></div></div></div>
+    <div class="score-alerts score-alerts-main" id="mainScoreAlerts" hidden aria-live="polite"><div class="score-alert-panel"><div class="score-alert-head"><span>主板个股告警</span><button class="score-alert-close" type="button" onclick="this.closest('.score-alerts').hidden=true">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item"><span class="price-alert-stock"><strong class="price-alert-stock-name">示例主板</strong><small class="price-alert-stock-meta">600000</small></span><span class="price-alert-direction up">↑</span><b>10.60</b><em>+2.31%</em><small>10.42</small><small>示例行业</small><div class="alert-prediction">量价预测待更新</div></div></div></div></div>
+    <div class="score-alerts score-alerts-rebound" id="reboundScoreAlerts" hidden aria-live="polite"><div class="score-alert-panel"><div class="score-alert-head"><span>创业板个股告警</span><button class="score-alert-close" type="button" onclick="this.closest('.score-alerts').hidden=true">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item"><span class="price-alert-stock"><strong class="price-alert-stock-name">示例创业板</strong><small class="price-alert-stock-meta"><i class="market-badge">创</i>300001</small></span><span class="price-alert-direction down">↓</span><b>20.18</b><em class="down">-2.14%</em><small>20.36</small><small>示例行业</small><div class="alert-prediction">量价预测待更新</div></div></div></div></div>
 
     <div id="screenerView">
     <section class="panel control-deck" aria-label="选股控制台">
@@ -2817,8 +2870,8 @@
         <label for="strategy">策略模式</label>
         <select id="strategy">
           <option value="balanced">平衡优选</option>
-          <option value="event">强势动量</option>
           <option value="growth">趋势突破</option>
+          <option value="event" selected>强势动量</option>
           <option value="value">稳健低波</option>
         </select>
       </div>
@@ -3024,13 +3077,13 @@
     </section>
     <section class="panel blacklist-view" id="blacklistView" aria-label="黑名单" hidden>
       <div class="section-head"><div><h2>盘中选股 · 黑名单</h2><span class="sector-strength-note">银行、保险、地产、ST及收盘规则排除个股</span></div><span class="tag" id="blacklistUpdated">正在读取…</span></div>
-      <div class="whitelist-toolbar"><select id="blacklistMarket" multiple size="1" aria-label="多选筛选黑名单市场"><option value="all" selected>全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select><input id="blacklistSearch" type="search" placeholder="搜索名称或代码" aria-label="搜索黑名单名称或代码"><select id="blacklistIndustryFilter" class="industry-filter" aria-label="按行业筛选黑名单"><option value="all">全部行业</option></select><select id="blacklistReasonFilter" aria-label="筛选黑名单原因"><option value="all">全部原因</option><option value="custom">自定义黑名单</option><option value="downtrend">阴跌结构</option><option value="industry">行业约束</option><option value="low_turnover">换手率低于2%</option><option value="low_amount">全天成交额不足1亿</option><option value="small_float_cap">流通市值小于30亿</option></select><div class="blacklist-reason-help" tabindex="0"><strong>什么叫阴跌？</strong><span>不是单日暴跌，而是价格持续走弱。鼠标悬浮查看完整判定规则。</span><div class="blacklist-reason-tooltip"><h4>阴跌结构判定规则</h4><p><strong>1. 均线空头结构</strong></p><ul><li>最新价低于 MA10、MA20</li><li>MA10 低于 MA20</li><li>MA10、MA20 都比 5 个交易日前更低</li></ul><p><strong>2. 累计跌幅</strong>：近 10 个交易日跌幅 ≤ -4%，且近 20 个交易日跌幅 ≤ -7%。</p><p><strong>3. 下跌天数</strong>：最近 10 个交易日中，下跌天数 ≥ 6 天。</p><p><strong>4. 回撤较深</strong>：当前价格距离近 20 日高点回撤 ≥ 8%。</p><p><strong>5. 反弹无效</strong>：当前价格仍低于 MA10，且最近 5 日从低点反弹幅度 ≤ 2.5%。</p><p><strong>6. 趋势破位</strong>：当前价格低于 MA20、MA20 向下，且当前价格跌破近 10 个交易日最低价。</p><p><strong>实际排除条件更严格</strong>：5/10/20/30 日均线全部向下直接排除；或发生趋势破位直接排除；或“均线空头 + 近10/20日累计走弱”同时伴随下跌天数偏多、回撤较深或反弹无效时排除。</p></div></div><span class="tag" id="blacklistFilterCount">--</span></div>
-      <div class="whitelist-table-wrap" id="blacklistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近60日MACD</th><th>行业</th><th><button class="whitelist-sort" data-blacklist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-blacklist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><button class="whitelist-sort" data-blacklist-sort="netInflow" data-label="净流入">净流入</button></th><th><button class="whitelist-sort" data-blacklist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>换手率</th><th>关联概念</th><th>黑名单原因</th></tr></thead><tbody id="blacklistBody"><tr><td colspan="12">正在加载黑名单…</td></tr></tbody></table></div>
+      <div class="whitelist-toolbar"><select id="blacklistMarket" multiple size="1" aria-label="多选筛选黑名单市场"><option value="all" selected>全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select><input id="blacklistSearch" type="search" placeholder="搜索名称或代码" aria-label="搜索黑名单名称或代码"><select id="blacklistIndustryFilter" class="industry-filter" aria-label="按行业筛选黑名单"><option value="all">全部行业</option></select><select id="blacklistReasonFilter" aria-label="筛选黑名单原因"><option value="all">全部原因</option><option value="custom">自定义黑名单</option><option value="downtrend">阴跌结构</option><option value="industry">行业约束</option><option value="low_turnover">换手率低于2%</option><option value="low_amount">全天成交额不足1亿</option><option value="small_float_cap">流通市值小于25亿</option></select><div class="blacklist-reason-help" tabindex="0"><strong>什么叫阴跌？</strong><span>不是单日暴跌，而是价格持续走弱。鼠标悬浮查看完整判定规则。</span><div class="blacklist-reason-tooltip"><h4>阴跌结构判定规则</h4><p><strong>1. 均线空头结构</strong></p><ul><li>最新价低于 MA10、MA20</li><li>MA10 低于 MA20</li><li>MA10、MA20 都比 5 个交易日前更低</li></ul><p><strong>2. 累计跌幅</strong>：近 10 个交易日跌幅 ≤ -4%，且近 20 个交易日跌幅 ≤ -7%。</p><p><strong>3. 下跌天数</strong>：最近 10 个交易日中，下跌天数 ≥ 6 天。</p><p><strong>4. 回撤较深</strong>：当前价格距离近 20 日高点回撤 ≥ 8%。</p><p><strong>5. 反弹无效</strong>：当前价格仍低于 MA10，且最近 5 日从低点反弹幅度 ≤ 2.5%。</p><p><strong>6. 趋势破位</strong>：当前价格低于 MA20、MA20 向下，且当前价格跌破近 10 个交易日最低价。</p><p><strong>实际排除条件更严格</strong>：5/10/20/30 日均线全部向下直接排除；或发生趋势破位直接排除；或“均线空头 + 近10/20日累计走弱”同时伴随下跌天数偏多、回撤较深或反弹无效时排除。</p></div></div><span class="tag" id="blacklistFilterCount">--</span></div>
+      <div class="whitelist-table-wrap" id="blacklistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近10日MACD</th><th>行业</th><th><button class="whitelist-sort" data-blacklist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-blacklist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><button class="whitelist-sort" data-blacklist-sort="netInflow" data-label="净流入">净流入</button></th><th><button class="whitelist-sort" data-blacklist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>换手率</th><th>关联概念</th><th>黑名单原因</th></tr></thead><tbody id="blacklistBody"><tr><td colspan="12">正在加载黑名单…</td></tr></tbody></table></div>
     </section>
     <section class="panel limit-up-view" id="whitelistView" aria-label="白名单" hidden>
       <div class="section-head"><div><h2>盘中选股 · 白名单</h2><span class="sector-strength-note">已扣除当前生效黑名单后的可参与扫描个股</span></div><span class="tag" id="whitelistUpdated">正在读取…</span></div>
       <div class="whitelist-toolbar"><select id="whitelistMarket" multiple size="1" aria-label="多选筛选白名单市场"><option value="all" selected>全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select><input id="whitelistSearch" type="search" placeholder="搜索个股名称或代码" aria-label="搜索白名单个股"><select id="whitelistIndustryFilter" class="industry-filter" aria-label="按行业筛选白名单"><option value="all">全部行业</option></select><select id="whitelistRiskFilter" aria-label="筛选风险级别"><option value="all">全部风险级别</option></select><select id="whitelistTrendFilter" aria-label="筛选趋势"><option value="all">全部趋势</option><option value="多头排列">多头排列</option><option value="空头排列">空头排列</option><option value="均线上行">均线上行</option><option value="均线粘合">均线粘合</option><option value="短线转强">短线转强</option><option value="短线转弱">短线转弱</option></select><div class="blacklist-reason-help" tabindex="0"><strong>什么是趋势？</strong><span>鼠标悬浮查看各趋势的判定规则。</span><div class="blacklist-reason-tooltip"><h4>白名单趋势判定规则</h4><p><strong>1. 多头排列</strong>：MA5 ＞ MA10 ＞ MA20 ＞ MA30，短中期均线呈多头结构。</p><p><strong>2. 空头排列</strong>：MA5 ＜ MA10 ＜ MA20 ＜ MA30，短中期均线呈空头结构。</p><p><strong>3. 均线上行</strong>：均线未完全形成多头排列，但 MA5、MA10 或 MA20 相比前一交易日整体抬升。</p><p><strong>4. 均线粘合</strong>：MA5、MA10、MA20、MA30 的间距较小，趋势方向暂不明确。</p><p><strong>5. 短线转强</strong>：短期均线向上，且 MA5 开始上穿或明显靠近 MA10，短线动能改善。</p><p><strong>6. 短线转弱</strong>：短期均线向下，或 MA5 开始下穿、远离 MA10，短线动能减弱。</p><p>说明：趋势分类基于最近 30 个交易日收盘价计算；历史数据不足时，系统不会纳入上述趋势分类。</p></div></div><span class="tag" id="whitelistFilterCount">--</span></div>
-      <div class="whitelist-table-wrap" id="whitelistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近60日MACD</th><th>均线分布</th><th>趋势</th><th>行业</th><th><button class="whitelist-sort" data-whitelist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-whitelist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><button class="whitelist-sort" data-whitelist-sort="netInflow" data-label="净流入">净流入</button></th><th><button class="whitelist-sort" data-whitelist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>关联概念</th></tr></thead><tbody id="whitelistBody"><tr><td colspan="12">正在加载白名单…</td></tr></tbody></table></div>
+      <div class="whitelist-table-wrap" id="whitelistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近10日MACD</th><th>均线分布</th><th>趋势</th><th>行业</th><th><button class="whitelist-sort" data-whitelist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-whitelist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><button class="whitelist-sort" data-whitelist-sort="netInflow" data-label="净流入">净流入</button></th><th><button class="whitelist-sort" data-whitelist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>关联概念</th></tr></thead><tbody id="whitelistBody"><tr><td colspan="12">正在加载白名单…</td></tr></tbody></table></div>
     </section>
     <section class="panel cpo-panorama" id="cpoPanoramaView" hidden aria-label="CPO产业链全景">
       <h2>A股光引擎概念 · 产业链分层全景</h2>
@@ -3352,6 +3405,7 @@
       star: { label: "科创板", description: "扫描科创板上市公司，覆盖 688 与 689 代码段。" },
       bse: { label: "北交所", description: "扫描北交所上市公司，排除新三板混合行情。" }
     };
+    const whitelistMarketKeys = new Set(["sh-main", "sz-main", "chinext", "star", "bse"]);
 
     const hotSectorGroups = {
       "科技": ["液冷", "CPO", "PCB", "存储芯片"],
@@ -3370,7 +3424,7 @@
     const technologyConceptChanges = {};
     const technologyEtfChanges = {};
     const state = {
-      strategy: "balanced",
+      strategy: "event",
       sector: "overview",
       sectors: [],
       overview: null,
@@ -3388,7 +3442,18 @@
       scoreAlertAbove: {},
       scoreAlertFetchAt: 0,
       scoreAlertReady: false,
-      alertPanelDismissed: { growth: false, main: false, rebound: false },
+      alertPanelDismissed: { main: false, growth: false, starBse: false },
+      priceAlertTracker: {},
+      minutePredictions: {},
+      minutePredictionPayload: null,
+      minutePredictionSortKey: null,
+      minutePredictionSortDir: "desc",
+      priceAlertHistory: [],
+      macdAlertHistory: [],
+      macdAlertFetchAt: 0,
+      macdAlertKeys: new Set(),
+      macdAlertReady: false,
+      previewingPriceAlerts: false,
       reboundAlertFetchAt: 0,
       scoreTrace: { code: null, status: "idle", data: [] },
       marketDate: null,
@@ -3407,6 +3472,8 @@
       whitelistSearch: "",
       whitelistTrendFilter: "all",
       whitelistRiskFilter: "all",
+      whitelistFocusLabelOverrides: new Map(),
+      whitelistMiniChartLoading: new Set(),
       whitelistTrendCache: {},
       whitelistTrendScanRunning: false,
       whitelistMarket: ["all"],
@@ -3474,6 +3541,7 @@
       alertPoolBody: document.getElementById("alertPoolBody"),
       alertPoolMeta: document.getElementById("alertPoolMeta"),
       alertPoolClose: document.getElementById("alertPoolClose"),
+      previewPriceAlertsBtn: document.getElementById("previewPriceAlertsBtn"),
       resetBtn: document.getElementById("resetBtn"),
       refreshBtn: document.getElementById("refreshBtn"),
       quoteState: document.getElementById("quoteState"),
@@ -3633,6 +3701,11 @@
       return value.toLocaleString("zh-CN");
     }
 
+    function formatFloatMarketCap(value) {
+      if (!hasNumber(value)) return "--";
+      return `${Math.round(Number(value) / 100000000)} 亿`;
+    }
+
     function formatVolume(value) {
       if (!hasNumber(value)) return "--";
       if (Math.abs(value) >= 10000) return `${(value / 10000).toFixed(2)} 万`;
@@ -3719,9 +3792,11 @@
     }
 
     function syncDynamicControls() {
+      const smallFloatCapOption = document.querySelector('#blacklistReasonFilter option[value="small_float_cap"]');
+      if (smallFloatCapOption) smallFloatCapOption.textContent = "流通市值小于20亿";
       const market = currentMarketScope();
       const refreshNote = screenerRefreshStatusText();
-      el.scoreRange.min = state.pageView === "hot-concept" ? "0" : String(state.marketRegime?.minScore ?? 70);
+      el.scoreRange.min = state.pageView === "hot-concept" || (state.pageView === "screener" && whitelistMarketKeys.has(state.marketScope)) ? "0" : String(state.marketRegime?.minScore ?? 70);
       el.scoreRange.value = String(state.minScore);
       if (hasNumber(state.scannedCount)) {
         const downtrendNote = state.downtrendExcludedCount
@@ -3969,21 +4044,38 @@
 
     function setIndustryFilterOptions(select, industries, currentValue) {
       if (!select) return;
-      const values = ["all", ...(industries || [])];
+      const uniqueIndustries = [...new Set(industries || [])].filter(Boolean);
+      if (uniqueIndustries.includes("CPO")) {
+        uniqueIndustries.splice(uniqueIndustries.indexOf("CPO"), 1);
+        uniqueIndustries.unshift("CPO");
+      }
+      const values = ["all", ...uniqueIndustries];
       select.innerHTML = values.map(value => `<option value="${escapeHtml(value)}">${value === "all" ? "全部行业" : escapeHtml(value)}</option>`).join("");
       select.value = values.includes(currentValue) ? currentValue : "all";
     }
 
+    const PERMANENT_INDUSTRY_OVERRIDES = new Map([
+      ...["688048","300394","300502","300570","688313","000988","002281","300548","603083","301205","300620","688195","688205","688167","688807","688025","300757","300308","688498","920045"].map(code => [code, "CPO"]),
+      ...["300476","002080","301373","688020","301630","688519","688183","301377","688630","301511","301217","002636","603186","603002","600176","301526","601208","603256","600183","300395"].map(code => [code, "PCB"]),
+      ...["601869","688143","000070","600869","600487","603618","600105","002491","600522","603938"].map(code => [code, "光纤"]),
+    ]);
+
     function normalizeWhitelistIndustry(stock) {
       const industry = String(stock.industry || stock.actualIndustry || "").trim();
-      return String(stock.code || "") === "688343" ? "存储芯片" : industry.replace(/^电子化学品Ⅱ$/, "电子化学品").replace(/^非金属材料Ⅱ$/, "非金属材料");
+      const code = String(stock.code || "");
+      return PERMANENT_INDUSTRY_OVERRIDES.get(code) || (code === "688343" ? "存储芯片" : industry.replace(/^电子化学品Ⅱ$/, "电子化学品").replace(/^非金属材料Ⅱ$/, "非金属材料"));
     }
 
     function refreshWhitelistIndustryFilterOptions() {
-      const industries = [...new Set((state.whitelistStocks || [])
+      const currentIndustries = [...new Set((state.whitelistStocks || [])
         .map(stock => normalizeWhitelistIndustry(stock))
         .filter(industry => industry && industry !== "--"))]
         .sort((a, b) => a.localeCompare(b, "zh-CN"));
+      const preferredIndustries = ["CPO", "PCB", "光纤"];
+      const industries = [
+        ...preferredIndustries,
+        ...currentIndustries.filter(industry => !preferredIndustries.includes(industry)),
+      ];
       setIndustryFilterOptions(el.whitelistIndustryFilter, industries, state.whitelistIndustryFilter);
       if (!industries.includes(state.whitelistIndustryFilter)) state.whitelistIndustryFilter = "all";
     }
@@ -4035,6 +4127,7 @@
       const counts = buckets.map(() => 0);
       let up = 0, down = 0, limitUp = 0, limitDown = 0;
       (stocks || []).forEach(stock => {
+        if (!hasNumber(stock.changePct)) return;
         const value = Number(stock.changePct);
         if (!Number.isFinite(value)) return;
         const limitPct = stockLimitPct(stock);
@@ -4056,7 +4149,7 @@
 
     function blacklistReasonMatches(reason, reasonFilter) {
       return reasonFilter === "all"
-        || (reasonFilter === "small_float_cap" && reason.includes("流通市值小于30亿"))
+        || (reasonFilter === "small_float_cap" && reason.includes("流通市值小于20亿"))
         || (reasonFilter === "downtrend" && reason.includes("阴跌"))
         || (reasonFilter === "custom" && reason.includes("自定义黑名单"))
         || (reasonFilter === "low_amount" && reason.includes("成交额不足1亿"))
@@ -4108,7 +4201,7 @@
       document.querySelectorAll("[data-blacklist-sort]").forEach(button => {
         button.textContent = `${button.dataset.label}${button.dataset.blacklistSort === state.blacklistSortKey ? (state.blacklistSortDir === "asc" ? " ↑" : " ↓") : ""}`;
       });
-      body.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") || code.startsWith("92") ? "北" : ""; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}` : "--"; const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const reasons = String(stock.reason || "--").split(/[\/、,，]+/).map(reason => reason.trim()).filter(Boolean); const reasonMarkup = reasons.length ? `<span class="blacklist-reason-tags">${reasons.map(reason => `<i class="blacklist-reason-tag">${escapeHtml(reason)}</i>`).join("")}</span>` : "--"; const price = Number(stock.price); const nameClass = Number.isFinite(price) && price >= 400 ? "whitelist-name high-price-name" : Number.isFinite(price) && price >= 300 ? "whitelist-name mid-price-name" : "whitelist-name"; return `<tr><td><span class="${nameClass}">${escapeHtml(stock.name || code)}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${escapeHtml(stock.industry || "--")}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td><td>${hasNumber(stock.turnover) ? `${Number(stock.turnover).toFixed(2)}%` : "--"}</td><td>${conceptMarkup}</td><td>${reasonMarkup}</td></tr>`; }).join("") : '<tr><td colspan="12">暂无黑名单个股</td></tr>';
+      body.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") || code.startsWith("92") ? "北" : ""; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatFloatMarketCap(stock.floatMarketCap)}` : "--"; const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const reasons = String(stock.reason || "--").split(/[\/、,，]+/).map(reason => reason.trim()).filter(Boolean); const reasonMarkup = reasons.length ? `<span class="blacklist-reason-tags">${reasons.map(reason => `<i class="blacklist-reason-tag">${escapeHtml(reason)}</i>`).join("")}</span>` : "--"; const price = Number(stock.price); const nameClass = Number.isFinite(price) && price >= 400 ? "whitelist-name high-price-name" : Number.isFinite(price) && price >= 300 ? "whitelist-name mid-price-name" : "whitelist-name"; return `<tr><td><span class="${nameClass}">${escapeHtml(stock.name || code)}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${escapeHtml(stock.industry || "--")}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td><td>${hasNumber(stock.turnover) ? `${Number(stock.turnover).toFixed(2)}%` : "--"}</td><td>${conceptMarkup}</td><td>${reasonMarkup}</td></tr>`; }).join("") : '<tr><td colspan="12">暂无黑名单个股</td></tr>';
       renderMarketDistribution("blacklistView", filtered, `黑名单 · ${state.blacklistReasonFilter === "all" ? "全部原因" : (el.blacklistReasonFilter?.selectedOptions?.[0]?.textContent || "当前原因")}`);
       loadWhitelistMiniCharts();
     }
@@ -4126,8 +4219,10 @@
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "黑名单行情加载失败");
         state.blacklistStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, "")}));
+        applyListSource(payload, "黑名单");
         state.blacklistShown = Math.min(100, state.blacklistStocks.length);
-        document.getElementById("blacklistUpdated").textContent = `共 ${state.blacklistStocks.length} 只 · ${new Date(payload.updatedAt).toLocaleTimeString("zh-CN", {hour12:false})}`;
+        document.getElementById("blacklistUpdated").textContent = `共 ${state.blacklistStocks.length} 只 · 行情 ${payload.tradeDate || "日期待确认"}`;
+        document.getElementById("blacklistUpdated").title = `${payload.source || ""}；名单扫描日期：${payload.membershipDate || payload.tradeDate || "未知"}`;
         renderBlacklistTable();
         renderSectorNavigation();
       } catch (error) {
@@ -4147,7 +4242,7 @@
         const searchable = `${stock.name || ""} ${stock.nameInitials || chineseInitials(stock.name)} ${code}`.toLowerCase();
         const matchesSearch = !keyword || searchable.includes(keyword);
         const matchesTrend = !includeTrend || state.whitelistTrendFilter === "all" || (state.whitelistTrendFilter === "unavailable" ? !state.whitelistTrendCache[code] || state.whitelistTrendCache[code] === "--" : state.whitelistTrendCache[code] === state.whitelistTrendFilter);
-        const riskLabel = WHITELIST_FOCUS_LABEL_OVERRIDES.get(code) || WHITELIST_FOCUS_LABELS.get(code) || "";
+        const riskLabel = whitelistFocusLabelFor(code);
         const matchesRisk = !includeRisk || state.whitelistRiskFilter === "all" || riskLabel === state.whitelistRiskFilter;
         return matchesMarket && matchesIndustry && matchesSearch && matchesTrend && matchesRisk;
       });
@@ -4157,11 +4252,119 @@
     const WHITELIST_FOCUS_LABELS = new Map([["688785", "重要"], ["688536", "危险"], ["688409", "观察"], ["688521", "观察"], ["688019", "观望"], ["688052", "观察"], ["688137", "危险"], ["688183", "走弱"], ["688293", "走弱"], ["688203", "危险"], ["688690", "危险"], ["688600", "危险"], ["688711", "观察"], ["688267", "观察"], ["688392", "观望"], ["688195", "观望"], ["688205", "谨慎"], ["688385", "观察"], ["688343", "观察"], ["688720", "观察"], ["688620", "危险"], ["688135", "危险"], ["688432", "危险"], ["688729", "观察"], ["688380", "观察"], ["688691", "观察"], ["688449", "观察"], ["688216", "谨慎"], ["300604", "谨慎"], ["688368", "观望"], ["688807", "危险"], ["688809", "危险"], ["600171", "观察"], ["603290", "观察"], ["605111", "观察"], ["600460", "观察"], ["002185", "观察"], ["002156", "观察"], ["600584", "观察"], ["688605", "观察"], ["688535", "观察"], ["688401", "观望"], ["688652", "观察"], ["688233", "观察"], ["688123", "观察"], ["688110", "观察"], ["688147", "观察"], ["688048", "观察"], ["688766", "观察"], ["688702", "观察"], ["688037", "观察"], ["002008", "观望"], ["000988", "观望"], ["300300", "观望"], ["301528", "谨慎"], ["300404", "观察"], ["301333", "观望"], ["300285", "观望"], ["300806", "观望"], ["300553", "谨慎"], ["300852", "谨慎"], ["300196", "观望"], ["300497", "观望"], ["300576", "观望"], ["300726", "观望"], ["301526", "走弱"], ["300739", "谨慎"], ["300656", "谨慎"], ["300346", "观望"], ["300756", "观望"], ["300456", "观望"], ["300499", "观望"], ["300491", "谨慎"], ["300913", "观望"], ["301282", "谨慎"], ["301297", "观望"], ["301321", "观望"], ["300429", "观察"], ["300424", "观察"], ["300685", "观察"], ["300457", "观察"], ["300046", "观察"], ["300327", "观察"], ["300153", "观察"], ["300938", "观察"], ["300623", "观察"], ["300727", "观察"], ["300321", "观察"], ["300398", "观察"], ["301061", "观察"], ["300260", "观察"], ["300648", "观察"], ["300179", "观察"], ["300671", "观察"], ["301307", "观察"], ["300725", "观察"], ["301419", "观察"], ["300054", "观察"], ["301678", "观察"], ["300689", "观察"], ["301071", "观察"], ["301189", "观察"], ["301075", "观察"], ["301421", "观察"], ["300236", "观察"], ["300981", "危险"], ["300802", "危险"], ["301251", "危险"], ["300788", "危险"], ["301122", "危险"], ["301132", "危险"], ["301366", "危险"], ["300373", "观察"], ["301611", "观察"], ["300990", "观察"], ["300661", "观察"], ["300223", "观察"], ["300475", "观察"], ["300672", "观察"], ["300751", "观察"], ["300870", "观察"], ["300666", "观察"], ["300394", "观察"], ["300502", "观察"], ["301018", "观望"], ["301511", "观望"], ["301217", "观望"], ["301047", "观望"], ["301373", "观望"], ["301529", "观望"], ["300408", "观望"], ["300454", "谨慎"], ["301589", "谨慎"], ["301086", "观望"], ["301486", "谨慎"], ["300567", "观望"], ["300570", "谨慎"], ["300548", "观望"], ["300857", "观望"], ["300620", "观望"], ["301205", "谨慎"], ["301377", "观望"], ["300757", "谨慎"], ["300308", "谨慎"], ["300395", "走弱"], ["301357", "走弱"], ["300939", "危险"], ["300684", "危险"], ["301234", "危险"], ["301183", "危险"], ["300767", "观察"], ["300363", "观察"], ["300401", "观察"]]);
 
     const WHITELIST_FOCUS_LABEL_OVERRIDES = new Map([
+      ["002119", "观察"],
+      ["920438", "观察"], ["920179", "观察"], ["920060", "观察"], ["920509", "观察"],
+      ["920493", "走弱"], ["920725", "走弱"], ["920799", "走弱"], ["920821", "走弱"], ["920510", "走弱"],
+      ["920045", "观望"], ["920895", "观望"], ["920592", "观望"], ["920367", "观望"],
       ["001309", "观望"], ["601869", "观望"], ["002792", "观望"], ["000636", "观望"], ["603175", "谨慎"], ["000962", "观望"], ["002436", "观望"], ["000657", "观望"], ["603083", "观望"], ["002980", "观望"], ["601595", "谨慎"], ["002134", "谨慎"], ["002384", "观望"], ["002281", "观望"], ["003031", "观望"], ["002821", "观望"], ["603115", "观望"], ["002491", "观望"],
       ["603061", "观察"], ["002046", "观察"], ["002837", "观察"], ["002903", "观察"], ["603256", "观察"], ["603867", "观察"], ["603650", "观察"], ["600487", "观察"], ["002025", "观察"], ["001314", "观察"], ["603296", "观察"], ["603920", "观察"], ["002768", "观察"], ["002138", "观察"], ["603353", "观察"], ["603127", "观察"], ["600206", "观察"], ["600520", "观察"], ["002774", "观察"], ["601133", "观察"], ["002981", "观察"], ["600105", "观察"], ["000811", "观察"], ["000070", "观察"], ["600793", "观察"], ["002518", "观察"], ["002927", "观察"], ["603681", "观察"], ["002623", "观察"], ["603888", "观察"], ["600522", "观察"], ["603978", "观察"], ["002246", "观察"], ["603507", "观察"], ["600367", "观察"], ["600641", "观察"], ["001287", "观察"], ["002971", "观察"],
       ["603186", "危险"], ["603268", "危险"], ["002849", "危险"], ["603236", "危险"], ["603375", "危险"], ["002815", "危险"], ["603051", "危险"], ["603626", "危险"], ["600184", "观望"], ["600343", "观察"], ["601112", "观察"], ["002534", "观察"], ["603316", "观察"], ["002106", "观察"], ["603001", "观察"], ["603138", "观察"], ["688072", "危险"], ["688498", "危险"], ["688655", "危险"], ["688222", "危险"], ["688627", "观望"], ["688025", "观望"], ["688502", "观望"], ["688361", "观望"], ["688012", "观望"], ["688143", "观望"], ["688120", "观望"], ["688279", "观望"], ["688610", "观望"], ["688629", "观望"], ["688603", "观望"], ["688503", "观望"], ["688630", "观察"], ["688168", "观察"], ["688200", "观察"], ["688146", "观察"], ["688127", "观望"], ["688268", "观察"], ["688545", "观察"], ["688796", "观察"], ["688090", "观察"], ["688313", "谨慎"], ["688799", "谨慎"], ["688028", "谨慎"], ["688181", "谨慎"], ["688678", "谨慎"], ["688292", "谨慎"], ["688265", "谨慎"], ["688378", "观望"], ["688073", "谨慎"], ["688202", "谨慎"], ["688001", "谨慎"], ["688114", "谨慎"], ["688625", "谨慎"], ["688112", "谨慎"], ["688361", "重要"], ["688548", "重要"], ["688519", "走弱"], ["688020", "走弱"],
       ["600183", "走弱"], ["000603", "走弱"], ["002824", "走弱"], ["002579", "走弱"], ["002463", "走弱"], ["603228", "走弱"], ["002636", "走弱"], ["600176", "走弱"], ["601208", "走弱"], ["600869", "走弱"], ["603936", "走弱"], ["603618", "走弱"]
     ]);
+
+    function whitelistFocusLabelFor(code) {
+      return state.whitelistFocusLabelOverrides.has(code)
+        ? state.whitelistFocusLabelOverrides.get(code)
+        : (WHITELIST_FOCUS_LABEL_OVERRIDES.get(code) || WHITELIST_FOCUS_LABELS.get(code) || "");
+    }
+
+    async function loadWhitelistLabelOverrides() {
+      try {
+        const response = await fetch("/api/whitelist-labels", {cache:"no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "标签读取失败");
+        state.whitelistFocusLabelOverrides = new Map(Object.entries(payload.labels || {}));
+      } catch (error) {
+        console.warn("白名单自定义标签暂不可用", error);
+      }
+    }
+
+    async function saveWhitelistLabel(code, label) {
+      const response = await fetch("/api/whitelist-labels", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({code, label}),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "标签保存失败");
+      state.whitelistFocusLabelOverrides.set(code, label);
+    }
+
+    function bindWhitelistLabelEditing() {
+      el.whitelistBody.querySelectorAll("[data-whitelist-label-code]").forEach(badge => {
+        const editEvent = badge.classList.contains("whitelist-label-add") ? "click" : "dblclick";
+        badge.addEventListener(editEvent, event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const code = badge.dataset.whitelistLabelCode;
+          const previous = whitelistFocusLabelFor(code);
+          const input = document.createElement("input");
+          input.className = "whitelist-label-editor";
+          input.type = "text";
+          input.maxLength = 16;
+          input.value = previous;
+          input.setAttribute("aria-label", `${code} 标签`);
+          input.title = "输入标签后按回车保存；Esc 取消";
+          badge.replaceWith(input);
+          input.focus();
+          input.select();
+          let completed = false;
+          const cancel = () => { if (!completed) { completed = true; renderWhitelistRows(); } };
+          input.addEventListener("keydown", async keyEvent => {
+            keyEvent.stopPropagation();
+            if (keyEvent.key === "Escape") { keyEvent.preventDefault(); cancel(); return; }
+            if (keyEvent.key !== "Enter") return;
+            keyEvent.preventDefault();
+            if (completed) return;
+            completed = true;
+            const label = input.value.trim();
+            input.disabled = true;
+            try {
+              await saveWhitelistLabel(code, label);
+              renderWhitelistRows();
+            } catch (error) {
+              completed = false;
+              input.disabled = false;
+              input.title = error.message || "标签保存失败";
+              input.focus();
+            }
+          });
+          input.addEventListener("blur", () => window.setTimeout(cancel, 120), {once:true});
+        });
+      });
+    }
+
+    function bindWhitelistConceptRemoval() {
+      el.whitelistBody.querySelectorAll("[data-whitelist-remove-code]").forEach(button => {
+        button.addEventListener("click", async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const code = button.dataset.whitelistRemoveCode || "";
+          const name = button.dataset.whitelistRemoveName || code;
+          if (!/^\d{6}$/.test(code)) return;
+          if (!window.confirm(`确认将“${name}（${code}）”移入自定义黑名单吗？\n该操作会持久生效，后续不会自动放回白名单。`)) return;
+          button.disabled = true;
+          try {
+            const response = await fetch("/api/custom-blacklist", {
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({code, name}),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "移入自定义黑名单失败");
+            state.whitelistStocks = state.whitelistStocks.filter(stock => String(stock.code || "") !== code);
+            state.blacklistStocks = [];
+            state.whitelistChartCache[code] = undefined;
+            state.whitelistStockDataCache[code] = undefined;
+            renderWhitelistRows();
+            renderSectorNavigation();
+          } catch (error) {
+            button.disabled = false;
+            button.title = error.message || "移入自定义黑名单失败";
+          }
+        });
+      });
+    }
 
     function renderWhitelistRows() {
       state.whitelistStocks = state.whitelistStocks.map(stock => ({...stock, industry: normalizeWhitelistIndustry(stock)}));
@@ -4181,7 +4384,7 @@
       document.querySelectorAll("[data-whitelist-sort]").forEach(button => {
         button.textContent = `${button.dataset.label}${button.dataset.whitelistSort === state.whitelistSortKey ? (state.whitelistSortDir === "asc" ? " ↑" : " ↓") : ""}`;
       });
-      el.whitelistBody.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") || code.startsWith("92") ? "北" : ""; const etfBadge = WHITELIST_ETF_CODES.has(code) ? `<i class="whitelist-etf-badge${["688809","688120","688012","688530"].includes(code) ? " yellow-etf-badge" : ""}" title="ETF关联标的">ETF</i>` : ""; const focusLabel = WHITELIST_FOCUS_LABEL_OVERRIDES.get(code) || WHITELIST_FOCUS_LABELS.get(code); const focusTone = ["慎重", "谨慎", "走弱", "危险", "观望"].includes(focusLabel) ? " trend-weak" : focusLabel === "观察" ? " trend-neutral" : ""; const focusIcon = focusLabel === "危险" ? `<span class="whitelist-risk-icon" aria-hidden="true">⚡</span>` : focusLabel === "观察" ? `<span class="whitelist-focus-icon" aria-hidden="true">◉</span>` : focusLabel === "观望" ? `<span class="whitelist-focus-icon" aria-hidden="true">◐</span>` : focusLabel === "谨慎" ? `<span class="whitelist-focus-icon" aria-hidden="true">△</span>` : ""; const focusBadge = focusLabel ? `<i class="whitelist-focus-badge${focusTone}" title="重点观察">${focusIcon}${escapeHtml(focusLabel)}</i>` : ""; const price = Number(stock.price); const nameClass = Number.isFinite(price) && price >= 400 ? "whitelist-name high-price-name" : Number.isFinite(price) && price >= 300 ? "whitelist-name mid-price-name" : "whitelist-name"; const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatAmount(stock.floatMarketCap)}` : "--"; return `<tr><td><span class="${nameClass}">${escapeHtml(stock.name || code)}${focusBadge}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}${etfBadge}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${escapeHtml(stock.industry || "--")}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td><td>${conceptMarkup}</td></tr>`; }).join("") : '<tr><td colspan="10">暂无匹配个股</td></tr>';
+      el.whitelistBody.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") || code.startsWith("92") ? "北" : ""; const etfBadge = WHITELIST_ETF_CODES.has(code) ? `<i class="whitelist-etf-badge${["688809","688120","688012","688530"].includes(code) ? " yellow-etf-badge" : ""}" title="ETF关联标的">ETF</i>` : ""; const focusLabel = whitelistFocusLabelFor(code); const focusTone = ["慎重", "谨慎", "走弱", "危险", "观望"].includes(focusLabel) ? " trend-weak" : focusLabel === "观察" ? " trend-neutral" : ""; const focusIcon = focusLabel === "危险" ? `<span class="whitelist-risk-icon" aria-hidden="true">⚡</span>` : focusLabel === "观察" ? `<span class="whitelist-focus-icon" aria-hidden="true">◉</span>` : focusLabel === "观望" ? `<span class="whitelist-focus-icon" aria-hidden="true">◐</span>` : focusLabel === "谨慎" ? `<span class="whitelist-focus-icon" aria-hidden="true">△</span>` : ""; const focusBadge = focusLabel ? `<i class="whitelist-focus-badge${focusTone}" data-whitelist-label-code="${escapeHtml(code)}" title="双击编辑标签">${focusIcon}${escapeHtml(focusLabel)}</i>` : `<button class="whitelist-label-add" type="button" data-whitelist-label-code="${escapeHtml(code)}" aria-label="为${escapeHtml(stock.name || code)}添加标签" title="点击添加标签">＋</button>`; const price = Number(stock.price); const nameClass = Number.isFinite(price) && price >= 400 ? "whitelist-name high-price-name" : Number.isFinite(price) && price >= 300 ? "whitelist-name mid-price-name" : "whitelist-name"; const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const conceptCell = `<span class="whitelist-concept-cell">${conceptMarkup}<button class="whitelist-concept-remove" type="button" data-whitelist-remove-code="${escapeHtml(code)}" data-whitelist-remove-name="${escapeHtml(stock.name || code)}" aria-label="将 ${escapeHtml(stock.name || code)} 移入自定义黑名单" title="移入自定义黑名单">×</button></span>`; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatFloatMarketCap(stock.floatMarketCap)}` : "--"; return `<tr><td><span class="${nameClass}">${escapeHtml(stock.name || code)}${focusBadge}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}${etfBadge}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${escapeHtml(stock.industry || "--")}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td><td>${conceptCell}</td></tr>`; }).join("") : '<tr><td colspan="10">暂无匹配个股</td></tr>';
       el.whitelistBody.querySelectorAll("tr").forEach(row => {
         const nameCell = row.cells[0];
         const code = nameCell?.querySelector(".whitelist-code")?.textContent?.replace(/[^0-9]/g, "");
@@ -4192,6 +4395,8 @@
         row.insertBefore(distributionCell, row.cells[4]);
         row.insertBefore(trendCell, row.cells[5]);
       });
+      bindWhitelistLabelEditing();
+      bindWhitelistConceptRemoval();
       renderMarketDistribution("whitelistView", filtered, `白名单 · ${state.whitelistTrendFilter === "all" ? "全部趋势" : state.whitelistTrendFilter}`);
       loadWhitelistMiniCharts();
     }
@@ -4201,12 +4406,12 @@
       if (!select) return;
       const current = state.whitelistRiskFilter || "all";
       const preferred = ["重要", "危险", "谨慎", "走弱", "观望", "观察"];
-      const labels = [...new Set([...preferred, ...WHITELIST_FOCUS_LABELS.values(), ...WHITELIST_FOCUS_LABEL_OVERRIDES.values()])].filter(Boolean);
+      const labels = [...new Set([...preferred, ...WHITELIST_FOCUS_LABELS.values(), ...WHITELIST_FOCUS_LABEL_OVERRIDES.values(), ...state.whitelistFocusLabelOverrides.values()])].filter(Boolean);
       const baseStocks = whitelistFilteredStocks(false, false);
       const counts = {};
       baseStocks.forEach(stock => {
         const code = String(stock.code || "");
-        const label = WHITELIST_FOCUS_LABEL_OVERRIDES.get(code) || WHITELIST_FOCUS_LABELS.get(code);
+        const label = whitelistFocusLabelFor(code);
         if (label) counts[label] = (counts[label] || 0) + 1;
       });
       select.innerHTML = [`<option value="all">全部风险级别（${baseStocks.length.toLocaleString("zh-CN")}）</option>`, ...labels.map(label => `<option value="${escapeHtml(label)}">${escapeHtml(label)}（${counts[label] || 0}）</option>`)].join("");
@@ -4261,6 +4466,24 @@
         return `<rect x="${(index * width).toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, width - .7).toFixed(2)}" height="${height.toFixed(2)}" rx=".7" fill="${value >= 0 ? "var(--rising)" : "var(--falling)"}"/>`;
       }).join("");
       return `<svg viewBox="0 0 80 26" aria-hidden="true"><path d="M0 13H80" stroke="var(--chart-grid)" stroke-width=".7"/>${bars}</svg>`;
+    }
+    function miniMacdBarsCompact(values) {
+      if (!values || values.length < 2) return "--";
+      const max = Math.max(...values.map(value => Math.abs(value)), 0.0001);
+      const width = 80 / values.length;
+      const zero = 6;
+      const bars = values.map((value, index) => {
+        const height = Math.max(.8, Math.abs(value) / max * 5);
+        const y = value >= 0 ? zero - height : zero;
+        return `<rect x="${(index * width).toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, width - .7).toFixed(2)}" height="${height.toFixed(2)}" rx=".5" fill="${value >= 0 ? "var(--rising)" : "var(--falling)"}"/>`;
+      }).join("");
+      return `<svg viewBox="0 0 80 12" aria-hidden="true"><path d="M0 6H80" stroke="var(--chart-grid)" stroke-width=".45"/>${bars}</svg>`;
+    }
+    function miniMacdPair(primary, secondary) {
+      const first = miniMacdBarsCompact(primary);
+      const second = miniMacdBarsCompact(secondary);
+      if (first === "--" && second === "--") return "--";
+      return `<span class="whitelist-macd-pair"><span class="whitelist-macd-mini">${first}</span><span class="whitelist-macd-mini">${second}</span></span>`;
     }
     function miniKline(rows) {
       if (!rows || rows.length < 2) return "--";
@@ -4331,12 +4554,22 @@
       state.whitelistTrendScanRunning = false;
     }
     async function loadWhitelistMiniCharts() {
-      const nodes = [...document.querySelectorAll("[data-whitelist-intraday]")];
-      for (let start = 0; start < nodes.length; start += 12) {
-        const batch = nodes.slice(start, start + 12);
+      // 缩略图是附属信息，不能阻塞个股池。此前每次 10 秒列表刷新都会为
+      // 100 行同时启动日线和分时请求，造成白名单主接口超时。首屏只并行补
+      // 24 行，且同一代码在请求中或已缓存时不重复拉取。
+      const nodes = [...document.querySelectorAll("[data-whitelist-intraday]")]
+        .filter(node => {
+          const code = node.dataset.whitelistIntraday;
+          return code && !state.whitelistChartCache[code] && !state.whitelistMiniChartLoading.has(code);
+        })
+        .slice(0, 24);
+      for (let start = 0; start < nodes.length; start += 4) {
+        const batch = nodes.slice(start, start + 4);
         await Promise.all(batch.map(async node => {
         const code = node.dataset.whitelistIntraday; const klineNode = document.querySelector(`[data-whitelist-kline="${code}"]`); const macdNode = document.querySelector(`[data-whitelist-macd="${code}"]`); const trendNode = document.querySelector(`[data-whitelist-trend="${code}"]`); const maNode = document.querySelector(`[data-whitelist-ma="${code}"]`);
         if (state.whitelistChartCache[code]) { node.innerHTML = state.whitelistChartCache[code].intraday; if (klineNode) klineNode.innerHTML = state.whitelistChartCache[code].kline; if (macdNode) macdNode.innerHTML = state.whitelistChartCache[code].macd; if (trendNode) { trendNode.textContent = state.whitelistChartCache[code].trend || "--"; applyWhitelistTrendStyle(trendNode, state.whitelistChartCache[code].trend); } if (maNode) maNode.innerHTML = state.whitelistChartCache[code].ma || "--"; return; }
+        if (state.whitelistMiniChartLoading.has(code)) return;
+        state.whitelistMiniChartLoading.add(code);
         try {
           const today = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Shanghai"}).format(new Date());
           // 分时属于实时数据，非交易时段可能不可用；不能因此连带清空日 K、MACD 和均线缩略图。
@@ -4348,17 +4581,22 @@
           ]);
           const prices = (intradayResult?.points || []).map(item => Number(item.price)).filter(Number.isFinite);
           const history = (stock.quote?.history || []).slice(-30);
-          const macdHistory = (stock.quote?.history || []).slice(-90);
+          const macdHistory = stock.quote?.history || [];
           const closes = history.map(item => Number(item.close)).filter(Number.isFinite);
           const macdCloses = macdHistory.map(item => Number(item.close)).filter(Number.isFinite);
           const ema = (values, period) => { const multiplier = 2 / (period + 1); let previous = values[0]; return values.map((value, index) => { previous = index ? (value - previous) * multiplier + previous : value; return previous; }); };
-          const fast = ema(macdCloses, 12), slow = ema(macdCloses, 26); const dif = fast.map((value, index) => value - slow[index]); const dea = ema(dif, 9); const histogram = dif.map((value, index) => (value - dea[index]) * 2);
+          const fast = ema(macdCloses, 10), slow = ema(macdCloses, 20); const dif = fast.map((value, index) => value - slow[index]); const dea = ema(dif, 7); const histogram = dif.map((value, index) => (value - dea[index]) * 2);
+          const fastSecondary = ema(macdCloses, 5), slowSecondary = ema(macdCloses, 10); const difSecondary = fastSecondary.map((value, index) => value - slowSecondary[index]); const deaSecondary = ema(difSecondary, 3); const histogramSecondary = difSecondary.map((value, index) => (value - deaSecondary[index]) * 2);
           const intradayMarkup = prices.length > 1
             ? miniLine(prices, prices[prices.length - 1] >= prices[0] ? "var(--rising)" : "var(--falling)")
             : "--";
-          const macdMarkup = miniMacdBars(histogram); const klineMarkup = miniKline(history); const trend = classifyWhitelistTrend(closes); const ma = miniMaDistribution(closes);
+          const macdMarkup = miniMacdPair(histogram.slice(-10), histogramSecondary.slice(-10)); const klineMarkup = miniKline(history); const trend = classifyWhitelistTrend(closes); const ma = miniMaDistribution(closes);
           state.whitelistChartCache[code] = {intraday:intradayMarkup, kline:klineMarkup, macd:macdMarkup, trend, ma}; state.whitelistTrendCache[code] = trend; node.innerHTML = intradayMarkup; if (klineNode) klineNode.innerHTML = klineMarkup; if (macdNode) macdNode.innerHTML = macdMarkup; if (trendNode) { trendNode.textContent = trend; applyWhitelistTrendStyle(trendNode, trend); } if (maNode) maNode.innerHTML = ma;
-        } catch { node.textContent = "--"; if (klineNode) klineNode.textContent = "--"; if (macdNode) macdNode.textContent = "--"; }
+        } catch {
+          const fallback = {intraday:"--", kline:"--", macd:"--", trend:"--", ma:"--"};
+          state.whitelistChartCache[code] = fallback;
+          node.textContent = "--"; if (klineNode) klineNode.textContent = "--"; if (macdNode) macdNode.textContent = "--";
+        } finally { state.whitelistMiniChartLoading.delete(code); }
         }));
       }
     }
@@ -4384,13 +4622,16 @@
       state.pageView = "whitelist"; state.whitelistShown = 100; renderSectorNavigation(); render();
       if (state.whitelistStocks.length && !forceRefresh) return;
       try {
+        await loadWhitelistLabelOverrides();
         const response = await fetch(`/api/whitelist${forceRefresh ? "?refresh=1" : ""}`, {cache:"no-store"});
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "白名单加载失败");
-        state.whitelistStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, ""), industry: String(stock.industry || stock.actualIndustry || "").replace(/^电子化学品Ⅱ$/, "电子化学品")}));
+        state.whitelistStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock)}));
+        applyListSource(payload, "白名单");
         refreshWhitelistIndustryFilterOptions();
         state.whitelistShown = Math.min(100, state.whitelistStocks.length);
-        el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · ${new Date(payload.updatedAt).toLocaleTimeString("zh-CN", {hour12:false})}`;
+        el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${payload.tradeDate || "日期待确认"}`;
+        el.whitelistUpdated.title = `${payload.source || ""}；名单扫描日期：${payload.membershipDate || payload.tradeDate || "未知"}`;
         renderWhitelistRows();
         loadAllWhitelistTrends();
       } catch (error) { el.whitelistBody.innerHTML = `<tr><td colspan="8">${escapeHtml(error.message || "白名单加载失败")}</td></tr>`; }
@@ -4559,7 +4800,7 @@
       state.previousBlacklistExcludedCount = null;
       state.marketScope = marketKey;
       state.pageView = "screener";
-      state.minScore = Math.max(state.marketRegime?.minScore ?? 70, state.minScore);
+      state.minScore = whitelistMarketKeys.has(marketKey) ? 0 : Math.max(state.marketRegime?.minScore ?? 70, state.minScore);
       el.marketScope.value = marketKey;
       state.selectedCode = null;
       state.reviewed = false;
@@ -5032,12 +5273,23 @@
       };
       el.quoteState.dataset.state = state.marketStatus;
       el.quoteStateText.textContent = labelsByStatus[state.marketStatus] || state.marketMessage;
-      el.quoteState.title = state.marketMessage;
+      const detail = state.marketMessage || "暂无详细状态";
+      el.quoteState.title = detail;
+      el.quoteSource.title = detail;
       el.quoteSource.textContent = state.marketStatus === "error"
-        ? `失败原因：${state.marketMessage}`
+        ? "数据源暂不可用 · 已尝试备用源"
         : `数据源：${state.marketSource || "--"}`;
       el.marketDate.textContent = `交易日：${state.marketDate || "--"}`;
       el.marketUpdated.textContent = `行情时间：${formatUpdatedAt(state.marketUpdatedAt)}`;
+    }
+
+    function applyListSource(payload, label) {
+      state.marketStatus = "ready";
+      state.marketSource = payload.source || "数据源未返回";
+      state.marketDate = payload.tradeDate || null;
+      state.marketUpdatedAt = payload.updatedAt || null;
+      state.marketMessage = `${label}使用：${state.marketSource}`;
+      renderMarketStatus();
     }
 
     function applyMarketPayload(payload) {
@@ -5060,7 +5312,9 @@
       state.industryExcludedCount = payload.industryExcludedCount ?? null;
       state.previousBlacklistExcludedCount = payload.previousBlacklistExcludedCount ?? null;
       state.marketRegime = payload.marketRegime || {label: "常态", minScore: 70};
-      state.minScore = state.marketRegime.minScore === 60 ? Math.min(state.minScore, 60) : Math.max(state.minScore, 70);
+      state.minScore = whitelistMarketKeys.has(state.marketScope)
+        ? 0
+        : state.marketRegime.minScore === 60 ? Math.min(state.minScore, 60) : Math.max(state.minScore, 70);
       state.sectorStrength = Array.isArray(payload.sectorStrength) ? payload.sectorStrength : [];
       state.marketMessage = `${currentMarketScope().label}已扫描 ${payload.scannedCount?.toLocaleString("zh-CN") || "--"} 只，命中 ${payload.matchedCount?.toLocaleString("zh-CN") || 0} 只`;
       state.marketDate = payload.marketDate;
@@ -5088,13 +5342,15 @@
       el.refreshBtn.disabled = true;
       renderMarketStatus();
       try {
+        const whitelistMarketOnly = ["sh-main", "sz-main", "chinext", "star", "bse"].includes(state.marketScope);
         const query = new URLSearchParams({
           market: state.marketScope,
           minAmount: String(state.dynamicFilters.minAmount),
           minChange: String(state.dynamicFilters.minChange),
           minTurnover: String(state.dynamicFilters.minTurnover),
           limit: "50",
-          includeAll: "0"
+          includeAll: whitelistMarketOnly ? "1" : "0",
+          whitelistOnly: whitelistMarketOnly ? "1" : "0"
         });
         if (forceRefresh) query.set("refresh", "1");
         const controller = new AbortController();
@@ -5411,7 +5667,9 @@
       return stocks
         .map((stock) => ({ ...stock, score: weightedScore(stock) }))
         .filter((stock) => {
-          const threshold = state.pageView === "hot-concept" ? state.minScore : Math.max(state.marketRegime?.minScore ?? 70, state.minScore);
+          const threshold = state.pageView === "hot-concept" || (state.pageView === "screener" && whitelistMarketKeys.has(state.marketScope))
+            ? 0
+            : Math.max(state.marketRegime?.minScore ?? 70, state.minScore);
           // 70 分是确认入池线；预测性预警允许领先指标同步改善的股票提前进入观察池。
           return stock.score >= threshold || (stock.score > 60 && Boolean(stock.screener?.preAlert));
         })
@@ -6114,7 +6372,10 @@
       const height = 620;
       const plot = { left: 54, right: 74, top: 32, bottom: 300 };
       const volume = { top: 340, bottom: 410 };
-      const macd = { top: 450, bottom: 560 };
+      // Keep both MACD panels inside the existing 620px SVG so the modal
+      // height and scrolling behavior do not change.
+      const macd = { top: 428, bottom: 486 };
+      const macdFast = { top: 510, bottom: 568 };
       const movingAverages = [
         { key: "ma10", label: "MA10", color: "#8b5cf6" },
         { key: "ma20", label: "MA20", color: "#eab308" },
@@ -6150,35 +6411,44 @@
         });
         return values;
       };
-      const ema12 = ema(12);
-      const ema26 = ema(26);
-      const difValues = closes.map((_, index) => ema12[index] - ema26[index]);
-      const deaValues = [];
-      const deaMultiplier = 2 / 10;
-      difValues.forEach((value, index) => {
-        const previous = index === 0 ? value : deaValues[index - 1];
-        deaValues.push(index === 0 ? value : (value - previous) * deaMultiplier + previous);
-      });
-      const histValues = difValues.map((value, index) => (value - deaValues[index]) * 2);
-      const macdAbs = Math.max(
-        0.01,
-        ...histValues.filter(Number.isFinite).map((value) => Math.abs(value)),
-        ...difValues.filter(Number.isFinite).map((value) => Math.abs(value)),
-        ...deaValues.filter(Number.isFinite).map((value) => Math.abs(value))
-      );
-      const macdZero = (macd.top + macd.bottom) / 2;
-      const yMacd = (value) => macdZero - (value / macdAbs) * ((macd.bottom - macd.top) / 2 - 8);
-      const macdBars = histValues.map((value, index) => {
-        const x = plot.left + step * index + step / 2;
-        const zero = yMacd(0);
-        const y = Math.min(zero, yMacd(value));
-        const color = value >= 0 ? "var(--rising)" : "var(--falling)";
-        return `<rect x="${x - Math.max(2, candleWidth / 2)}" y="${y}" width="${Math.max(2, candleWidth)}" height="${Math.max(1, Math.abs(yMacd(value) - zero))}" fill="${color}" opacity=".72"><title>${rows[index].date} MACD柱 ${value.toFixed(3)}</title></rect>`;
-      }).join("");
-      const macdLine = (values, color) => {
-        const points = values.map((value, index) => `${plot.left + step * index + step / 2},${yMacd(value)}`).join(" ");
-        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const calculateMacdSeries = (fastPeriod, slowPeriod, signalPeriod) => {
+        const fastValues = ema(fastPeriod);
+        const slowValues = ema(slowPeriod);
+        const dif = closes.map((_, index) => fastValues[index] - slowValues[index]);
+        const dea = [];
+        const signalMultiplier = 2 / (signalPeriod + 1);
+        dif.forEach((value, index) => {
+          const previous = index === 0 ? value : dea[index - 1];
+          dea.push(index === 0 ? value : (value - previous) * signalMultiplier + previous);
+        });
+        const histogram = dif.map((value, index) => (value - dea[index]) * 2);
+        const scale = Math.max(
+          0.01,
+          ...histogram.filter(Number.isFinite).map((value) => Math.abs(value)),
+          ...dif.filter(Number.isFinite).map((value) => Math.abs(value)),
+          ...dea.filter(Number.isFinite).map((value) => Math.abs(value))
+        );
+        return { dif, dea, histogram, scale };
       };
+      const macdPrimary = calculateMacdSeries(10, 20, 7);
+      const macdSecondary = calculateMacdSeries(5, 10, 3);
+      const drawMacdPanel = (series, panel, label) => {
+        const zero = (panel.top + panel.bottom) / 2;
+        const y = (value) => zero - (value / series.scale) * ((panel.bottom - panel.top) / 2 - 5);
+        const bars = series.histogram.map((value, index) => {
+          const x = plot.left + step * index + step / 2;
+          const barZero = y(0);
+          const barY = Math.min(barZero, y(value));
+          const color = value >= 0 ? "var(--rising)" : "var(--falling)";
+          return `<rect x="${x - Math.max(2, candleWidth / 2)}" y="${barY}" width="${Math.max(2, candleWidth)}" height="${Math.max(1, Math.abs(y(value) - barZero))}" fill="${color}" opacity=".72"><title>${rows[index].date} ${label}柱 ${value.toFixed(3)}</title></rect>`;
+        }).join("");
+        const line = (values, color) => {
+          const points = values.map((value, index) => `${plot.left + step * index + step / 2},${y(value)}`).join(" ");
+          return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+        };
+        return `<path d="M${plot.left} ${panel.top - 8} H${width - plot.right}" stroke="var(--chart-grid-strong)" stroke-width="1"/><text x="${plot.left}" y="${panel.top - 14}" fill="var(--chart-caption)" font-size="11">MACD（${label}｜DIF / DEA / 柱）</text><path d="M${plot.left} ${zero} H${width - plot.right}" stroke="var(--chart-grid)" stroke-width="1" stroke-dasharray="4 4"/>${bars}${line(series.dif, "var(--rising)")}${line(series.dea, "var(--amber)")}`;
+      };
+      const macdMarkup = drawMacdPanel(macdPrimary, macd, "10, 20, 7") + drawMacdPanel(macdSecondary, macdFast, "5, 10, 3");
       const priceGrid = Array.from({ length: 5 }, (_, index) => minPrice + (priceSpan * index) / 4);
       const grids = priceGrid.map((price) => {
         const y = yPrice(price);
@@ -6231,12 +6501,7 @@
           <text x="${plot.left}" y="${volume.top - 14}" fill="var(--chart-caption)" font-size="12">成交量</text>
           ${candles}
           ${averageLines}
-          <path d="M${plot.left} ${macd.top - 10} H${width - plot.right}" stroke="var(--chart-grid-strong)" stroke-width="1"/>
-          <text x="${plot.left}" y="${macd.top - 16}" fill="var(--chart-caption)" font-size="12">MACD（DIF / DEA / 柱）</text>
-          <path d="M${plot.left} ${macdZero} H${width - plot.right}" stroke="var(--chart-grid)" stroke-width="1" stroke-dasharray="4 4"/>
-          ${macdBars}
-          ${macdLine(difValues, "var(--rising)")}
-          ${macdLine(deaValues, "var(--amber)")}
+          ${macdMarkup}
           ${dateLabels}
         </svg>
       `;
@@ -6333,7 +6598,7 @@
           value <= view.allRows.length && list.indexOf(value) === index
         );
         el.chartModalContent.innerHTML = `
-          <div class="modal-chart">
+          <div class="modal-chart daily-modal-chart">
             <div class="chart-controlbar">
               <div class="chart-range-switcher" role="group" aria-label="日 K 可见周期">
                 ${presets.map((value) => `<button type="button" data-daily-window="${value}" class="${view.size === value && view.offset === 0 ? "active" : ""}">${value === view.allRows.length ? "全部" : `${value}日`}</button>`).join("")}
@@ -6799,8 +7064,8 @@
       return { symbol: "→", className: "" };
     }
 
-    function updateScoreAlerts(list) {
-      if (!state.scoreAlertReady || !isLiveAlertSession()) return;
+    function updateLegacyScoreAlerts(list) {
+      if ((!state.scoreAlertReady && !state.previewingPriceAlerts) || (!isLiveAlertSession() && !state.previewingPriceAlerts)) return;
       let added = false;
       let dismissed = new Set();
       try { dismissed = new Set(JSON.parse(localStorage.getItem("scoreAlertDismissedKeys") || "[]")); } catch {}
@@ -6872,11 +7137,11 @@
         if (String(item.time) > String(group.time)) group.time = item.time;
       });
       const isMainBoardAlert = (code) => /^(000|001|002|003|600|601|603|605)/.test(String(code || ""));
-      // 提示框只保留最新 15 条滚动展示；完整历史仍由告警池接口保存。
+      // 提示框只保留最新 6 条滚动展示；已有告警持续保留，直到用户主动关闭。
       const byAlertTime = (a, b) => String(a.time || "").localeCompare(String(b.time || ""));
-      const reboundAlerts = groupedAlerts.filter((item) => item.kind === "rebound-60").sort(byAlertTime).slice(-15);
-      const mainAlerts = groupedAlerts.filter((item) => isMainBoardAlert(item.code) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-15);
-      const growthAlerts = groupedAlerts.filter((item) => /^(300|301|688|689|4|8|92)/.test(String(item.code || "")) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-15);
+      const reboundAlerts = groupedAlerts.filter((item) => item.kind === "rebound-60").sort(byAlertTime).slice(-6);
+      const mainAlerts = groupedAlerts.filter((item) => isMainBoardAlert(item.code) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-6);
+      const growthAlerts = groupedAlerts.filter((item) => /^(300|301|688|689|4|8|92)/.test(String(item.code || "")) && !["prediction", "rebound-60"].includes(item.kind)).sort(byAlertTime).slice(-6);
       el.scoreAlerts.hidden = state.alertPanelDismissed.growth || !growthAlerts.length;
       el.scoreAlerts.innerHTML = growthAlerts.length ? `
         <div class="score-alert-panel">
@@ -6924,6 +7189,252 @@
         render();
       });
     }
+
+    function minutePredictionBadge(code) {
+      const p = state.minutePredictions[code];
+      if (!p) return '';
+      const tone = p.status === 'ready' ? p.score >= 65 ? ' strong' : p.score <= 35 ? ' weak' : '' : '';
+      const title = `${p.mode === 'review' ? '历史回放 ' : ''}${p.date || ''} ${p.minute || ''} · ${(p.reasons || []).join('；')} · ${p.probabilityStatus || p.message || '数据不足'}`;
+      return `<span class="minute-signal${tone}" title="${escapeHtml(title)}">${escapeHtml(p.signal)}</span>`;
+    }
+
+    function matchesPredictionSearch(stock, keyword, whitelistByCode) {
+      const query = String(keyword || '').trim().toLowerCase();
+      const nameInitials = stock.nameInitials || whitelistByCode.get(stock.code)?.nameInitials || '';
+      return !query || [stock.name, stock.code, nameInitials].some(value =>
+        String(value || '').toLowerCase().includes(query));
+    }
+
+    function minutePredictionSortValue(stock, key) {
+      if (key === 'previousVolumeRatio') return stock.comparisons?.[0]?.cumulativeVolumeRatio;
+      if (key === 'twoDaysAgoVolumeRatio') return stock.comparisons?.[1]?.cumulativeVolumeRatio;
+      return stock[key];
+    }
+
+    function updateMinutePredictionSort(key) {
+      if (state.minutePredictionSortKey === key) state.minutePredictionSortDir = state.minutePredictionSortDir === 'desc' ? 'asc' : 'desc';
+      else { state.minutePredictionSortKey = key; state.minutePredictionSortDir = 'desc'; }
+      renderMinutePredictions();
+    }
+
+    function renderMinutePredictions() {
+      const panel = document.getElementById('minutePredictionPanel');
+      panel.hidden = !['whitelist', 'screener'].includes(state.pageView);
+      const payload = state.minutePredictionPayload;
+      if (!payload) return;
+      const query = document.getElementById('minutePredictionSearch').value.trim().toLowerCase();
+      const whitelistByCode = new Map(state.whitelistStocks.map(stock => [stock.code, stock]));
+      const prefixes = {'sh-main':['600','601','603','605'], 'sz-main':['000','001','002','003'], chinext:['300','301'], star:['688','689'], bse:['4','8','92']};
+      const allowed = state.pageView === 'whitelist' && state.whitelistStocks.length ? new Set(whitelistFilteredStocks(true).map(s=>s.code)) : null;
+      const rows = (payload.stocks || []).filter(p => (!allowed || allowed.has(p.code)) &&
+        (state.pageView !== 'screener' || !prefixes[state.marketScope] || prefixes[state.marketScope].some(x=>p.code.startsWith(x))) &&
+        matchesPredictionSearch(p, query, whitelistByCode));
+      if (state.minutePredictionSortKey) rows.sort((a, b) => {
+        const av = Number(minutePredictionSortValue(a, state.minutePredictionSortKey));
+        const bv = Number(minutePredictionSortValue(b, state.minutePredictionSortKey));
+        const aMissing = !Number.isFinite(av), bMissing = !Number.isFinite(bv);
+        if (aMissing || bMissing) return aMissing !== bMissing ? (aMissing ? 1 : -1) : String(a.code).localeCompare(String(b.code));
+        if (av === bv) return String(a.code).localeCompare(String(b.code));
+        return state.minutePredictionSortDir === 'asc' ? av - bv : bv - av;
+      });
+      document.querySelectorAll('[data-minute-prediction-sort]').forEach(button => {
+        const active = button.dataset.minutePredictionSort === state.minutePredictionSortKey;
+        button.textContent = `${button.dataset.label}${active ? (state.minutePredictionSortDir === 'asc' ? ' ↑' : ' ↓') : ''}`;
+        button.parentElement.setAttribute('aria-sort', active ? (state.minutePredictionSortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+      });
+      const ready = rows.filter(p=>p.status==='ready').length;
+      const delayed = rows.filter(p=>p.status==='stale').length;
+      document.getElementById('minutePredictionStatus').textContent = payload.error || `${payload.active ? '盘中每60秒一轮' : '休市 · 最近交易日11:30回放'} · ${payload.running ? `加载 ${payload.processed}/${payload.total}` : '本轮完成'} · 当前范围 ${rows.length} 只，有效 ${ready}，延迟 ${delayed} · 数据时间见各行`;
+      const pct = v => hasNumber(v) ? `${Number(v).toFixed(1)}%` : '--';
+      const multiple = v => hasNumber(v) ? `${Number(v).toFixed(2)}×` : '--';
+      document.getElementById('minutePredictionBody').innerHTML = rows.length ? rows.map(p=>`<tr>
+        <td><strong>${escapeHtml(p.name || p.code)}</strong> ${escapeHtml(p.code)}<br><span class="minute-prediction-note">${escapeHtml(p.date || '--')} ${escapeHtml(p.minute || '--')}${p.mode==='review' ? ' 回放' : ''}</span></td>
+        <td>${minutePredictionBadge(p.code)}</td><td>${hasNumber(p.price) ? formatPrice(p.price) : '--'}</td><td class="${quoteClass(p.changePct)}">${hasNumber(p.changePct) ? formatPct(p.changePct) : '--'}</td><td class="${quoteClass(p.return10)}">${hasNumber(p.return10) ? formatPct(p.return10) : '--'}</td>
+        <td title="近10分钟成交量 ÷ 前10分钟成交量；1.20×及以上为放量，0.80×及以下为缩量">${multiple(p.windowVolumeRatio)}<br><span class="minute-prediction-note">${escapeHtml(p.volumeState || '')}</span></td><td title="累计成交量相对于上一交易日同一时点">${multiple(p.comparisons?.[0]?.cumulativeVolumeRatio)}</td><td title="累计成交量相对于前两交易日同一时点">${multiple(p.comparisons?.[1]?.cumulativeVolumeRatio)}</td>
+        <td>${pct(p.closeUpProbability)}</td><td>${pct(p.furtherUpProbability)}</td><td title="${escapeHtml((p.reasons || []).join('；'))}">${escapeHtml(p.status==='ready' ? p.probabilityStatus : p.message || p.signal)}<br><span class="minute-prediction-note">${p.trainingDays || 0} 个历史交易日${p.baselineDays===1 ? ' · 缺前日基准' : ''}</span></td></tr>`).join('') : '<tr><td colspan="11">暂无匹配的白名单预测</td></tr>';
+      document.querySelectorAll('[data-minute-prediction]').forEach(node => { node.innerHTML = minutePredictionBadge(node.dataset.minutePrediction); });
+    }
+
+    let minutePredictionBusy = false;
+    let minutePredictionTimer = null;
+    function nextMinutePredictionRefreshDelay(active) {
+      if (!active) return 60000;
+      const now = new Date();
+      // Let the server's minute scheduler start first, then read the newest
+      // completed snapshot.  This avoids a 5-second polling loop during a
+      // full-universe calculation while keeping exactly one UI refresh/minute.
+      return Math.max(1000, 60000 - now.getSeconds() * 1000 - now.getMilliseconds() + 1200);
+    }
+    async function loadMinutePredictions(force = false) {
+      if (minutePredictionBusy) return;
+      minutePredictionBusy = true;
+      window.clearTimeout(minutePredictionTimer);
+      const controller = new AbortController();
+      const timeout = window.setTimeout(()=>controller.abort(), 12000);
+      let running = false;
+      try {
+        const response = await fetch(`/api/minute-predictions${force ? '?refresh=1' : ''}`, {cache:'no-store', signal:controller.signal});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || '预测读取失败');
+        state.minutePredictionPayload = payload;
+        state.minutePredictions = Object.fromEntries((payload.stocks || []).map(p=>[p.code,p]));
+        running = payload.running;
+        renderMinutePredictions();
+        // The service only forecasts current whitelist members. Stale/replay
+        // rows cannot trigger live alarms; repeated minute data is deduplicated.
+        // 分钟预测只更新预测表，不再触发旧的价格/评分告警。
+      } catch (error) {
+        document.getElementById('minutePredictionStatus').textContent = '预测暂不可用，正在重试；保留的数据请核对时间';
+      } finally {
+        window.clearTimeout(timeout);
+        minutePredictionBusy = false;
+        const active = state.minutePredictionPayload?.active;
+        minutePredictionTimer = window.setTimeout(()=>loadMinutePredictions(), nextMinutePredictionRefreshDelay(active));
+      }
+    }
+
+    function renderPriceAlertPanels() {
+      const preview = document.getElementById('previewPriceAlertsToggle')?.checked;
+      if (preview) return;
+      const boards = [[el.mainScoreAlerts,'主板个股告警','main'],[el.reboundScoreAlerts,'创业板个股告警','growth'],[el.scoreAlerts,'科创 / 北交所个股告警','starBse']];
+      boards.forEach(([node,title,board])=>{
+        const items = state.macdAlertHistory.filter(p=>p.board===board).slice(-6);
+        node.hidden = state.alertPanelDismissed[board] || !items.length;
+        node.innerHTML = items.length ? `<div class="score-alert-panel"><div class="score-alert-head"><span>${title}</span><button class="score-alert-close" type="button" data-close-price-alert="${board}">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item price-alert-columns"><span>个股名称</span><span>方向</span><span>价格</span><span>涨跌幅</span><span>价格均线</span><span>行业</span><span>信号</span></div>${items.map(item=>{
+          const badge = /^(300|301)/.test(item.code) ? '创' : /^(688|689)/.test(item.code) ? '科' : /^(4|8|92)/.test(item.code) ? '北' : '';
+          const identity = `<span class="price-alert-stock"><strong class="price-alert-stock-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong><small class="price-alert-stock-meta">${badge ? `<i class="market-badge">${badge}</i>` : ''}${escapeHtml(item.code)}</small></span>`;
+          const signalLines = Array.isArray(item.signals) && item.signals.length ? item.signals : [{text:item.signal || '--', tone:item.tone, alertType:item.alertType}];
+          const signalMarkup = signalLines.map(signalLine => {
+            const tone = signalLine.tone === 'red' ? 'macd-alert-signal-red' : 'macd-alert-signal-green';
+            const rawSignal = String(signalLine.text || '--');
+            const displaySignal = rawSignal === '--' || rawSignal.startsWith('MACD') || signalLine.alertType === 'openMove' || signalLine.alertType === 'maCross' ? rawSignal : `MACD ${rawSignal}`;
+            return `<span class="${tone}">${escapeHtml(displaySignal)}</span>`;
+          }).join('<br>');
+          const directionClass = item.direction === '↑' ? 'up' : item.direction === '↓' ? 'down' : '';
+          return `<div class="score-alert-item price-alert-item">${identity}<span class="price-alert-direction ${directionClass}">${escapeHtml(item.direction || '--')}</span><b>${hasNumber(item.price) ? formatPrice(item.price) : '--'}</b><em class="${Number(item.changePct)<0?'down':''}">${hasNumber(item.changePct) ? formatPct(item.changePct) : '--'}</em><small>${hasNumber(item.maPrice) ? formatPrice(item.maPrice) : '--'}</small><small>${escapeHtml(item.industry || '--')}</small><div class="alert-prediction" title="${escapeHtml(item.pool || '')}">${signalMarkup}</div></div>`;
+        }).join('')}</div></div>` : '';
+        node.querySelector('[data-close-price-alert]')?.addEventListener('click',()=>{state.alertPanelDismissed[board]=true;renderPriceAlertPanels();});
+      });
+    }
+
+    async function loadMacdAlerts(force = false) {
+      if (!force && Date.now() - state.macdAlertFetchAt < 15000) return;
+      state.macdAlertFetchAt = Date.now();
+      try {
+        // 首次进入页面也主动拉起后端扫描；此后服务端每分钟扫描，
+        // 页面只负责每 15 秒读取结果，避免告警框因页面打开时机漏信号。
+        const shouldRefresh = force || !state.macdAlertReady;
+        const response = await fetch(`/api/macd-alerts${shouldRefresh ? '?refresh=1' : ''}`, {cache:'no-store'});
+        const payload = await response.json();
+        if (!response.ok) return;
+        const alerts = payload.alerts || [];
+        const unseen = alerts.filter(item => item.id && !state.macdAlertKeys.has(item.id));
+        alerts.forEach(item => { if (item.id) state.macdAlertKeys.add(item.id); });
+        state.macdAlertHistory = alerts;
+        if (unseen.length && state.macdAlertReady) {
+          state.alertPanelDismissed = {main:false, growth:false, starBse:false};
+          playScoreAlertSound();
+        }
+        state.macdAlertReady = true;
+        renderPriceAlertPanels();
+      } catch {
+        // MACD 扫描失败不影响页面主体行情。
+      } finally {
+        window.setTimeout(() => loadMacdAlerts(), 15000);
+      }
+    }
+
+    function updateScoreAlerts(list) {
+      return;
+      /* 旧的价格/评分告警逻辑已停用，顶部告警统一由 MACD 翻色扫描驱动。 */
+      /* eslint-disable no-unreachable */
+      if (!isLiveAlertSession() && !state.previewingPriceAlerts) return;
+      // 页面初始化时分钟预测可能先于白名单接口完成。此时预测接口本身
+      // 已经只读取白名单，先用它作为临时范围，避免首轮告警被全部过滤；
+      // 白名单接口完成后，后续刷新会切回正式白名单集合。
+      const whitelistSource = state.whitelistStocks?.length
+        ? state.whitelistStocks
+        : (state.minutePredictionPayload?.stocks || []);
+      const whitelistCodes = new Set(whitelistSource.map(stock => String(stock.code || "")));
+      list = list.filter(stock => whitelistCodes.has(String(stock.code || "")));
+      const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+      const tracker = state.priceAlertTracker || (state.priceAlertTracker = {});
+      const alerts = [];
+      const conceptsOf = stock => Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts.filter(Boolean) : stock.relatedConcept ? [stock.relatedConcept] : [];
+      const boardOf = code => /^(300|301)/.test(code) ? "growth" : /^(688|689|8|4|92)/.test(code) ? "starBse" : "main";
+      list.forEach(stock => {
+        const code = String(stock.code || "");
+        const tradeDate = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai'}).format(new Date());
+        const quoteDate = stock.date || String(stock.updatedAt || '').slice(0,10);
+        if (!state.previewingPriceAlerts && quoteDate !== tradeDate) return;
+        if (tracker[code]?.date !== tradeDate) delete tracker[code];
+        const observedAt = stock.minute || stock.updatedAt;
+        if (observedAt && tracker[code]?.observedAt === observedAt) return;
+        const previousClose = Number(stock.previousClose);
+        const price = Number(stock.price);
+        if (!code || !Number.isFinite(previousClose) || previousClose <= 0 || !Number.isFinite(price)) return;
+        const auctionPrice = Number(stock.auction?.auctionPrice ?? stock.screener?.auction?.auctionPrice ?? stock.open ?? price);
+        const changePct = (price / previousClose - 1) * 100;
+        const rawAverage = stock.averagePrice ?? stock.dayAverage ?? stock.screener?.dayAverage ?? stock.screener?.intradayAverage;
+        const average = hasNumber(rawAverage) ? Number(rawAverage) : null;
+        const previousPrice = Number(tracker[code]?.price);
+        const bucket = Math.trunc(changePct / 2);
+        const previousBucket = Number(tracker[code]?.bucket);
+        const crossedMove = Number.isFinite(previousBucket) ? bucket !== previousBucket && bucket !== 0 : Math.abs(changePct) >= 2;
+        const brokeAverage = hasNumber(average) && price < average && hasNumber(tracker[code]?.average) && previousPrice >= tracker[code].average;
+        const prediction = stock.signal ? stock : state.minutePredictions[code];
+        const signal = prediction?.status === 'ready' && prediction.mode === 'live' ? prediction.signal : tracker[code]?.signal;
+        const changedSignal = tracker[code]?.signal && signal !== tracker[code].signal && ['量价偏强','量价偏弱'].includes(signal);
+        if (crossedMove || brokeAverage || changedSignal) {
+          const direction = price >= (Number.isFinite(previousPrice) ? previousPrice : auctionPrice) ? "↑" : "↓";
+          alerts.push({ code, board: boardOf(code), date:tradeDate, name: String(stock.name || code).replace(/-U$/, ""), price, changePct, average, direction, industry: stock.actualIndustry || stock.industry || "--", concepts: conceptsOf(stock), time: now, reason: [brokeAverage ? '跌破实时价格均线' : '', crossedMove ? `相对昨收${bucket > 0 ? '上涨' : '下跌'}${Math.abs(bucket)*2}%` : '', changedSignal ? signal : ''].filter(Boolean).join(' / ') });
+          state.alertPanelDismissed[boardOf(code)] = false;
+        }
+        tracker[code] = { price, bucket, auctionPrice, average, signal, observedAt, date:tradeDate };
+      });
+      // 告警框最多同时展示 6 条，优先保留本轮最新触发的告警；
+      // 历史告警不会因下一轮没有新告警而自动清空。
+      state.priceAlertHistory = [...state.priceAlertHistory.filter(p=>whitelistCodes.has(p.code)), ...alerts].slice(-6);
+      if (alerts.length) playScoreAlertSound();
+      renderPriceAlertPanels();
+      /* eslint-enable no-unreachable */
+    }
+
+    function previewPriceAlerts() {
+      let source = (state.whitelistStocks || []).filter(stock => String(stock.code || ""));
+      if (!source.length) {
+        source = [
+          { code: "600000", name: "白名单主板示例", industry: "银行", relatedConcepts: ["示例概念"] },
+          { code: "300001", name: "白名单创业板示例", industry: "电子", relatedConcepts: ["示例概念"] },
+          { code: "688001", name: "白名单科创示例", industry: "半导体", relatedConcepts: ["示例概念"] }
+        ];
+        state.whitelistStocks = source;
+      }
+      const samples = ["main", "growth", "starBse"].map(board => source.find(stock => {
+        const code = String(stock.code || "");
+        return board === "growth" ? /^(300|301)/.test(code) : board === "starBse" ? /^(688|689|8|4|92)/.test(code) : /^(000|001|002|003|600|601|603|605)/.test(code);
+      })).filter(Boolean).map(stock => {
+        const price = Number(stock.price) || 10;
+        return {...stock, price, previousClose: price / 1.03, open: price / 1.02, dayAverage: price * 1.01};
+      });
+      state.alertPanelDismissed = { main: false, growth: false, starBse: false };
+      state.macdAlertHistory = samples.map((stock, index) => ({
+        id: `preview-macd-${index}`,
+        board: /^(300|301)/.test(String(stock.code || "")) ? "growth" : /^(688|689|8|4|92)/.test(String(stock.code || "")) ? "starBse" : "main",
+        code: String(stock.code || ""),
+        name: String(stock.name || stock.code || "").replace(/-U$/, ""),
+        price: Number(stock.price) || 10,
+        changePct: 3,
+        average: null,
+        industry: stock.industry || "--",
+        signal: index % 2 ? "翻绿(5、10、3)" : "翻红(10、20、7)",
+        tone: index % 2 ? "green" : "red",
+        pool: "白名单 · 预览"
+      }));
+      state.macdAlertReady = true;
+      renderPriceAlertPanels();
+    }
+    window.previewPriceAlerts = previewPriceAlerts;
 
     function playScoreAlertSound() {
       try {
@@ -7026,8 +7537,7 @@
       renderMarketStatus();
       renderWeights();
       const list = filteredStocks();
-      updateScoreAlerts(stocks);
-      loadScoreAlerts();
+      loadMacdAlerts();
       renderStats(list);
       if (state.pageView === "sector-strength") {
         renderSectorStrength();
@@ -7150,12 +7660,13 @@
     }
 
     el.agentBtn.addEventListener("click", openAlertPool);
+    el.previewPriceAlertsBtn.addEventListener("click", previewPriceAlerts);
     el.alertPoolClose.addEventListener("click", closeAlertPool);
     el.alertPoolModal.addEventListener("click", (event) => { if (event.target.closest("[data-close-alert-pool]")) closeAlertPool(); });
 
     el.resetBtn.addEventListener("click", () => {
       clearPendingStockClick();
-      state.strategy = "balanced";
+      state.strategy = "event";
       state.sortBy = "score";
       state.minScore = 70;
       state.listPage = 1;
@@ -7518,8 +8029,7 @@
           const params = new URLSearchParams({codes:codes.slice(index, index + 80).join(","), refresh:"1", aggressive:"1"});
           await fetch(`/api/rebound-scores?${params}`, {cache:"no-store"});
         }
-        state.scoreAlertFetchAt = 0;
-        await loadScoreAlerts();
+        await loadMacdAlerts(true);
       } catch {
         // 激进观察扫描失败不影响其它行情和告警。
       }
