@@ -311,10 +311,10 @@
     body:has(#previewPriceAlertsToggle:checked) .score-alerts { display: block !important; }
     .score-alerts-main { left: 10px; right: auto; }
     .score-alerts-rebound { left: 50%; right: auto; top: 18px; width: min(560px, calc((100vw - 48px) / 3)); transform: translateX(-50%); }
-    .score-alert-panel { max-height: 300px; box-sizing: border-box; border: 1px solid rgba(245, 158, 11, .45); border-radius: 10px; padding: 8px 9px; background: var(--panel-strong); box-shadow: 0 8px 22px rgba(0,0,0,.2); overflow: visible; }
+    .score-alert-panel { box-sizing: border-box; border: 1px solid rgba(245, 158, 11, .45); border-radius: 10px; padding: 8px 9px; background: var(--panel-strong); box-shadow: 0 8px 22px rgba(0,0,0,.2); overflow: hidden; }
     .score-alert-head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--amber); font-size: 12px; font-weight: 800; background: var(--panel-strong); }
     .score-alert-close { border: 0; border-radius: 5px; padding: 2px 7px; color: var(--muted); background: rgba(255,255,255,.08); }
-    .score-alert-list { display: grid; gap: 4.4px; margin-top: 6px; overflow: visible; }
+    .score-alert-list { display: grid; gap: 4.4px; max-height: 300px; margin-top: 6px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
     .score-alert-item { display: grid; width: 100%; grid-template-columns: 110px 145px 18px 45px 28px 45px 52px 65px; align-items: center; column-gap: 2px; row-gap: 4.4px; color: var(--text); font-size: 12px; }
     .score-alert-item.rebound-alert-item { grid-template-columns: 120px 120px 18px 45px 45px 28px 45px 52px 65px; }
     .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -335,18 +335,18 @@
     .score-alert-item small { overflow: hidden; white-space: nowrap; color: var(--muted); font-size: 11px; }
     .score-alert-item > small:first-of-type { overflow: hidden; text-overflow: ellipsis; text-align: left; }
     .score-alert-item .consecutive { color: var(--cyan); font-weight: 800; text-align: right; }
-    .price-alert-item { grid-template-columns:68px 30px 54px 58px 60px minmax(72px,1fr) minmax(62px,129px); column-gap:6px; }
+    .price-alert-item { grid-template-columns:68px 54px 54px 58px 60px minmax(72px,1fr) minmax(62px,129px); column-gap:6px; }
     .price-alert-stock { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:2px; overflow:hidden; }
     .price-alert-stock-name { display:block; width:100%; overflow:hidden; color:var(--text); font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
     .price-alert-stock-meta { display:flex; align-items:center; gap:4px; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; line-height:1; }
     .price-alert-stock-meta .market-badge { min-width:16px; height:15px; padding:0 3px; border-radius:4px; font-size:9px; }
     .price-alert-item > b,.price-alert-item > em { white-space:nowrap; }
     .price-alert-item > span,.price-alert-item > b,.price-alert-item > em,.price-alert-item > small { text-align:left; justify-self:stretch; }
-    .price-alert-item .price-alert-direction { text-align:left; }
+    .price-alert-item .price-alert-time { color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; }
     .price-alert-item .alert-prediction { min-width:0; padding:0 0 0 6px; white-space:pre-line; overflow-wrap:anywhere; color:var(--muted); border-left:1px dashed var(--line); font-size:10px; line-height:1.35; }
     .price-alert-item .macd-alert-signal-red { color:var(--red); font-weight:900; }
     .price-alert-item .macd-alert-signal-green { color:var(--green); font-weight:900; }
-    .price-alert-item.price-alert-columns { color:var(--muted); font-size:11px; padding-bottom:6px; }
+    .price-alert-item.price-alert-columns { position:sticky; top:0; z-index:1; color:var(--muted); font-size:11px; padding-bottom:6px; background:var(--panel-strong); }
     .minute-signal { display:inline-block; border:1px solid currentColor; border-radius:5px; padding:2px 5px; font-size:11px; color:var(--muted); }
     .minute-signal.strong { color:var(--red); } .minute-signal.weak { color:var(--green); }
     .minute-inline { display:block; margin-top:4px; }
@@ -4524,7 +4524,10 @@
     function getWhitelistStockData(code) {
       if (state.whitelistStockDataCache[code]) return Promise.resolve(state.whitelistStockDataCache[code]);
       if (state.whitelistStockDataPromises[code]) return state.whitelistStockDataPromises[code];
-      const promise = fetch(`/api/stock?code=${encodeURIComponent(code)}&refresh=1`, {cache:"no-store"})
+      // 日线、MACD 和均线缩略图优先复用服务端历史缓存。此前强制刷新会让
+      // 249 只白名单同时穿透到外部行情源，既拖慢白名单首屏，也会在重绘时
+      // 反复清空已经生成的 SVG。
+      const promise = fetch(`/api/stock?code=${encodeURIComponent(code)}`, {cache:"no-store"})
         .then(async response => {
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || "股票历史行情加载失败");
@@ -4549,15 +4552,33 @@
             state.whitelistTrendCache[code] = classifyWhitelistTrend(closes);
           } catch { state.whitelistTrendCache[code] = "--"; }
         }));
-        if (state.pageView === "whitelist") renderWhitelistRows();
       }
+      // 全量趋势计算完成后再重绘一次，避免每个批次重绘表格并擦掉缩略图。
+      if (state.pageView === "whitelist") renderWhitelistRows();
       state.whitelistTrendScanRunning = false;
     }
     async function loadWhitelistMiniCharts() {
       // 缩略图是附属信息，不能阻塞个股池。此前每次 10 秒列表刷新都会为
       // 100 行同时启动日线和分时请求，造成白名单主接口超时。首屏只并行补
       // 24 行，且同一代码在请求中或已缓存时不重复拉取。
-      const nodes = [...document.querySelectorAll("[data-whitelist-intraday]")]
+      const allNodes = [...document.querySelectorAll("[data-whitelist-intraday]")];
+      // 行情每 10 秒刷新会重绘表格。先把已经完成的缩略图回填到新 DOM，
+      // 否则旧节点虽已加载，下一次重绘后又会变回空白。
+      allNodes.forEach(node => {
+        const code = node.dataset.whitelistIntraday;
+        const cached = code && state.whitelistChartCache[code];
+        if (!cached) return;
+        const klineNode = document.querySelector(`[data-whitelist-kline="${code}"]`);
+        const macdNode = document.querySelector(`[data-whitelist-macd="${code}"]`);
+        const trendNode = document.querySelector(`[data-whitelist-trend="${code}"]`);
+        const maNode = document.querySelector(`[data-whitelist-ma="${code}"]`);
+        node.innerHTML = cached.intraday || "--";
+        if (klineNode) klineNode.innerHTML = cached.kline || "--";
+        if (macdNode) macdNode.innerHTML = cached.macd || "--";
+        if (trendNode) { trendNode.textContent = cached.trend || "--"; applyWhitelistTrendStyle(trendNode, cached.trend); }
+        if (maNode) maNode.innerHTML = cached.ma || "--";
+      });
+      const nodes = allNodes
         .filter(node => {
           const code = node.dataset.whitelistIntraday;
           return code && !state.whitelistChartCache[code] && !state.whitelistMiniChartLoading.has(code);
@@ -4574,7 +4595,8 @@
           const today = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Shanghai"}).format(new Date());
           // 分时属于实时数据，非交易时段可能不可用；不能因此连带清空日 K、MACD 和均线缩略图。
           const [intradayResult, stock] = await Promise.all([
-            fetch(`/api/intraday?code=${code}&date=${today}&refresh=1`, {cache:"no-store"})
+            // 分时缓存由服务端按短 TTL 管理；不要为首屏每只股票重复强刷外部源。
+            fetch(`/api/intraday?code=${code}&date=${today}`, {cache:"no-store"})
               .then(async response => response.ok ? response.json() : null)
               .catch(() => null),
             getWhitelistStockData(code),
@@ -4598,6 +4620,16 @@
           node.textContent = "--"; if (klineNode) klineNode.textContent = "--"; if (macdNode) macdNode.textContent = "--";
         } finally { state.whitelistMiniChartLoading.delete(code); }
         }));
+      }
+      // 首屏仍按小批次保护行情源；当前一批结束后继续补齐可见表格，
+      // 让用户无需滚动或手动刷新就能看到后续行的缩略图。
+      const remaining = [...document.querySelectorAll("[data-whitelist-intraday]")]
+        .some(item => {
+          const code = item.dataset.whitelistIntraday;
+          return code && !state.whitelistChartCache[code] && !state.whitelistMiniChartLoading.has(code);
+        });
+      if (remaining && state.pageView === "whitelist") {
+        window.setTimeout(() => { if (state.pageView === "whitelist") loadWhitelistMiniCharts(); }, 120);
       }
     }
 
@@ -7298,9 +7330,12 @@
       if (preview) return;
       const boards = [[el.mainScoreAlerts,'主板个股告警','main'],[el.reboundScoreAlerts,'创业板个股告警','growth'],[el.scoreAlerts,'科创 / 北交所个股告警','starBse']];
       boards.forEach(([node,title,board])=>{
-        const items = state.macdAlertHistory.filter(p=>p.board===board).slice(-6);
+        const priorList = node.querySelector('.score-alert-list');
+        const keepBottom = !priorList || priorList.scrollHeight - priorList.scrollTop - priorList.clientHeight < 18;
+        // 历史按时间正序保留，滚动到底部就是最新六条；显示高度固定为约六行。
+        const items = state.macdAlertHistory.filter(p=>p.board===board);
         node.hidden = state.alertPanelDismissed[board] || !items.length;
-        node.innerHTML = items.length ? `<div class="score-alert-panel"><div class="score-alert-head"><span>${title}</span><button class="score-alert-close" type="button" data-close-price-alert="${board}">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item price-alert-columns"><span>个股名称</span><span>方向</span><span>价格</span><span>涨跌幅</span><span>价格均线</span><span>行业</span><span>信号</span></div>${items.map(item=>{
+        node.innerHTML = items.length ? `<div class="score-alert-panel"><div class="score-alert-head"><span>${title}</span><button class="score-alert-close" type="button" data-close-price-alert="${board}">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item price-alert-columns"><span>个股名称</span><span>时间</span><span>价格</span><span>涨跌幅</span><span>价格均线</span><span>行业</span><span>信号</span></div>${items.map(item=>{
           const badge = /^(300|301)/.test(item.code) ? '创' : /^(688|689)/.test(item.code) ? '科' : /^(4|8|92)/.test(item.code) ? '北' : '';
           const identity = `<span class="price-alert-stock"><strong class="price-alert-stock-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong><small class="price-alert-stock-meta">${badge ? `<i class="market-badge">${badge}</i>` : ''}${escapeHtml(item.code)}</small></span>`;
           const signalLines = Array.isArray(item.signals) && item.signals.length ? item.signals : [{text:item.signal || '--', tone:item.tone, alertType:item.alertType}];
@@ -7310,9 +7345,11 @@
             const displaySignal = rawSignal === '--' || rawSignal.startsWith('MACD') || signalLine.alertType === 'openMove' || signalLine.alertType === 'maCross' ? rawSignal : `MACD ${rawSignal}`;
             return `<span class="${tone}">${escapeHtml(displaySignal)}</span>`;
           }).join('<br>');
-          const directionClass = item.direction === '↑' ? 'up' : item.direction === '↓' ? 'down' : '';
-          return `<div class="score-alert-item price-alert-item">${identity}<span class="price-alert-direction ${directionClass}">${escapeHtml(item.direction || '--')}</span><b>${hasNumber(item.price) ? formatPrice(item.price) : '--'}</b><em class="${Number(item.changePct)<0?'down':''}">${hasNumber(item.changePct) ? formatPct(item.changePct) : '--'}</em><small>${hasNumber(item.maPrice) ? formatPrice(item.maPrice) : '--'}</small><small>${escapeHtml(item.industry || '--')}</small><div class="alert-prediction" title="${escapeHtml(item.pool || '')}">${signalMarkup}</div></div>`;
+          const alertTime = String(item.time || '--').slice(0, 8);
+          return `<div class="score-alert-item price-alert-item">${identity}<time class="price-alert-time">${escapeHtml(alertTime)}</time><b>${hasNumber(item.price) ? formatPrice(item.price) : '--'}</b><em class="${Number(item.changePct)<0?'down':''}">${hasNumber(item.changePct) ? formatPct(item.changePct) : '--'}</em><small>${hasNumber(item.maPrice) ? formatPrice(item.maPrice) : '--'}</small><small>${escapeHtml(item.industry || '--')}</small><div class="alert-prediction" title="${escapeHtml(item.pool || '')}">${signalMarkup}</div></div>`;
         }).join('')}</div></div>` : '';
+        const list = node.querySelector('.score-alert-list');
+        if (list && keepBottom) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
         node.querySelector('[data-close-price-alert]')?.addEventListener('click',()=>{state.alertPanelDismissed[board]=true;renderPriceAlertPanels();});
       });
     }

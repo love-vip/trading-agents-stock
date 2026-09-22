@@ -741,30 +741,14 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
             if in_session and time.monotonic() - last_macd_alert_scan >= 60:
                 start_macd_alert_scan(force=True)
                 last_macd_alert_scan = time.monotonic()
-            # AI 算力企稳反弹扫描完全独立：只读取 AI 算力已维护股票池，
-            # 且先于全市场扫描启动，避免重的全市场扫描延误反弹告警。
-            ai_rebound_session = 570 <= current_minutes < 690 or 780 <= current_minutes < 900
-            # AI 反弹池每分钟扫描一次；前端不打开时也照常生成持续告警。
-            if ai_rebound_session and time.monotonic() - last_ai_rebound_scan >= 60:
-                start_ai_rebound_scan()
-                last_ai_rebound_scan = time.monotonic()
-                print(f"AI算力反弹扫描已启动：{trade_date} {now.strftime('%H:%M:%S')}")
-            if in_session and time.monotonic() - last_intraday_scan >= 25:
-                # 轻量扫描全市场快照；dynamic_snapshot 会记录首次达到阈值的时间，
-                # 不触发历史 K 线、概念和人气等页面级补充请求。
-                scan_all_market_thresholds()
-                last_intraday_scan = time.monotonic()
-                print(f"后台全市场评分扫描完成：{trade_date} {now.strftime('%H:%M:%S')}")
-            elif now.hour == 15 and 5 <= now.minute < 30 and trade_date not in captured_dates:
-                scan_all_market_thresholds()
-                captured_dates.add(trade_date)
-                print(f"后续上涨模型已保存 {trade_date} 收盘候选快照")
+            # 已移除的分钟预测与旧版阈值告警不再后台扫描。AI 页面保留按需
+            # 读取，避免每分钟全市场/AI 池扫描抢占白名单和图表行情资源。
             if now.hour == 15 and now.minute >= 5 and trade_date not in blacklist_captured_dates:
                 refresh_daily_blacklist(trade_date)
                 save_daily_whitelist_snapshot(trade_date)
                 blacklist_captured_dates.add(trade_date)
                 print(f"黑名单及白名单收盘快照已保存：{trade_date}")
-        except (MarketDataError, OSError, ValueError) as exc:
+        except (MarketDataError, OSError, ValueError, sqlite3.Error) as exc:
             print(f"后台全市场评分扫描失败: {exc}")
 
 
@@ -2140,6 +2124,32 @@ def macd_color_state(closes: List[float], fast_period: int, slow_period: int, si
     return "red" if histogram >= 0 else "green"
 
 
+def macd_axis_direction(closes: List[float], fast_period: int = 10, slow_period: int = 20, signal_period: int = 7) -> Optional[str]:
+    """Return a strict MACD 0-axis direction for MA-cross alert confirmation.
+
+    ``up`` requires DIF/DEA both above zero with DIF not below DEA; ``down``
+    requires both below zero with DIF not above DEA.  A below-zero rebound and
+    an above-zero pullback deliberately return ``None``.
+    """
+    if len(closes) < slow_period:
+        return None
+
+    def ema(values: List[float], period: int) -> List[float]:
+        alpha = 2 / (period + 1)
+        result = [values[0]]
+        for value in values[1:]:
+            result.append(value * alpha + result[-1] * (1 - alpha))
+        return result
+
+    dif = [fast - slow for fast, slow in zip(ema(closes, fast_period), ema(closes, slow_period))]
+    dea = ema(dif, signal_period)
+    if dif[-1] > 0 and dea[-1] > 0 and dif[-1] >= dea[-1]:
+        return "up"
+    if dif[-1] < 0 and dea[-1] < 0 and dif[-1] <= dea[-1]:
+        return "down"
+    return None
+
+
 def collect_macd_alert_universe() -> Dict[str, Dict[str, Any]]:
     """Build the fixed alert universe: whitelist plus database custom blacklist."""
     universe: Dict[str, Dict[str, Any]] = {}
@@ -2161,6 +2171,16 @@ def collect_macd_alert_universe() -> Dict[str, Dict[str, Any]]:
             "alertPool": "自定义黑名单",
         }
     return universe
+
+
+def alert_industry(stock: Dict[str, Any], quote: Dict[str, Any]) -> str:
+    """Choose a meaningful industry for an alert instead of the all-market scope label."""
+    for value in (stock.get("industry"), quote.get("actualIndustry"), quote.get("industry")):
+        industry = str(value or "").strip()
+        normalized = industry.replace(" ", "")
+        if industry and normalized not in {"--", "全A股", "全市场", "市场动态扫描"}:
+            return industry
+    return "--"
 
 
 def scan_macd_alerts() -> None:
@@ -2196,6 +2216,7 @@ def scan_macd_alerts() -> None:
                     "high": number(row.get("f15")),
                     "low": number(row.get("f16")),
                     "amount": number(row.get("f6")),
+                    "actualIndustry": str(row.get("f100") or "").strip(),
                     "updatedAt": datetime.now(CHINA_TZ).isoformat(),
                     "liveQuote": True,
                 }
@@ -2204,9 +2225,16 @@ def scan_macd_alerts() -> None:
             live_quotes = {}
 
         def load(code: str) -> Optional[Dict[str, Any]]:
+            # 实时价格由本轮全市场快照统一提供；日线历史固定只读本地缓存，
+            # 不混用图表接口的内存缓存，避免同日 MACD 因来源切换而假翻色。
             try:
-                payload = get_stock_data(code)
-                quote = payload.get("quote") or payload
+                quote = {
+                    **universe.get(code, {}),
+                    "code": code,
+                    "name": str(universe.get(code, {}).get("name") or code),
+                    "history": load_cached_daily_rows(code),
+                    "dataSource": "本地历史缓存",
+                }
                 live_quote = live_quotes.get(code)
                 return {**quote, **live_quote} if live_quote else quote
             except (MarketDataError, OSError, TypeError, ValueError, sqlite3.Error):
@@ -2221,6 +2249,11 @@ def scan_macd_alerts() -> None:
                 except (MarketDataError, OSError, TypeError, ValueError, sqlite3.Error):
                     quote = None
                 if not quote:
+                    continue
+                industry = alert_industry(stock, quote)
+                # 顶部告警必须展示可核对的实时价格与涨跌幅。历史日线足以
+                # 计算 MACD，但缺少实时快照的股票不应只带着“--”进入告警框。
+                if number(quote.get("price")) is None or number(quote.get("changePct")) is None:
                     continue
                 # 开盘锚点告警只针对白名单；自定义黑名单继续只参与 MACD 翻色扫描。
                 if stock.get("alertPool") == "白名单":
@@ -2251,7 +2284,7 @@ def scan_macd_alerts() -> None:
                                 "price": price,
                                 "changePct": change_pct,
                                 "openPrice": opening,
-                                "industry": quote.get("actualIndustry") or quote.get("industry") or stock.get("industry") or "--",
+                                "industry": industry,
                                 "board": "growth" if re.match(r"^(300|301)", code) else "starBse" if re.match(r"^(688|689|4|8|92)", code) else "main",
                                 "pool": "白名单",
                                 "alertType": "openMove",
@@ -2265,12 +2298,22 @@ def scan_macd_alerts() -> None:
                                 _macd_alert_events.append(event)
                                 del _macd_alert_events[:-360]
                 history = quote.get("history") or []
-                closes = [number(row.get("close")) for row in history if number(row.get("close")) is not None]
+                # 日线 MACD 的唯一口径：截至昨日的日线收盘价 + 本轮实时价格
+                # 作为今日尚未收盘的唯一一根日 K。剔除缓存中可能带有的“今日”
+                # 行，防止同日不同来源各自带一根日 K 导致假翻红/翻绿。
+                closes = [
+                    number(row.get("close")) for row in history
+                    if str(row.get("date") or "") < trade_date and number(row.get("close")) is not None
+                ]
+                live_price = number(quote.get("price"))
+                if live_price is not None:
+                    closes.append(live_price)
                 if not closes:
                     continue
                 # 白名单价格穿越 MA5/10/20/30 时告警；均线价格取最近 N 个交易日收盘价。
                 if stock.get("alertPool") == "白名单":
                     price = number(quote.get("price"))
+                    axis_direction = macd_axis_direction(closes)
                     if price is not None:
                         for period in (5, 10, 20, 30):
                             if len(closes) < period:
@@ -2285,6 +2328,13 @@ def scan_macd_alerts() -> None:
                             crossed_down = previous_relation is not None and previous_relation > 0 >= relation
                             if not (crossed_up or crossed_down):
                                 continue
+                            # MA 上穿只在 MACD 位于 0 轴上方且继续走强时提示；
+                            # 下穿只在 MACD 位于 0 轴下方且继续走弱时提示。这样
+                            # 水下反弹、水上回落都不会产生反向的均线告警。
+                            if crossed_up and axis_direction != "up":
+                                continue
+                            if crossed_down and axis_direction != "down":
+                                continue
                             open_price = number(quote.get("open"))
                             direction = "↑" if open_price is not None and price > open_price else "↓" if open_price is not None and price < open_price else "--"
                             tone = "red" if crossed_up else "green"
@@ -2297,7 +2347,7 @@ def scan_macd_alerts() -> None:
                                 "price": price,
                                 "changePct": number(quote.get("changePct")),
                                 "openPrice": number(quote.get("open")),
-                                "industry": quote.get("actualIndustry") or quote.get("industry") or stock.get("industry") or "--",
+                                "industry": industry,
                                 "board": "growth" if re.match(r"^(300|301)", code) else "starBse" if re.match(r"^(688|689|4|8|92)", code) else "main",
                                 "pool": "白名单",
                                 "alertType": "maCross",
@@ -2329,7 +2379,7 @@ def scan_macd_alerts() -> None:
                         "name": str(quote.get("name") or stock.get("name") or code).replace("-U", ""),
                         "price": number(quote.get("price")),
                         "changePct": number(quote.get("changePct")),
-                        "industry": quote.get("actualIndustry") or quote.get("industry") or stock.get("industry") or "--",
+                        "industry": industry,
                         "board": "growth" if re.match(r"^(300|301)", code) else "starBse" if re.match(r"^(688|689|4|8|92)", code) else "main",
                         "pool": stock.get("alertPool") or "白名单",
                         "alertType": "macd",
@@ -2361,31 +2411,24 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
     with _cache_lock:
         events = [event for event in _macd_alert_events if event.get("tradeDate") == trade_date]
         status = dict(_macd_scan_status)
-    latest: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+    # 保留当日历史告警供顶部框滚动查看；同一股票、同一秒内的多条信号
+    # 仍合并到一个单元格。不能再按股票只保留最后一次，否则历史不可见。
+    grouped: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
     for event in events:
-        # 每组参数只保留该股票最新一次翻色，随后再按同一秒/同一方向合并。
-        latest[(event["board"], event["code"], event.get("alertType", "macd"), event.get("config") or event.get("signal") or "")] = event
-    grouped: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    for event in latest.values():
-        key = (event["board"], event["code"])
-        current = grouped.get(key)
-        if current is None or (event.get("time") or "") > (current.get("time") or ""):
-            grouped[key] = dict(event)
-    # 同一轮扫描产生的多个信号合并到一个信号单元格，使用换行展示。
-    for key, current in list(grouped.items()):
-        same_round = [
-            event for event in latest.values()
-            if (event["board"], event["code"]) == key
-            and event.get("time") == current.get("time")
-        ]
+        key = (str(event.get("board") or ""), str(event.get("code") or ""), str(event.get("time") or ""))
+        grouped.setdefault(key, []).append(event)
+    visible: List[Dict[str, Any]] = []
+    for same_round in grouped.values():
+        same_round.sort(key=lambda event: (event.get("alertType") or "", event.get("config") or ""))
+        current = dict(same_round[-1])
         if len(same_round) > 1:
-            same_round.sort(key=lambda event: (event.get("alertType") or "", event.get("config") or ""))
             current["signals"] = [
                 {"text": event.get("signal") or "--", "tone": event.get("tone"), "alertType": event.get("alertType", "macd")}
                 for event in same_round
             ]
             current["signal"] = "\n".join(event.get("signal") or "--" for event in same_round)
-    visible = sorted(grouped.values(), key=lambda item: item.get("time") or "")
+        visible.append(current)
+    visible.sort(key=lambda item: item.get("time") or "")
     return {"tradeDate": trade_date, "alerts": visible, "running": status.get("running", False), "updatedAt": datetime.now(CHINA_TZ).isoformat()}
 
 
@@ -7036,18 +7079,17 @@ def main() -> None:
     with open_backtest_db() as connection:
         pass
     connection.close()
-    _minute_predictions = MinutePredictions(BACKTEST_DB_PATH, get_whitelist_stocks, request_json_fast)
-    threading.Thread(target=_minute_predictions.loop, args=(capture_stop,), name="minute-prediction-clock", daemon=True).start()
+    # “白名单·分钟量价预测”已从界面移除，不再启动它的全量后台轮询，
+    # 以免与白名单、分时缩略图和告警争抢行情源与 CPU。
+    _minute_predictions = None
     threading.Thread(target=auction_capture_loop, args=(capture_stop,), name="auction-capture", daemon=True).start()
     threading.Thread(target=follow_up_snapshot_loop, args=(capture_stop,), name="follow-up-snapshot", daemon=True).start()
-    threading.Thread(target=all_market_backtest_loop, args=(capture_stop,), name="all-market-backtest", daemon=True).start()
     print(f"TradingAgents 板块选股工作台已启动: http://{args.host}:{args.port}/")
     if EMT_AUCTION_COMMAND:
         print("EMT 竞价采集已配置：交易日 09:25 后将自动保存竞价快照")
     else:
         print("EMT 竞价采集未配置：涨停复盘将把竞价委买因子标为待接入")
-    print("后续上涨模型将在交易日 15:05 后保存当日候选，并在满 10 个交易日后自动校准")
-    print("全市场历史回测已在后台启动：已完成股票将自动跳过，支持断点续跑")
+    print("分钟量价预测与全市场历史回测已暂停，优先保证名单与图表接口响应")
     print("按 Ctrl+C 停止服务")
     try:
         server.serve_forever()
