@@ -20,11 +20,11 @@ import urllib.error
 import urllib.parse
 from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse
 from pypinyin import lazy_pinyin, Style
 from minute_prediction import MinutePredictions
@@ -356,12 +356,12 @@ _ai_rebound_scan_state: Dict[str, bool] = {"running": False}
 
 
 def is_intraday_alert_session(value: datetime) -> bool:
-    """Only trading-session snapshots may create live alerts."""
+    """Only the user-defined A-share live-data windows may create live alerts."""
     local = value.astimezone(CHINA_TZ)
-    if local.weekday() >= 5:
+    if not is_a_share_trading_day(local.date()):
         return False
     minutes = local.hour * 60 + local.minute
-    return 9 * 60 + 25 <= minutes < 11 * 60 + 30 or 13 * 60 <= minutes < 15 * 60
+    return 9 * 60 + 15 <= minutes < 11 * 60 + 30 or 13 * 60 <= minutes < 15 * 60
 
 
 def is_main_board_code(code: str) -> bool:
@@ -527,10 +527,19 @@ CUSTOM_BLACKLIST_CODES = frozenset({
 # ETF 固定观察池是独立于白名单/黑名单的第三类成员。它们不会参与任何名单
 # 自动流转、收盘扫描或告警池归属；前端仅在“盘中选股 → ETF”中展示。
 ETF_POOL_CODES = frozenset({
-    "688018","688123","688608","688049","688795","688798","688099","688008","688486","688041","688220","688332","688381","688802","688591","688153","688110","688380","688512","688582","688385","688256","688521","688702","688525",
-    "688234","688783","688037","688721","688727","688126","688019","688584","688147","688072","688106","688012","688120","688535","688652","688478","688082","688233","688361","688200","688409","688729","688549","688545","688530","688605","688809","688432","688146",
+    "688512","688381","688262","688591","688593","688515","688173","688601","688653","688525","688049","688141","688702","688380","688209","688107","688385","688153","688252","688709","688521","688325","688008","688536","688766","688608","688332","688449","688508","688582","688691","688484","688279","688486","688052","688206","688110","688728","688018","688047","688798","688213","688002","688256","688041","688220","688123","688795","688099","688802",
+    "688234","688783","688037","688721","688727","688126","688019","688584","688147","688072","688106","688012","688120","688535","688652","688478","688082","688233","688361","688200","688409","688729","688549","688545","688530","688605","688809","688432","688146","688720",
     "688615","688561","688111","688158","688228","688088","688327","688047","688343","688107","688686","688568","688400","688775","688322",
 })
+# 科技固定观察池与 ETF 一样独立于白名单/黑名单。CPO、PCB、光纤三组
+# 成分由页面菜单固定展示，避免与自动选股池重复出现。
+TECH_POOL_BASKETS = {
+    "CPO": frozenset("300394 300308 300502 002281 000988 603083 300548 688205 301205 688498 688048 688313 300620 920045 688807 300570 688195 688167 300757 688312 688808 688025".split()),
+    "PCB": frozenset("600183 688519 002636 603186 301217 301511 600176 603256 301526 601208 300395 603002 002463 300476 002916 002384 002938 603228 688183 001389 002436 603920 002815 002913 000823 600601 603328 300814 300852 300903 603175 603459 301200 301377 688630 002008 688025 688531 001232 301366 301041".split()),
+    "光纤": frozenset("603688 603938 601869 688143 600487 600522 600498 603618 002491 600105 600869 600345".split()),
+}
+TECH_POOL_CODES = frozenset().union(*TECH_POOL_BASKETS.values())
+FIXED_OBSERVATION_POOL_CODES = ETF_POOL_CODES | TECH_POOL_CODES
 CUSTOM_BLACKLIST_REASON = "自定义黑名单"
 CUSTOM_BLACKLIST_INDUSTRIES = frozenset({
     "汽车服务", "燃气Ⅱ", "养殖业", "游戏Ⅱ", "照明设备Ⅱ", "证券Ⅱ",
@@ -756,8 +765,9 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
             if now.hour == 15 and now.minute >= 5 and trade_date not in blacklist_captured_dates:
                 refresh_daily_blacklist(trade_date)
                 save_daily_whitelist_snapshot(trade_date)
+                archived = archive_post_close_quote_snapshot(trade_date)
                 blacklist_captured_dates.add(trade_date)
-                print(f"黑名单及白名单收盘快照已保存：{trade_date}")
+                print(f"黑名单及白名单收盘快照已保存：{trade_date}；本地报价归档 {archived} 只")
         except (MarketDataError, OSError, ValueError, sqlite3.Error) as exc:
             print(f"后台全市场评分扫描失败: {exc}")
 
@@ -1215,6 +1225,137 @@ def tushare_pro_request(api_name: str, params: Dict[str, Any], fields: str) -> D
     return result
 
 
+_a_share_trade_day_cache: Dict[str, bool] = {}
+
+
+def is_a_share_trading_day(value: date) -> bool:
+    """Resolve the SSE trading calendar once, with SQLite persistence for holidays."""
+    trade_date = value.isoformat()
+    if value.weekday() >= 5:
+        return False
+    with _cache_lock:
+        cached = _a_share_trade_day_cache.get(trade_date)
+    if cached is not None:
+        return cached
+    try:
+        with open_backtest_db() as connection:
+            row = connection.execute(
+                "SELECT is_open FROM a_share_trading_calendar WHERE trade_date=?", (trade_date,)
+            ).fetchone()
+        if row is not None:
+            is_open = bool(row[0])
+        else:
+            payload = tushare_pro_request(
+                "trade_cal", {"exchange": "SSE", "start_date": value.strftime("%Y%m%d"), "end_date": value.strftime("%Y%m%d")},
+                "cal_date,is_open",
+            )
+            items = (payload.get("data") or {}).get("items") or []
+            fields = (payload.get("data") or {}).get("fields") or []
+            record = dict(zip(fields, items[0])) if items and isinstance(items[0], list) else (items[0] if items else {})
+            if not record:
+                raise MarketDataError("交易日历未返回日期")
+            is_open = str(record.get("is_open") or "0") in {"1", "True", "true"}
+            with open_backtest_db() as connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO a_share_trading_calendar(trade_date,is_open,source,updated_at) VALUES (?,?,?,?)",
+                    (trade_date, int(is_open), "Tushare Pro trade_cal", datetime.now(CHINA_TZ).isoformat()),
+                )
+    except (MarketDataError, OSError, sqlite3.Error, TypeError, ValueError):
+        # 日历源临时不可用时保持可用性；周末已在上方严格排除，工作日使用本地兜底。
+        is_open = value.weekday() < 5
+    with _cache_lock:
+        _a_share_trade_day_cache[trade_date] = is_open
+    return is_open
+
+
+def latest_local_market_trade_date(reference_date: str, strictly_before: bool = False) -> Optional[str]:
+    """Find the newest locally persisted close date without touching a market API."""
+    operator = "<" if strictly_before else "<="
+    with open_backtest_db() as connection:
+        row = connection.execute(
+            f"SELECT MAX(trade_date) FROM ("
+            f"SELECT trade_date FROM daily_close_quotes WHERE trade_date {operator} ? "
+            f"UNION ALL SELECT trade_date FROM whitelist_daily_snapshots WHERE trade_date {operator} ?"
+            f")", (reference_date, reference_date),
+        ).fetchone()
+    return str(row[0]) if row and row[0] else None
+
+
+def get_market_data_policy(now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Single time rule shared by list APIs and the browser refresh scheduler."""
+    current = (now or datetime.now(CHINA_TZ)).astimezone(CHINA_TZ)
+    today = current.date().isoformat()
+    seconds = current.hour * 3600 + current.minute * 60 + current.second
+    is_trade_day = is_a_share_trading_day(current.date())
+    live = is_trade_day and (
+        9 * 3600 + 15 * 60 <= seconds < 11 * 3600 + 30 * 60
+        or 13 * 3600 <= seconds < 15 * 3600
+    )
+    before_open = is_trade_day and seconds < 9 * 3600 + 15 * 60
+    if live:
+        effective_date = today
+        mode = "live"
+        refresh_seconds = 30
+    elif before_open:
+        effective_date = latest_local_market_trade_date(today, strictly_before=True) or today
+        mode = "previous-close"
+        refresh_seconds = 0
+    else:
+        effective_date = (today if is_trade_day else latest_local_market_trade_date(today)) or today
+        mode = "current-close" if is_trade_day else "previous-close"
+        refresh_seconds = 0
+    return {
+        "tradeDate": effective_date,
+        "mode": mode,
+        "live": live,
+        "refreshSeconds": refresh_seconds,
+        "updatedAt": current.isoformat(),
+    }
+
+
+def get_menu_members(menu: str, codes: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Return persisted menu membership immediately; quote hydration happens separately."""
+    if menu not in {"whitelist", "blacklist", "etf", "tech"}:
+        raise ValueError("未知菜单")
+    requested = list(dict.fromkeys(codes or []))
+    if requested and (len(requested) > 300 or any(not re.fullmatch(r"\d{6}", code) for code in requested)):
+        raise ValueError("菜单股票范围不正确")
+    now = datetime.now(CHINA_TZ)
+    if menu == "whitelist":
+        snapshot = load_latest_whitelist_snapshot() or {"stocks": [], "tradeDate": None}
+        members = [
+            {"code": str(stock.get("code") or ""), "name": str(stock.get("name") or stock.get("code") or ""),
+             "industry": str(stock.get("industry") or stock.get("actualIndustry") or "--")}
+            for stock in snapshot.get("stocks") or [] if re.fullmatch(r"\d{6}", str(stock.get("code") or ""))
+        ]
+        return {"menu": menu, "tradeDate": snapshot.get("tradeDate"), "members": members, "source": "本地 SQLite 白名单成员快照"}
+    if menu == "blacklist":
+        with open_backtest_db() as connection:
+            date_row = connection.execute("SELECT MAX(trade_date) FROM daily_blacklist WHERE trade_date<=?", (now.date().isoformat(),)).fetchone()
+            trade_date = str(date_row[0] or "") if date_row else ""
+            rows = connection.execute(
+                "SELECT code,name,industry,reason FROM daily_blacklist WHERE trade_date=? ORDER BY code", (trade_date,)
+            ).fetchall() if trade_date else []
+        return {"menu": menu, "tradeDate": trade_date or None, "members": [
+            {"code": str(code), "name": str(name or code), "industry": str(industry or "--"), "reason": str(reason or "--")}
+            for code, name, industry, reason in rows
+        ], "source": "本地 SQLite 黑名单成员快照"}
+    with open_backtest_db() as connection:
+        date_row = connection.execute("SELECT MAX(trade_date) FROM daily_close_quotes WHERE trade_date<=?", (now.date().isoformat(),)).fetchone()
+        trade_date = str(date_row[0] or "") if date_row else ""
+        placeholders = ",".join("?" for _ in requested)
+        rows = connection.execute(
+            f"SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=? AND code IN ({placeholders})", (trade_date, *requested)
+        ).fetchall() if trade_date and requested else []
+    quotes = {str(code): json.loads(raw) for code, raw in rows}
+    members = []
+    for code in requested:
+        quote = quotes.get(code) or {}
+        members.append({"code": code, "name": str(quote.get("name") or code), "industry": str(quote.get("industry") or "--"), **quote})
+    label = "ETF" if menu == "etf" else "科技"
+    return {"menu": menu, "tradeDate": trade_date or None, "members": members, "source": f"本地 SQLite {label} 成员与收盘快照"}
+
+
 def fetch_tushare_auction_rows(trade_date: str) -> List[Dict[str, Any]]:
     """Fetch opening auction rows for one trading day from Tushare Pro."""
     payload = tushare_pro_request(
@@ -1632,7 +1773,13 @@ def latest_tushare_trade_date(reference_date: Optional[str] = None) -> Optional[
         current = datetime.now(CHINA_TZ).replace(tzinfo=None)
     for offset in range(0, 8):
         candidate = (current - timedelta(days=offset)).strftime("%Y%m%d")
-        payload = tushare_pro_request("daily", {"trade_date": candidate}, "ts_code,trade_date,close")
+        try:
+            payload = tushare_pro_request("daily", {"trade_date": candidate}, "ts_code,trade_date,close")
+        except MarketDataError:
+            # 日频额度耗尽时短时间内不再重复探测，调用方会切到腾讯/东财/新浪链路。
+            with _cache_lock:
+                _latest_tushare_trade_date_cache.update(created_at=time.monotonic(), reference=reference, value=None)
+            return None
         if (payload.get("data") or {}).get("items"):
             result = f"{candidate[:4]}-{candidate[4:6]}-{candidate[6:]}"
             with _cache_lock:
@@ -1715,6 +1862,197 @@ def load_cached_daily_rows(code: str) -> List[Dict[str, Any]]:
         raise MarketDataError(f"{code} 本地历史缓存没有有效 K 线")
     add_moving_averages(rows)
     return rows
+
+
+_close_snapshot_metadata_lock = threading.Lock()
+_close_snapshot_metadata_loaded: Set[str] = set()
+
+
+def hydrate_close_snapshot_metadata(trade_date: str, requested_codes: Optional[List[str]] = None) -> None:
+    """Fill cached close snapshots with last-session caps, flow and industry once."""
+    if not trade_date:
+        return
+    with _close_snapshot_metadata_lock:
+        if trade_date in _close_snapshot_metadata_loaded:
+            return
+        try:
+            rows, _ = fetch_market_rows("all")
+            metadata = {
+                str(row.get("f12") or ""): {
+                    "netInflow": number(row.get("f62")),
+                    "marketCap": number(row.get("f20")),
+                    "floatMarketCap": number(row.get("f21")),
+                    "turnover": number(row.get("f8")),
+                    "industry": str(row.get("f100") or "").strip() or "全 A 股",
+                }
+                for row in rows if str(row.get("f12") or "")
+            }
+            if not metadata:
+                return
+            with open_backtest_db() as connection:
+                cached_rows = connection.execute(
+                    "SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=?", (trade_date,)
+                ).fetchall()
+                updates = []
+                for stock_code, raw in cached_rows:
+                    patch = metadata.get(str(stock_code))
+                    if not patch:
+                        continue
+                    quote = json.loads(raw or "{}")
+                    quote.update({key: value for key, value in patch.items() if value is not None})
+                    quote["actualIndustry"] = quote.get("industry") or "全 A 股"
+                    updates.append((json.dumps(quote, ensure_ascii=False), trade_date, str(stock_code)))
+                if updates:
+                    connection.executemany(
+                        "UPDATE daily_close_quotes SET quote_json=? WHERE trade_date=? AND code=?", updates
+                    )
+                    connection.commit()
+            _close_snapshot_metadata_loaded.add(trade_date)
+        except (MarketDataError, OSError, ValueError, sqlite3.Error, TypeError, json.JSONDecodeError):
+            # 东方财富批量源不可用时，用腾讯的批量快照补市值与换手。仅补当前
+            # 请求的 ETF/名单个股，不扫描全市场，也不会阻塞后续本地读取。
+            codes = [str(code) for code in (requested_codes or []) if re.fullmatch(r"\d{6}", str(code))]
+            if not codes:
+                return
+            try:
+                url = TENCENT_BATCH_QUOTE_URL + ",".join(tencent_quote_symbol(code) for code in codes)
+                response = subprocess.run(
+                    ["curl", "-fsSL", "--connect-timeout", "2", "--max-time", "5", url],
+                    capture_output=True, check=True, timeout=6,
+                )
+                metadata: Dict[str, Dict[str, Any]] = {}
+                for match in re.finditer(r'="([^"]+)"', response.stdout.decode("gb18030", errors="replace")):
+                    fields = match.group(1).split("~")
+                    if len(fields) < 46 or fields[2] not in codes:
+                        continue
+                    metadata[fields[2]] = {
+                        "marketCap": number(fields[44]) * 100_000_000 if number(fields[44]) is not None else None,
+                        "floatMarketCap": number(fields[45]) * 100_000_000 if number(fields[45]) is not None else None,
+                        "turnover": number(fields[38]),
+                    }
+                if not metadata:
+                    return
+                with open_backtest_db() as connection:
+                    updates = []
+                    for stock_code, patch in metadata.items():
+                        row = connection.execute(
+                            "SELECT quote_json FROM daily_close_quotes WHERE trade_date=? AND code=?",
+                            (trade_date, stock_code),
+                        ).fetchone()
+                        if not row:
+                            continue
+                        quote = json.loads(row[0] or "{}")
+                        quote.update({key: value for key, value in patch.items() if value is not None})
+                        updates.append((json.dumps(quote, ensure_ascii=False), trade_date, stock_code))
+                    if updates:
+                        connection.executemany(
+                            "UPDATE daily_close_quotes SET quote_json=? WHERE trade_date=? AND code=?", updates
+                        )
+                        connection.commit()
+            except (OSError, ValueError, sqlite3.Error, TypeError, json.JSONDecodeError, subprocess.SubprocessError):
+                return
+
+
+def load_local_post_close_stock(code: str) -> Optional[Dict[str, Any]]:
+    """Build a chart entirely from SQLite outside trading hours.
+
+    ``midterm_history_cache`` keeps the historical bars and the close-snapshot
+    table supplies the latest completed session.  When the history cache has
+    not yet received that last bar, append it locally instead of making the
+    chart modal wait for an external provider.
+    """
+    if is_intraday_alert_session(datetime.now(CHINA_TZ)):
+        return None
+    try:
+        with open_backtest_db() as connection:
+            # 必须以全库最新已完成交易日为锚点。不能因为某只股票只存有
+            # 更早的快照，就把 9/22 的数据混进整体已更新到 9/23 的页面。
+            latest_snapshot_row = connection.execute(
+                "SELECT MAX(trade_date) FROM daily_close_quotes WHERE trade_date<=?",
+                (datetime.now(CHINA_TZ).date().isoformat(),),
+            ).fetchone()
+            latest_snapshot_date = str(latest_snapshot_row[0] or "") if latest_snapshot_row else ""
+        # 市值、最近交易日净流入和行业是行情快照的附属字段，首次读取按批
+        # 回填一次；之后所有 ETF/名单页都只读 SQLite。
+        hydrate_close_snapshot_metadata(latest_snapshot_date, [code])
+        with open_backtest_db() as connection:
+            row = connection.execute(
+                "SELECT quote_json FROM daily_close_quotes WHERE code=? AND trade_date=?",
+                (code, latest_snapshot_date),
+            ).fetchone()
+            # 旧版 list_quote_cache 没有按交易日归档；只在尚未形成任何收盘
+            # 快照的首次启动场景使用它，避免回退到过期个股数据。
+            if not row and not latest_snapshot_date:
+                row = connection.execute("SELECT quote_json FROM list_quote_cache WHERE code=?", (code,)).fetchone()
+            concept_row = connection.execute(
+                "SELECT concepts_json FROM stock_concept_cache WHERE code=?", (code,)
+            ).fetchone()
+        if not row:
+            return None
+        quote = json.loads(row[0] or "{}")
+        close = number(quote.get("price"))
+        trade_date = str(quote.get("quoteTradeDate") or "")
+        if close is None or not trade_date:
+            return None
+        rows = load_cached_daily_rows(code)
+        latest = rows[-1] if rows else {}
+        if str(latest.get("date") or "") != trade_date:
+            previous_close = number(quote.get("previousClose")) or number(latest.get("close"))
+            rows.append({
+                "date": trade_date,
+                "open": number(quote.get("open")) or close,
+                "close": close,
+                "high": number(quote.get("high")) or close,
+                "low": number(quote.get("low")) or close,
+                "volume": number(quote.get("volume")) or 0.0,
+                "changePct": number(quote.get("changePct")) if number(quote.get("changePct")) is not None else return_pct(previous_close, close),
+                "changeAmount": close - previous_close if previous_close is not None else None,
+            })
+        else:
+            latest.update({"close": close, "high": number(quote.get("high")) or close, "low": number(quote.get("low")) or close})
+            latest["changePct"] = number(quote.get("changePct"))
+        rows = rows[-HISTORY_DAYS:]
+        add_moving_averages(rows)
+        concepts = []
+        if concept_row:
+            try:
+                concepts = [
+                    item.get("name") if isinstance(item, dict) else str(item)
+                    for item in json.loads(concept_row[0] or "[]")
+                ]
+                concepts = [item for item in concepts if item and "报预增" not in item]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                concepts = []
+        result = enrich_stock({
+            "code": code,
+            "name": quote.get("name") or code,
+            "price": close,
+            "changePct": number(quote.get("changePct")),
+            "changeAmount": number(quote.get("changeAmount")),
+            "volume": number(quote.get("volume")) or 0.0,
+            "amount": number(quote.get("amount")),
+            "high": number(quote.get("high")) or close,
+            "low": number(quote.get("low")) or close,
+            "open": number(quote.get("open")) or close,
+            "previousClose": number(quote.get("previousClose")),
+            "updatedAt": quote.get("quoteTime"),
+            "quoteTradeDate": trade_date,
+            "liveQuote": False,
+            "dataSource": "本地 SQLite 最新交易日收盘快照",
+            "netInflow": number(quote.get("netInflow")),
+            "marketCap": number(quote.get("marketCap")),
+            "floatMarketCap": number(quote.get("floatMarketCap")),
+            "turnover": number(quote.get("turnover")),
+            "relatedConcepts": concepts,
+            "history": rows,
+        })
+        # enrich_stock 的静态行业只是分析兜底；列表优先展示收盘快照保存的
+        # 实际行业，避免 ETF 固定成分全显示为“全 A 股”。
+        result["industry"] = str(quote.get("industry") or result.get("industry") or "全 A 股")
+        result["actualIndustry"] = str(quote.get("actualIndustry") or result["industry"])
+        return result
+    except (sqlite3.Error, OSError, TypeError, ValueError, json.JSONDecodeError, MarketDataError):
+        return None
 
 
 def apply_completed_daily_quote(stock: Dict[str, Any], code: str) -> Dict[str, Any]:
@@ -2207,7 +2545,7 @@ def macd_axis_direction(closes: List[float], fast_period: int = 10, slow_period:
 
 
 def collect_macd_alert_universe() -> Dict[str, Dict[str, Any]]:
-    """Build the fixed alert universe: whitelist plus the independent ETF pool."""
+    """Build the alert universe: whitelist plus independent ETF/科技观察池。"""
     universe: Dict[str, Dict[str, Any]] = {}
     try:
         whitelist = get_whitelist_stocks()
@@ -2217,6 +2555,10 @@ def collect_macd_alert_universe() -> Dict[str, Dict[str, Any]]:
                 universe[code] = {**stock, "alertPool": "白名单"}
     except (MarketDataError, OSError, TypeError, ValueError, sqlite3.Error):
         pass
+    for code in TECH_POOL_CODES:
+        if code in universe:
+            continue
+        universe[code] = {"code": code, "name": code, "industry": "--", "alertPool": "科技"}
     for code in ETF_POOL_CODES:
         if code in universe:
             continue
@@ -2254,7 +2596,52 @@ def record_market_alert(event: Dict[str, Any]) -> None:
         print(f"告警历史写入失败: {exc}")
 
 
-def get_market_alert_history(trade_date: str, keyword: str = "", market: str = "all", page: int = 1, page_size: int = 50) -> Dict[str, Any]:
+def resolve_market_alert_history_trade_date(requested_date: str = "") -> str:
+    """Use today's events in-session, otherwise replay the latest saved trading day."""
+    if requested_date:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", requested_date):
+            raise ValueError("交易日格式应为 YYYY-MM-DD")
+        return requested_date
+    now_local = datetime.now(CHINA_TZ)
+    today = now_local.strftime("%Y-%m-%d")
+    if is_intraday_alert_session(now_local):
+        return today
+    with open_backtest_db() as connection:
+        row = connection.execute(
+            "SELECT MAX(trade_date) FROM market_alert_history WHERE trade_date<=?", (today,)
+        ).fetchone()
+    return str(row[0]) if row and row[0] else today
+
+
+ALERT_SIGNAL_FILTERS = ("lowOpenUp", "highOpenDown", "maDown", "maUp", "macdUp", "macdDown")
+
+
+def classify_market_alert_signal(signal: Any) -> str:
+    text = str(signal or "")
+    if text.startswith("低开高走"):
+        return "lowOpenUp"
+    if text.startswith("高开低走"):
+        return "highOpenDown"
+    if text.startswith("跌至") and "日线" in text:
+        return "maDown"
+    if text.startswith("涨至") and "日线" in text:
+        return "maUp"
+    if text.startswith("MACD 翻红"):
+        return "macdUp"
+    if text.startswith("MACD 翻绿"):
+        return "macdDown"
+    return ""
+
+
+def get_market_alert_history(
+    trade_date: str,
+    keyword: str = "",
+    market: str = "all",
+    page: int = 1,
+    page_size: int = 50,
+    codes: Optional[List[str]] = None,
+    signal_filter: str = "",
+) -> Dict[str, Any]:
     """Query durable alert events for the alert-pool dialog."""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", trade_date):
         raise ValueError("交易日格式应为 YYYY-MM-DD")
@@ -2263,23 +2650,46 @@ def get_market_alert_history(trade_date: str, keyword: str = "", market: str = "
     board_map = {"main": "main", "chinext": "growth", "starBse": "starBse"}
     if market not in {"all", *board_map}:
         raise ValueError("市场筛选参数不正确")
+    if signal_filter and signal_filter not in ALERT_SIGNAL_FILTERS:
+        raise ValueError("信号筛选参数不正确")
     clauses = ["trade_date=?"]
     params: List[Any] = [trade_date]
     if market != "all":
         clauses.append("board=?")
         params.append(board_map[market])
-    if keyword.strip():
-        clauses.append("(code LIKE ? OR name LIKE ?)")
-        like = f"%{keyword.strip()}%"
-        params.extend([like, like])
+    if codes:
+        valid_codes = list(dict.fromkeys(code for code in codes if re.fullmatch(r"\d{6}", code)))
+        if len(valid_codes) != len(codes) or len(valid_codes) > 1000:
+            raise ValueError("告警历史股票范围不正确")
+        clauses.append(f"code IN ({','.join('?' for _ in valid_codes)})")
+        params.extend(valid_codes)
     where = " AND ".join(clauses)
     with open_backtest_db() as connection:
-        total = int(connection.execute(f"SELECT COUNT(*) FROM market_alert_history WHERE {where}", params).fetchone()[0])
         rows = connection.execute(
             f"SELECT id,trade_date,alert_time,code,name,board,pool,price,change_pct,industry,alert_type,config,signal,tone,signals_json "
-            f"FROM market_alert_history WHERE {where} ORDER BY alert_time ASC, created_at ASC LIMIT ? OFFSET ?",
-            [*params, page_size, (page - 1) * page_size],
+            f"FROM market_alert_history WHERE {where} ORDER BY alert_time ASC, created_at ASC",
+            params,
         ).fetchall()
+    # 告警历史表没有单独的拼音字段；按交易日读取后用同一套拼音首字母规则匹配，
+    # 同时支持代码、中文名称与首字母（如 xhy / 新恒汇）。
+    needle = keyword.strip().lower()
+    if needle:
+        rows = [
+            row for row in rows
+            if needle in str(row[3] or "").lower()
+            or needle in str(row[4] or "").lower()
+            or needle in stock_name_initials(row[4])
+        ]
+    signal_counts = {key: 0 for key in ALERT_SIGNAL_FILTERS}
+    for row in rows:
+        key = classify_market_alert_signal(row[12])
+        if key:
+            signal_counts[key] += 1
+    if signal_filter:
+        rows = [row for row in rows if classify_market_alert_signal(row[12]) == signal_filter]
+    total = len(rows)
+    start = (page - 1) * page_size
+    rows = rows[start:start + page_size]
     items = []
     for row in rows:
         signals = []
@@ -2292,7 +2702,7 @@ def get_market_alert_history(trade_date: str, keyword: str = "", market: str = "
             "board": row[5], "pool": row[6], "price": row[7], "changePct": row[8], "industry": row[9],
             "alertType": row[10], "config": row[11], "signal": row[12], "tone": row[13], "signals": signals,
         })
-    return {"tradeDate": trade_date, "rows": items, "total": total, "page": page, "pageSize": page_size, "pages": max(1, math.ceil(total / page_size))}
+    return {"tradeDate": trade_date, "rows": items, "total": total, "page": page, "pageSize": page_size, "pages": max(1, math.ceil(total / page_size)), "signalCounts": signal_counts}
 
 
 def alert_industry(stock: Dict[str, Any], quote: Dict[str, Any]) -> str:
@@ -2359,7 +2769,7 @@ def scan_macd_alerts() -> None:
                 except (MarketDataError, OSError, TypeError, ValueError, sqlite3.Error):
                     # ETF 固定池首次参与扫描时未必已有本地日线缓存；仅此时按需
                     # 补齐日线，之后会命中个股缓存，避免每轮扫描重复穿透行情源。
-                    if universe.get(code, {}).get("alertPool") != "ETF":
+                    if universe.get(code, {}).get("alertPool") not in {"ETF", "科技"}:
                         raise
                     history = get_stock_data(code).get("history") or []
                 quote = {
@@ -2389,8 +2799,8 @@ def scan_macd_alerts() -> None:
                 # 计算 MACD，但缺少实时快照的股票不应只带着“--”进入告警框。
                 if number(quote.get("price")) is None or number(quote.get("changePct")) is None:
                     continue
-                # ETF 是独立观察池，但告警规则与白名单相同。
-                if stock.get("alertPool") in {"白名单", "ETF"}:
+                # ETF、科技都是独立观察池，但告警规则与白名单相同。
+                if stock.get("alertPool") in {"白名单", "ETF", "科技"}:
                     opening = number(quote.get("open"))
                     previous_close = number(quote.get("previousClose"))
                     price = number(quote.get("price"))
@@ -2442,8 +2852,8 @@ def scan_macd_alerts() -> None:
                     closes.append(live_price)
                 if not closes:
                     continue
-                # 白名单与 ETF 价格穿越 MA5/10/20/30 时告警；均线价格取最近 N 个交易日收盘价。
-                if stock.get("alertPool") in {"白名单", "ETF"}:
+                # 白名单、ETF、科技价格穿越 MA5/10/20/30 时告警；均线价格取最近 N 个交易日收盘价。
+                if stock.get("alertPool") in {"白名单", "ETF", "科技"}:
                     price = number(quote.get("price"))
                     axis_direction = macd_axis_direction(closes)
                     if price is not None:
@@ -3326,18 +3736,135 @@ def tencent_quote_symbol(code: str) -> str:
     return ("bj" if bse_code(code) else "sh" if code.startswith(("5", "6", "9")) else "sz") + code
 
 
+def archive_post_close_quote_snapshot(trade_date: str) -> int:
+    """Persist dated quote records so off-hours reads never require a provider."""
+    try:
+        normalized = datetime.strptime(trade_date, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        return 0
+    with open_backtest_db() as connection:
+        rows = connection.execute("SELECT code,quote_json FROM list_quote_cache").fetchall()
+        values = []
+        saved_at = datetime.now(CHINA_TZ).isoformat()
+        for code, raw in rows:
+            try:
+                quote = json.loads(raw)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if str(quote.get("quoteTradeDate") or "") != normalized:
+                continue
+            if number(quote.get("price")) is None:
+                continue
+            values.append((normalized, str(code), json.dumps(quote, ensure_ascii=False), saved_at))
+        if values:
+            connection.executemany(
+                "INSERT OR REPLACE INTO daily_close_quotes(trade_date,code,quote_json,saved_at) VALUES (?,?,?,?)",
+                values,
+            )
+            connection.commit()
+    return len(values)
+
+
+def persist_completed_close_quote(stock: Dict[str, Any]) -> None:
+    """Persist one off-hours provider result for all list/chart menus to reuse."""
+    if is_intraday_alert_session(datetime.now(CHINA_TZ)):
+        return
+    code = str(stock.get("code") or "")
+    history = stock.get("history") or []
+    latest_bar = history[-1] if history else {}
+    trade_date = str(stock.get("quoteTradeDate") or latest_bar.get("date") or "")
+    price = number(stock.get("price"))
+    if not re.fullmatch(r"\d{6}", code) or not trade_date or price is None:
+        return
+    quote = {
+        "code": code, "name": stock.get("name") or code,
+        "price": price, "changePct": number(stock.get("changePct")),
+        "changeAmount": number(stock.get("changeAmount")),
+        "volume": number(stock.get("volume")), "amount": number(stock.get("amount")),
+        "netInflow": number(stock.get("netInflow")),
+        "marketCap": number(stock.get("marketCap")),
+        "floatMarketCap": number(stock.get("floatMarketCap")),
+        "turnover": number(stock.get("turnover")),
+        "industry": stock.get("actualIndustry") or stock.get("industry"),
+        "high": number(stock.get("high")) or price, "low": number(stock.get("low")) or price,
+        "open": number(stock.get("open")) or price,
+        "previousClose": number(stock.get("previousClose")),
+        "quoteTradeDate": trade_date,
+        "quoteTime": stock.get("updatedAt") or f"{trade_date}T15:00:00+08:00",
+        "quoteSource": "本地 SQLite 最新交易日收盘快照",
+        "liveQuote": False,
+    }
+    saved_at = datetime.now(CHINA_TZ).isoformat()
+    try:
+        with open_backtest_db() as connection:
+            raw = json.dumps(quote, ensure_ascii=False)
+            connection.execute("INSERT OR REPLACE INTO list_quote_cache(code,quote_json) VALUES (?,?)", (code, raw))
+            connection.execute(
+                "INSERT OR REPLACE INTO daily_close_quotes(trade_date,code,quote_json,saved_at) VALUES (?,?,?,?)",
+                (trade_date, code, raw, saved_at),
+            )
+            connection.commit()
+    except (sqlite3.Error, OSError, TypeError, ValueError):
+        pass
+
+
 _list_quote_lock = threading.Lock()
 _list_quote_cache: Dict[str, Any] = {}
 
 
 def hydrate_list_quotes(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Refresh known members in batches; persist dated quotes independently of membership."""
-    # 盘后必须统一使用最近完整交易日。此时腾讯接口会返回盘前/缓存时戳，
-    # 既可能污染交易日，也会与 Tushare 收盘快照争抢网络连接。
-    if not is_intraday_alert_session(datetime.now(CHINA_TZ)):
+    now_local = datetime.now(CHINA_TZ)
+    intraday = is_intraday_alert_session(now_local)
+    # 收盘后允许腾讯批量接口补一遍当日最终报价；开盘前则不再请求实时源，
+    # 只使用已落库的最近交易日快照，避免把盘前报价误当成新交易日数据。
+    post_close = now_local.weekday() < 5 and now_local.hour >= 15
+    if not intraday and not post_close:
         return payload
     stocks = payload.get("stocks") or []
     codes = sorted({str(s["code"]) for s in stocks if re.fullmatch(r"\d{6}", str(s.get("code", "")))})
+
+    # 收盘后优先使用已归档的“最近交易日”快照。这里刻意不以自然日判断，
+    # 因而周末、节假日也会读取上一个交易日，而不会为同一份收盘数据反复请求
+    # 腾讯、东方财富或 Tushare。
+    if post_close and codes:
+        try:
+            with open_backtest_db() as db:
+                snapshot_rows = db.execute(
+                    "SELECT code,quote_json FROM daily_close_quotes "
+                    "WHERE trade_date=(SELECT MAX(trade_date) FROM daily_close_quotes WHERE trade_date<=?)",
+                    (now_local.date().isoformat(),),
+                ).fetchall()
+                concepts = dict(db.execute("SELECT code,concepts_json FROM stock_concept_cache"))
+            close_quotes = {str(code): json.loads(raw) for code, raw in snapshot_rows}
+            # 停牌股的收盘价可能为 0/空，但只要该交易日已有归档就视为缓存
+            # 命中，不能为它反复发起第三方请求。
+            complete_snapshot = all(
+                (close_quotes.get(code) or {}).get("quoteTradeDate")
+                for code in codes
+            )
+            if complete_snapshot:
+                for stock in stocks:
+                    code = str(stock.get("code") or "")
+                    quote = close_quotes.get(code)
+                    if quote:
+                        stock.update(quote)
+                        stock["liveQuote"] = False
+                        stock["quoteSource"] = "本地 SQLite 最新交易日收盘快照"
+                        stock["dataUnavailable"] = False
+                        stock["nameInitials"] = stock_name_initials(stock.get("name"))
+                    if code in concepts:
+                        items = json.loads(concepts[code])
+                        stock["relatedConcepts"] = [c.get("name") if isinstance(c, dict) else str(c) for c in items]
+                        stock["relatedConcepts"] = [c for c in stock["relatedConcepts"] if c and "报预增" not in c]
+                dates = [str(s.get("quoteTradeDate")) for s in stocks if s.get("quoteTradeDate")]
+                payload["membershipDate"] = payload.get("membershipDate") or payload.get("tradeDate")
+                payload["tradeDate"] = max(dates) if dates else payload.get("tradeDate")
+                payload["source"] = "本地 SQLite 最新交易日收盘快照"
+                return payload
+        except (sqlite3.Error, OSError, TypeError, ValueError, json.JSONDecodeError):
+            # 本地快照尚未完整落库时，沿用下方批量源作为一次性补齐手段。
+            pass
     with _list_quote_lock:
         with open_backtest_db() as db:
             db.execute("CREATE TABLE IF NOT EXISTS list_quote_cache (code TEXT PRIMARY KEY, quote_json TEXT NOT NULL)")
@@ -3362,9 +3889,12 @@ def hydrate_list_quotes(payload: Dict[str, Any]) -> Dict[str, Any]:
                     if not value(3) or value(3) <= 0:
                         continue
                     result[f[2]] = dict(name=f[1], price=value(3), changePct=value(32),
+                        open=value(5), high=value(33), low=value(34),
                         previousClose=value(4), amount=value(37, 10000), turnover=value(38),
                         marketCap=value(44, 100000000), floatMarketCap=value(45, 100000000),
-                        quoteTime=stamp.isoformat(), quoteTradeDate=stamp.date().isoformat(), quoteSource="腾讯行情")
+                        quoteTime=stamp.isoformat(), quoteTradeDate=stamp.date().isoformat(),
+                        quoteSource="腾讯行情收盘快照" if post_close else "腾讯行情",
+                        liveQuote=intraday)
                 return result
             except (OSError, ValueError, MarketDataError, subprocess.SubprocessError):
                 return {}
@@ -3468,6 +3998,8 @@ def hydrate_list_quotes(payload: Dict[str, Any]) -> Dict[str, Any]:
             db.executemany("INSERT OR REPLACE INTO list_quote_cache VALUES (?,?)",
                            [(c, json.dumps(quotes[c], ensure_ascii=False)) for c in due if c in quotes])
             concepts = dict(db.execute("SELECT code,concepts_json FROM stock_concept_cache"))
+        if post_close:
+            archive_post_close_quote_snapshot(now_local.date().isoformat())
         for stock in stocks:
             code = stock.get("code")
             quote = quotes.get(code)
@@ -3487,9 +4019,9 @@ def hydrate_list_quotes(payload: Dict[str, Any]) -> Dict[str, Any]:
             payload["membershipDate"] = payload.get("membershipDate") or payload.get("tradeDate")
             payload["tradeDate"] = max(dates)
             if payload.get("fallback"):
-                payload["source"] = f'{payload.get("source") or "本地 SQLite 白名单完整快照"} / 腾讯报价补齐'
+                payload["source"] = f'{payload.get("source") or "本地 SQLite 白名单完整快照"} / 腾讯收盘快照补齐' if post_close else f'{payload.get("source") or "本地 SQLite 白名单完整快照"} / 腾讯报价补齐'
             else:
-                payload["source"] = "腾讯批量行情 / 本地缓存（名单按最近扫描结果）"
+                payload["source"] = "腾讯收盘快照（最新交易日）" if post_close else "腾讯批量行情 / 本地缓存（名单按最近扫描结果）"
         return payload
 
 
@@ -4067,7 +4599,7 @@ def get_industry_options() -> Dict[str, Any]:
 def get_industry_blacklist(local_only: bool = True) -> Dict[str, Any]:
     """Return the live universe excluded by the intraday industry blacklist."""
     permanent_codes = get_permanent_whitelist_codes()
-    etf_codes = ETF_POOL_CODES
+    etf_codes = FIXED_OBSERVATION_POOL_CODES
 
     def keep_blacklist_stock(stock: Dict[str, Any], custom_entries: Dict[str, Dict[str, Any]]) -> bool:
         code = str(stock.get("code") or "")
@@ -4105,18 +4637,56 @@ def get_industry_blacklist(local_only: bool = True) -> Dict[str, Any]:
                 "SELECT code,name,industry,reason FROM daily_blacklist WHERE trade_date=?",
                 (fallback_date,),
             ).fetchall() if fallback_date else []
+            latest_close = connection.execute(
+                "SELECT MAX(trade_date) FROM daily_close_quotes WHERE trade_date<=?",
+                (datetime.now(CHINA_TZ).date().isoformat(),),
+            ).fetchone()
+            close_date = str(latest_close[0] or "") if latest_close else ""
+            close_rows = connection.execute(
+                "SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=?", (close_date,)
+            ).fetchall() if close_date else []
         # 黑名单表本身只存判定结果，不存行情字段。主行情接口失败时，
         # 用最近一次已完成扫描日的 Tushare 全市场日线补齐收盘价、涨跌幅和成交额，
         # 避免页面只剩下名称和原因。Tushare 失败时仍保留原有本地兜底。
         daily_snapshot: Dict[str, Dict[str, Any]] = {}
+        for code, raw in close_rows:
+            try:
+                daily_snapshot[str(code)] = json.loads(raw)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        if daily_snapshot:
+            # 黑名单名单归属日可早于报价日；价格仍统一使用本地最近收盘日。
+            fallback_date = close_date
         now_local = datetime.now(CHINA_TZ)
-        if fallback_date and not is_intraday_alert_session(now_local):
+        # 只有本地归档尚未建立时，才用三方日线补一次并由后续报价缓存持久化。
+        if fallback_date and not daily_snapshot and not is_intraday_alert_session(now_local):
             try:
                 latest_date = latest_tushare_trade_date(now_local.strftime("%Y-%m-%d")) or fallback_date
                 daily_snapshot = fetch_tushare_daily_snapshot(latest_date)
                 fallback_date = latest_date
             except (MarketDataError, OSError, TypeError, ValueError):
                 daily_snapshot = {}
+        # 兜底三方日线只使用一次：结果立即写入按交易日归档，后续黑名单分页
+        # 和其它菜单都将直接命中 SQLite。
+        if daily_snapshot and not close_rows and fallback_date:
+            saved_at = datetime.now(CHINA_TZ).isoformat()
+            snapshot_values = []
+            for code, quote in daily_snapshot.items():
+                normalized = {
+                    **quote,
+                    "quoteTradeDate": str(quote.get("quoteTradeDate") or fallback_date),
+                    "quoteTime": quote.get("quoteTime") or f"{fallback_date}T15:00:00+08:00",
+                    "quoteSource": quote.get("quoteSource") or "Tushare Pro 最新交易日收盘归档",
+                    "liveQuote": False,
+                }
+                snapshot_values.append((fallback_date, str(code), json.dumps(normalized, ensure_ascii=False), saved_at))
+            if snapshot_values:
+                with open_backtest_db() as connection:
+                    connection.executemany(
+                        "INSERT OR REPLACE INTO daily_close_quotes(trade_date,code,quote_json,saved_at) VALUES (?,?,?,?)",
+                        snapshot_values,
+                    )
+                    connection.commit()
         custom_entries = get_custom_blacklist_entries()
         stocks = []
         seen = set()
@@ -4165,14 +4735,22 @@ def get_industry_blacklist(local_only: bool = True) -> Dict[str, Any]:
                 "reason": entry.get("reason") or CUSTOM_BLACKLIST_REASON,
                 "dataUnavailable": not bool(daily),
             })
-        return filter_large_float_cap_stocks(hydrate_list_quotes({
-            "source": "本地 SQLite 黑名单收盘判定 + Tushare 最新日线（实时行情源暂不可用）" if daily_snapshot else "本地 SQLite 黑名单收盘判定（行情源暂不可用）",
+        result_payload = hydrate_list_quotes({
+            "source": "本地 SQLite 最新交易日收盘快照（黑名单收盘判定）" if daily_snapshot else "本地 SQLite 黑名单收盘判定（行情源暂不可用）",
             "tradeDate": fallback_date or None,
             "updatedAt": datetime.now(CHINA_TZ).isoformat(),
             "cached": True,
             "fallback": True,
             "stocks": stocks,
-        }), custom_entries)
+        })
+        # 无论快照最初由哪家行情源写入，只要本次读取来自归档库，页面必须
+        # 明确展示本地 SQLite，避免误解为每次都在请求腾讯。
+        if daily_snapshot:
+            result_payload["source"] = "本地 SQLite 最新交易日收盘快照（黑名单收盘判定）"
+            for stock in result_payload.get("stocks", []):
+                stock["quoteSource"] = "本地 SQLite 最新交易日收盘快照"
+                stock["liveQuote"] = False
+        return filter_large_float_cap_stocks(result_payload, custom_entries)
     stocks = []
     custom_entries = get_custom_blacklist_entries()
     trade_date = datetime.now(CHINA_TZ).strftime("%Y-%m-%d")
@@ -4286,7 +4864,7 @@ def save_daily_whitelist_snapshot(trade_date: str, payload: Optional[Dict[str, A
     """Persist the post-close whitelist so historical review never re-fetches live APIs."""
     payload = payload or get_whitelist_stocks(rebuild_membership=True)
     payload = promote_cap_only_blacklist_entries(payload)
-    stocks = [stock for stock in (payload.get("stocks") or []) if str(stock.get("code") or "") not in ETF_POOL_CODES]
+    stocks = [stock for stock in (payload.get("stocks") or []) if str(stock.get("code") or "") not in FIXED_OBSERVATION_POOL_CODES]
     if not stocks:
         return
     now = datetime.now(CHINA_TZ).isoformat()
@@ -4461,7 +5039,7 @@ def get_whitelist_stocks(trade_date: Optional[str] = None, rebuild_membership: b
     custom_codes = get_custom_blacklist_codes()
     permanent_entries = get_permanent_whitelist_entries()
     permanent_codes = frozenset(permanent_entries)
-    etf_codes = ETF_POOL_CODES
+    etf_codes = FIXED_OBSERVATION_POOL_CODES
     try:
         active_blacklist_codes = {
             str(item.get("code") or "")
@@ -4555,12 +5133,49 @@ def get_whitelist_stocks(trade_date: Optional[str] = None, rebuild_membership: b
         return payload
 
     def hydrate_missing_whitelist_quotes(payload: Dict[str, Any]) -> Dict[str, Any]:
-        """补齐快照成员的实时报价，避免分布图因局部快照缺字段而失真."""
+        """统一白名单报价口径；盘后必须覆盖为最近完整交易日收盘数据。"""
         missing = {str(stock.get("code") or "") for stock in payload.get("stocks", []) if number(stock.get("changePct")) is None}
-        if not missing:
+        now = datetime.now(CHINA_TZ)
+        # 盘中只为缺失报价补齐，避免无谓全量请求；盘后则无条件用最新日线
+        # 覆盖快照中的盘中/旧缓存价格和涨跌幅，保证收盘扫描后全表同一交易日。
+        if is_intraday_alert_session(now) and not missing:
             return payload
         try:
-            now = datetime.now(CHINA_TZ)
+            # 盘后页面先读已归档的收盘快照。这一步必须在 Tushare 调用之前，
+            # 否则每次打开白名单都会重复请求日线接口并覆盖本地来源说明。
+            if not is_intraday_alert_session(now):
+                with open_backtest_db() as connection:
+                    local_rows = connection.execute(
+                        "SELECT code,quote_json FROM daily_close_quotes "
+                        "WHERE trade_date=(SELECT MAX(trade_date) FROM daily_close_quotes WHERE trade_date<=?)",
+                        (now.date().isoformat(),),
+                    ).fetchall()
+                    local_concepts = dict(connection.execute("SELECT code,concepts_json FROM stock_concept_cache"))
+                local_quotes = {str(code): json.loads(raw) for code, raw in local_rows}
+                payload_codes = [str(stock.get("code") or "") for stock in payload.get("stocks", [])]
+                complete_local_snapshot = bool(payload_codes) and all(
+                    (local_quotes.get(code) or {}).get("quoteTradeDate")
+                    for code in payload_codes
+                )
+                if complete_local_snapshot:
+                    for stock in payload.get("stocks", []):
+                        code = str(stock.get("code") or "")
+                        quote = local_quotes[code]
+                        stock.update(quote)
+                        stock["liveQuote"] = False
+                        stock["quoteSource"] = "本地 SQLite 最新交易日收盘快照"
+                        stock["dataUnavailable"] = False
+                        if code in local_concepts:
+                            items = json.loads(local_concepts[code])
+                            stock["relatedConcepts"] = [c.get("name") if isinstance(c, dict) else str(c) for c in items]
+                            stock["relatedConcepts"] = [c for c in stock["relatedConcepts"] if c and "报预增" not in c]
+                    dates = [str(stock.get("quoteTradeDate")) for stock in payload.get("stocks", []) if stock.get("quoteTradeDate")]
+                    payload["membershipDate"] = payload.get("membershipDate") or payload.get("tradeDate")
+                    payload["tradeDate"] = max(dates) if dates else payload.get("tradeDate")
+                    payload["quoteTradeDate"] = payload.get("tradeDate")
+                    payload["source"] = "本地 SQLite 最新交易日收盘快照"
+                    payload["quoteSupplemented"] = len(local_quotes)
+                    return payload
             by_code = {}
             if is_intraday_alert_session(now):
                 rows, _ = fetch_market_rows("all")
@@ -4581,15 +5196,38 @@ def get_whitelist_stocks(trade_date: Optional[str] = None, rebuild_membership: b
                     payload["tradeDate"] = latest_date
                     payload["quoteTradeDate"] = latest_date
                     payload["source"] = "Tushare Pro 最新交易日（非交易时间）"
+                else:
+                    # Tushare 限频/临时故障：退回已持久化的腾讯、东方财富报价。
+                    # 只取不晚于当前日期的最新一批，避免盘前把旧缓存错误标成今天。
+                    with open_backtest_db() as connection:
+                        cached_rows = connection.execute("SELECT code,quote_json FROM list_quote_cache").fetchall()
+                    cached_quotes: Dict[str, Dict[str, Any]] = {}
+                    for code, raw in cached_rows:
+                        try:
+                            quote = json.loads(raw)
+                        except (TypeError, json.JSONDecodeError):
+                            continue
+                        quote_date = str(quote.get("quoteTradeDate") or "")
+                        if quote_date and quote_date <= now.date().isoformat():
+                            cached_quotes[str(code)] = quote
+                    fallback_date = max((str(item.get("quoteTradeDate") or "") for item in cached_quotes.values()), default="")
+                    if fallback_date:
+                        by_code = {
+                            code: quote for code, quote in cached_quotes.items()
+                            if str(quote.get("quoteTradeDate") or "") == fallback_date
+                        }
+                        payload["tradeDate"] = fallback_date
+                        payload["quoteTradeDate"] = fallback_date
+                        payload["source"] = "本地腾讯 / 东方财富最新交易日行情缓存（Tushare 日线限频兜底）"
             for stock in payload.get("stocks", []):
                 code = str(stock.get("code") or "")
-                quote = by_code.get(code) if (is_intraday_alert_session(now) or code in missing) else by_code.get(code)
+                quote = by_code.get(code)
                 if quote:
                     for key in ("name", "price", "changePct", "netInflow", "marketCap", "floatMarketCap", "turnover", "amount", "quoteTime", "quoteTradeDate"):
                         if quote.get(key) is not None:
                             stock[key] = quote[key]
                     stock["dataUnavailable"] = False
-                elif not is_intraday_alert_session(now):
+                elif not is_intraday_alert_session(now) and not by_code:
                     stock["dataUnavailable"] = True
             payload["quoteSupplemented"] = len(by_code)
         except (MarketDataError, OSError, ValueError):
@@ -4710,7 +5348,7 @@ def refresh_daily_blacklist(trade_date: str) -> None:
     _, _ = filter_steady_decline_quotes(quotes)
     reasons = {}
     for quote in quotes:
-        if str(quote.get("code") or "") in permanent_codes or str(quote.get("code") or "") in ETF_POOL_CODES:
+        if str(quote.get("code") or "") in permanent_codes or str(quote.get("code") or "") in FIXED_OBSERVATION_POOL_CODES:
             continue
         name = str(quote.get("name") or "")
         industry = quote.get("actualIndustry")
@@ -5586,6 +6224,10 @@ def open_backtest_db() -> sqlite3.Connection:
     connection.execute("""CREATE TABLE IF NOT EXISTS etf_pool_members (
         code TEXT PRIMARY KEY, created_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
     )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS tech_pool_members (
+        code TEXT NOT NULL, category TEXT NOT NULL, created_at TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(code, category)
+    )""")
     connection.execute("""CREATE TABLE IF NOT EXISTS whitelist_label_overrides (
         code TEXT PRIMARY KEY, label TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -5607,16 +6249,22 @@ def open_backtest_db() -> sqlite3.Connection:
         "ON CONFLICT(code) DO UPDATE SET active=1",
         [(code, seed_time) for code in ETF_POOL_CODES],
     )
+    connection.executemany(
+        "INSERT INTO tech_pool_members(code,category,created_at,active) VALUES (?,?,?,1) "
+        "ON CONFLICT(code,category) DO UPDATE SET active=1",
+        [(code, category, seed_time) for category, codes in TECH_POOL_BASKETS.items() for code in codes],
+    )
+    connection.execute("UPDATE etf_pool_members SET active=0 WHERE code='788766'")
     # 若用户后来把已有自定义黑名单票指定为永久白名单，立即解除黑名单状态。
     connection.execute(
         "UPDATE custom_blacklist SET active=0 WHERE code IN (SELECT code FROM permanent_whitelist WHERE active=1)"
     )
-    # ETF 固定成分独立展示。迁移已有记录，防止旧的白/黑名单快照或手工归属
+    # ETF / 科技固定成分独立展示。迁移已有记录，防止旧的白/黑名单快照或手工归属
     # 在升级后继续把它们显示出来；后续生成路径也会持续过滤这些代码。
-    etf_placeholders = ",".join("?" for _ in ETF_POOL_CODES)
-    connection.execute(f"UPDATE custom_blacklist SET active=0 WHERE code IN ({etf_placeholders})", tuple(ETF_POOL_CODES))
-    connection.execute(f"UPDATE manual_whitelist SET active=0 WHERE code IN ({etf_placeholders})", tuple(ETF_POOL_CODES))
-    connection.execute(f"DELETE FROM daily_blacklist WHERE code IN ({etf_placeholders})", tuple(ETF_POOL_CODES))
+    fixed_pool_placeholders = ",".join("?" for _ in FIXED_OBSERVATION_POOL_CODES)
+    connection.execute(f"UPDATE custom_blacklist SET active=0 WHERE code IN ({fixed_pool_placeholders})", tuple(FIXED_OBSERVATION_POOL_CODES))
+    connection.execute(f"UPDATE manual_whitelist SET active=0 WHERE code IN ({fixed_pool_placeholders})", tuple(FIXED_OBSERVATION_POOL_CODES))
+    connection.execute(f"DELETE FROM daily_blacklist WHERE code IN ({fixed_pool_placeholders})", tuple(FIXED_OBSERVATION_POOL_CODES))
     connection.execute("""CREATE TABLE IF NOT EXISTS rebound_daily_scores (
         trade_date TEXT NOT NULL, code TEXT NOT NULL, name TEXT,
         daily_score INTEGER NOT NULL, factors_json TEXT,
@@ -5653,6 +6301,16 @@ def open_backtest_db() -> sqlite3.Connection:
         code TEXT PRIMARY KEY, latest_date TEXT NOT NULL,
         bars_json TEXT NOT NULL, fetched_at TEXT NOT NULL
     )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS daily_close_quotes (
+        trade_date TEXT NOT NULL, code TEXT NOT NULL,
+        quote_json TEXT NOT NULL, saved_at TEXT NOT NULL,
+        PRIMARY KEY (trade_date, code)
+    )""")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_daily_close_quotes_code_date ON daily_close_quotes(code, trade_date DESC)")
+    connection.execute("""CREATE TABLE IF NOT EXISTS a_share_trading_calendar (
+        trade_date TEXT PRIMARY KEY, is_open INTEGER NOT NULL,
+        source TEXT NOT NULL, updated_at TEXT NOT NULL
+    )""")
     connection.execute("""CREATE TABLE IF NOT EXISTS stock_concept_cache (
         code TEXT PRIMARY KEY,
         concepts_json TEXT NOT NULL,
@@ -5664,7 +6322,7 @@ def open_backtest_db() -> sqlite3.Connection:
         stock_json TEXT NOT NULL, saved_at TEXT NOT NULL,
         PRIMARY KEY (trade_date, code)
     )""")
-    connection.execute(f"DELETE FROM whitelist_daily_snapshots WHERE code IN ({etf_placeholders})", tuple(ETF_POOL_CODES))
+    connection.execute(f"DELETE FROM whitelist_daily_snapshots WHERE code IN ({fixed_pool_placeholders})", tuple(FIXED_OBSERVATION_POOL_CODES))
     connection.execute("""CREATE TABLE IF NOT EXISTS market_alert_history (
         id TEXT PRIMARY KEY,
         trade_date TEXT NOT NULL, alert_time TEXT NOT NULL,
@@ -5692,7 +6350,7 @@ def get_custom_blacklist_entries() -> Dict[str, Dict[str, Any]]:
     entries = {
         str(code): {"name": str(name or ""), "reason": str(reason or CUSTOM_BLACKLIST_REASON)}
         for code, name, reason in rows
-        if code and str(code) not in ETF_POOL_CODES
+        if code and str(code) not in FIXED_OBSERVATION_POOL_CODES
     }
     with _cache_lock:
         _custom_blacklist_codes_cache = frozenset(entries)
@@ -5714,28 +6372,34 @@ def get_permanent_whitelist_entries() -> Dict[str, Dict[str, Any]]:
             "industry": str(industry or PERMANENT_WHITELIST_INDUSTRY),
         }
         for code, name, industry in rows
-        if code and str(code) not in ETF_POOL_CODES
+        if code and str(code) not in FIXED_OBSERVATION_POOL_CODES
     }
     # 数据库首次升级或被外部清理时，代码内置名单仍然作为安全兜底。
     for code in PERMANENT_WHITELIST_CODES:
-        if code not in ETF_POOL_CODES:
+        if code not in FIXED_OBSERVATION_POOL_CODES:
             entries.setdefault(code, {"name": code, "industry": PERMANENT_WHITELIST_INDUSTRIES.get(code, PERMANENT_WHITELIST_INDUSTRY)})
     for code, name, industry in manual_rows:
-        if code and str(code) not in ETF_POOL_CODES:
-            entries[str(code)] = {"name": str(name or code), "industry": str(industry or "自定义白名单")}
+        if code and str(code) not in FIXED_OBSERVATION_POOL_CODES:
+            # 手动迁入只是归属方式，不是行业分类；不在下拉框中制造“自定义白名单”行业。
+            entries[str(code)] = {"name": str(name or code), "industry": str(industry or "其他")}
     return entries
 
 
 def promote_blacklist_entry_to_whitelist(code: str, name: str = "") -> None:
     """Persist a user-requested blacklist -> whitelist migration."""
-    if code in ETF_POOL_CODES:
+    if code in FIXED_OBSERVATION_POOL_CODES:
         return
     global _custom_blacklist_codes_cache
     with open_backtest_db() as connection:
+        row = connection.execute(
+            "SELECT industry FROM daily_blacklist WHERE code=? AND industry IS NOT NULL AND industry<>'' "
+            "ORDER BY trade_date DESC LIMIT 1", (code,)
+        ).fetchone()
+        industry = str(row[0] or "其他") if row else "其他"
         connection.execute(
             "INSERT INTO manual_whitelist(code,name,industry,created_at,active) VALUES (?,?,?,?,1) "
             "ON CONFLICT(code) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE manual_whitelist.name END, active=1",
-            (code, name, "自定义白名单", datetime.now(CHINA_TZ).isoformat()),
+            (code, name, industry, datetime.now(CHINA_TZ).isoformat()),
         )
         connection.execute("UPDATE custom_blacklist SET active=0 WHERE code=?", (code,))
         connection.execute("DELETE FROM daily_blacklist WHERE code=?", (code,))
@@ -5761,7 +6425,7 @@ def get_custom_blacklist_codes() -> frozenset[str]:
 
 def add_custom_blacklist_entry(code: str, name: str = "") -> None:
     """将用户从白名单手工移除的股票持久化为自定义黑名单。"""
-    if is_permanent_whitelist_code(code) or code in ETF_POOL_CODES:
+    if is_permanent_whitelist_code(code) or code in FIXED_OBSERVATION_POOL_CODES:
         return
     global _custom_blacklist_codes_cache
     now = datetime.now(CHINA_TZ).isoformat()
@@ -6494,6 +7158,14 @@ def get_limit_up_candidates(force_refresh: bool = False) -> Dict[str, Any]:
 
 
 def get_stock_data(code: str, force_refresh: bool = False) -> Dict[str, Any]:
+    # 收盘后图表严格优先本地历史 + 当日收盘快照，避免每次打开遮罩层都穿透
+    # 腾讯/东财/新浪接口，也避免第三方超时导致整张 K 线为空。
+    if not force_refresh and not is_intraday_alert_session(datetime.now(CHINA_TZ)):
+        local_payload = load_local_post_close_stock(code)
+        if local_payload:
+            with _cache_lock:
+                _stock_cache[code] = {"created_at": time.monotonic(), "payload": local_payload}
+            return local_payload
     now = time.monotonic()
     with _cache_lock:
         cached = _stock_cache.get(code)
@@ -6501,6 +7173,10 @@ def get_stock_data(code: str, force_refresh: bool = False) -> Dict[str, Any]:
             return cached["payload"]
 
     payload = fetch_stock(code)
+    # 非交易时段若本地没有该股，允许首次走三方；成功后立刻落库，ETF、
+    # 白/黑名单以及其它盘中选股菜单下次都能复用同一份收盘快照。
+    if not force_refresh and not is_intraday_alert_session(datetime.now(CHINA_TZ)):
+        persist_completed_close_quote(payload)
     with _cache_lock:
         _stock_cache[code] = {"created_at": time.monotonic(), "payload": payload}
     return payload
@@ -7037,6 +7713,16 @@ class AppHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/health":
             self.send_json(200, {"status": "ok", "version": 11, "allMarketBacktest": _all_market_backtest_status})
             return
+        if parsed.path == "/api/data-policy":
+            self.send_json(200, get_market_data_policy())
+            return
+        if parsed.path == "/api/menu-members":
+            try:
+                codes = list(dict.fromkeys(code.strip() for code in query.get("codes", [""])[0].split(",") if code.strip()))
+                self.send_json(200, get_menu_members(query.get("menu", [""])[0], codes))
+            except (ValueError, sqlite3.Error, json.JSONDecodeError) as exc:
+                self.send_json(400, {"error": str(exc) or "菜单成员读取失败"})
+            return
         if parsed.path == "/api/whitelist-labels":
             self.send_json(200, {"labels": get_whitelist_label_overrides()})
             return
@@ -7216,15 +7902,20 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/market-alert-history":
             try:
-                trade_date = query.get("date", [datetime.now(CHINA_TZ).strftime("%Y-%m-%d")])[0]
+                trade_date = resolve_market_alert_history_trade_date(query.get("date", [""])[0].strip())
                 page = int(query.get("page", ["1"])[0])
                 page_size = int(query.get("pageSize", ["50"])[0])
+                codes = list(dict.fromkeys(code.strip() for code in query.get("codes", [""])[0].split(",") if code.strip()))
+                if len(codes) > 1000 or any(not re.fullmatch(r"\d{6}", code) for code in codes):
+                    raise ValueError("告警历史股票范围不正确")
                 self.send_json(200, get_market_alert_history(
                     trade_date,
                     query.get("q", [""])[0],
                     query.get("market", ["all"])[0],
                     page,
                     page_size,
+                    codes,
+                    query.get("signalType", [""])[0],
                 ))
             except (ValueError, sqlite3.Error) as exc:
                 self.send_json(400, {"error": str(exc) or "告警历史读取失败"})
@@ -7360,7 +8051,20 @@ class AppHandler(BaseHTTPRequestHandler):
                 now = datetime.now(CHINA_TZ)
                 if query.get("refresh") == ["1"] and now.weekday() < 5 and (now.hour > 15 or (now.hour == 15 and now.minute >= 5)):
                     refresh_daily_blacklist(now.strftime("%Y-%m-%d"))
-                self.send_json(200, get_industry_blacklist(local_only=not is_intraday_alert_session(now)))
+                payload = get_industry_blacklist(local_only=not is_intraday_alert_session(now))
+                # 黑名单规模较大，接口按页返回；前端接近底部时再追加下一页。
+                # 成员与报价仍在服务端统一生成，保证每页使用同一交易日快照。
+                try:
+                    page = max(1, int(query.get("page", ["1"])[0]))
+                    page_size = min(300, max(50, int(query.get("pageSize", ["100"])[0])))
+                except (TypeError, ValueError):
+                    page, page_size = 1, 100
+                all_stocks = payload.get("stocks") or []
+                total = len(all_stocks)
+                start = (page - 1) * page_size
+                payload["stocks"] = all_stocks[start:start + page_size]
+                payload.update({"total": total, "page": page, "pageSize": page_size, "hasMore": start + page_size < total})
+                self.send_json(200, payload)
             except (MarketDataError, OSError, ValueError) as exc:
                 self.send_json(502, {"error": str(exc)})
             return

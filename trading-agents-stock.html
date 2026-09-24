@@ -392,6 +392,7 @@
     .market-alert-history-body { max-height:calc(88vh - 150px); }
     .market-alert-signal { white-space:pre-line; line-height:1.45; font-weight:700; }
     .market-alert-signal.red { color:var(--red); }.market-alert-signal.green { color:var(--green); }
+    .market-alert-signal .signal-detail, .alert-prediction .signal-detail { font-size:.82em; color:var(--muted); font-weight:600; }
     .market-alert-load-more { padding:14px; text-align:center; color:var(--muted); font-size:12px; }
 
     .brand {
@@ -3210,8 +3211,9 @@
         <button class="alert-pool-close" id="marketAlertHistoryClose" type="button" aria-label="关闭当日告警池">&times;</button>
       </header>
       <div class="market-alert-history-controls">
-        <input id="marketAlertHistorySearch" type="search" placeholder="搜索股票名称或代码" aria-label="搜索告警股票">
+        <input id="marketAlertHistorySearch" type="search" placeholder="搜索名称、代码或首字母" aria-label="搜索告警股票，支持首字母">
         <select id="marketAlertHistoryMarket" aria-label="筛选告警市场"><option value="all">全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="starBse">科创板 / 北交所</option></select>
+        <select id="marketAlertHistorySignal" aria-label="筛选告警信号"><option value="">全部信号</option><option value="lowOpenUp">低开高走</option><option value="highOpenDown">高开低走</option><option value="maDown">跌至日线</option><option value="maUp">涨至日线</option><option value="macdUp">MACD翻红</option><option value="macdDown">MACD翻绿</option></select>
       </div>
       <div class="alert-pool-body market-alert-history-body" id="marketAlertHistoryBody"><div class="alert-pool-empty">正在读取当日告警…</div></div>
     </section>
@@ -3474,8 +3476,8 @@
     const whitelistMarketKeys = new Set(["sh-main", "sz-main", "chinext", "star", "bse"]);
     // ETF 二级菜单下的固定观察成分；去重后按用户给出的顺序展示，不参与名单流转。
     const ETF_BASKETS = {
-      "star-chip": { label:"科创芯片", etfCode:"589070", codes:["688018","688123","688608","688049","688795","688798","688099","688008","688486","688041","688220","688332","688381","688802","688591","688153","688110","688380","688512","688582","688385","688256","688521","688702","688525"] },
-      "star-semiconductor": { label:"科创半导体", etfCode:"588170", codes:["688234","688783","688037","688721","688727","688126","688019","688584","688147","688072","688106","688012","688120","688535","688652","688478","688082","688233","688361","688200","688409","688729","688549","688545","688530","688605","688809","688432","688146"] },
+      "star-chip": { label:"科创芯片", etfCode:"589070", codes:["688512","688381","688262","688591","688593","688515","688173","688601","688653","688525","688049","688141","688702","688380","688209","688107","688385","688153","688252","688709","688521","688325","688008","688536","688766","688608","688332","688449","688508","688582","688691","688484","688279","688486","688052","688206","688110","688728","688018","688047","688798","688213","688002","688256","688041","688220","688123","688795","688099","688802"] },
+      "star-semiconductor": { label:"科创半导体", etfCode:"588170", codes:["688234","688783","688037","688721","688727","688126","688019","688584","688147","688072","688106","688012","688120","688535","688652","688478","688082","688233","688361","688200","688409","688729","688549","688545","688530","688605","688809","688432","688146","688720"] },
       "star-ai": { label:"科创人工智能", etfCode:"589010", codes:["688018","688123","688615","688608","688099","688008","688041","688561","688111","688158","688802","688228","688088","688327","688047","688343","688385","688107","688256","688686","688521","688568","688400","688775","688322"] }
     };
 
@@ -3531,6 +3533,8 @@
       scoreTrace: { code: null, status: "idle", data: [] },
       marketDate: null,
       marketUpdatedAt: null,
+      dataPolicy: null,
+      dataPolicyFetchedAt: 0,
       marketRegime: { label: "常态", minScore: 70 },
       marketSource: null,
       marketIndices: {},
@@ -3538,8 +3542,14 @@
       pageView: "whitelist",
       blacklistStocks: [],
       blacklistShown: 100,
+      blacklistPage: 0,
+      blacklistPageSize: 100,
+      blacklistTotal: 0,
+      blacklistHasMore: true,
+      blacklistLoading: false,
       whitelistStocks: [],
       etfBasketKey: null,
+      techBasketKey: null,
       whitelistShown: 0,
       whitelistSortKey: "changePct",
       whitelistSortDir: "desc",
@@ -3549,6 +3559,7 @@
       whitelistFocusLabelOverrides: new Map(),
       whitelistMiniChartLoading: new Set(),
       whitelistMiniChartRetryAt: {},
+      whitelistMiniChartBatchRunning: false,
       whitelistTrendCache: {},
       whitelistTrendScanRunning: false,
       whitelistMarket: ["all"],
@@ -3623,6 +3634,7 @@
       marketAlertHistoryMeta: document.getElementById("marketAlertHistoryMeta"),
       marketAlertHistorySearch: document.getElementById("marketAlertHistorySearch"),
       marketAlertHistoryMarket: document.getElementById("marketAlertHistoryMarket"),
+      marketAlertHistorySignal: document.getElementById("marketAlertHistorySignal"),
       previewPriceAlertsBtn: document.getElementById("previewPriceAlertsBtn"),
       resetBtn: document.getElementById("resetBtn"),
       refreshBtn: document.getElementById("refreshBtn"),
@@ -3732,6 +3744,7 @@
     let hotGroupRefreshTimer = null;
     let limitUpRefreshTimer = null;
     let listRefreshInFlight = false;
+    let listRefreshNextAt = 0;
     let technologyRefreshInFlight = false;
     let technologyTableSortKey = "";
     let technologyTableSortDir = "desc";
@@ -3997,6 +4010,15 @@
         document.title = `盘中选股 · ETF · ${label}`;
         return;
       }
+      if (state.pageView === "tech-basket") {
+        const basket = TECH_BASKETS[state.techBasketKey];
+        const label = basket?.label || "科技";
+        el.pageTitle.textContent = `盘中选股 · 科技 · ${label}`;
+        el.pageDescription.textContent = `${label}固定观察成分，页面样式与白名单一致；不参与白名单、黑名单的自动流转。`;
+        el.sectorMode.textContent = `盘中选股：科技 / ${label}`;
+        document.title = `盘中选股 · 科技 · ${label}`;
+        return;
+      }
       if (state.pageView === "whitelist") {
         el.pageTitle.textContent = "盘中选股 · 白名单";
         el.pageDescription.textContent = "已扣除当前生效黑名单后的可参与扫描个股。";
@@ -4166,7 +4188,8 @@
         .sort((a, b) => a.localeCompare(b, "zh-CN"));
       const preferredIndustries = ["CPO", "PCB", "光纤"];
       const industries = [
-        ...preferredIndustries,
+        // 置顶行业必须同时有白名单成分，不能留下空的筛选项。
+        ...preferredIndustries.filter(industry => currentIndustries.includes(industry)),
         ...currentIndustries.filter(industry => !preferredIndustries.includes(industry)),
       ];
       setIndustryFilterOptions(el.whitelistIndustryFilter, industries, state.whitelistIndustryFilter);
@@ -4307,6 +4330,37 @@
       loadWhitelistMiniCharts();
     }
 
+    async function loadBlacklistPage({reset = false, forceRefresh = false} = {}) {
+      if (state.blacklistLoading) return;
+      const page = reset ? 1 : state.blacklistPage + 1;
+      if (!reset && !state.blacklistHasMore) return;
+      state.blacklistLoading = true;
+      try {
+        const params = new URLSearchParams({page: String(page), pageSize: String(state.blacklistPageSize)});
+        if (forceRefresh && page === 1) params.set("refresh", "1");
+        const response = await fetch(`/api/blacklist?${params.toString()}`, {cache:"no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "黑名单行情加载失败");
+        const incoming = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, "")}));
+        if (reset) state.blacklistStocks = incoming;
+        else {
+          const existing = new Set(state.blacklistStocks.map(stock => String(stock.code || "")));
+          state.blacklistStocks.push(...incoming.filter(stock => !existing.has(String(stock.code || ""))));
+        }
+        state.blacklistPage = Number(payload.page || page);
+        state.blacklistTotal = Number(payload.total || state.blacklistStocks.length);
+        state.blacklistHasMore = Boolean(payload.hasMore);
+        state.blacklistShown = state.blacklistStocks.length;
+        applyListSource(payload, "黑名单");
+        document.getElementById("blacklistUpdated").textContent = `共 ${state.blacklistTotal.toLocaleString("zh-CN")} 只 · 已加载 ${state.blacklistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${payload.tradeDate || "日期待确认"}`;
+        document.getElementById("blacklistUpdated").title = `${payload.source || ""}；名单扫描日期：${payload.membershipDate || payload.tradeDate || "未知"}`;
+        renderBlacklistTable();
+        renderSectorNavigation();
+      } finally {
+        state.blacklistLoading = false;
+      }
+    }
+
     async function openBlacklist(forceRefresh = false) {
       clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
       if (state.chartOpen) closeChartModal();
@@ -4316,16 +4370,8 @@
       const root = document.getElementById("blacklistBody");
       root.innerHTML = '<tr><td colspan="12">正在加载黑名单行情…</td></tr>';
       try {
-        const response = await fetch(`/api/blacklist${forceRefresh ? "?refresh=1" : ""}`, {cache:"no-store"});
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "黑名单行情加载失败");
-        state.blacklistStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, "")}));
-        applyListSource(payload, "黑名单");
-        state.blacklistShown = Math.min(100, state.blacklistStocks.length);
-        document.getElementById("blacklistUpdated").textContent = `共 ${state.blacklistStocks.length} 只 · 行情 ${payload.tradeDate || "日期待确认"}`;
-        document.getElementById("blacklistUpdated").title = `${payload.source || ""}；名单扫描日期：${payload.membershipDate || payload.tradeDate || "未知"}`;
-        renderBlacklistTable();
-        renderSectorNavigation();
+        state.blacklistPage = 0; state.blacklistTotal = 0; state.blacklistHasMore = true;
+        await loadBlacklistPage({reset:true, forceRefresh});
       } catch (error) {
         root.innerHTML = `<tr><td colspan="12">${escapeHtml(error.message || "黑名单行情加载失败")}</td></tr>`;
       }
@@ -4696,10 +4742,8 @@
         const fastSecondary = ema(closes, 5), slowSecondary = ema(closes, 10); const difSecondary = fastSecondary.map((value, index) => value - slowSecondary[index]); const deaSecondary = ema(difSecondary, 3); const histogramSecondary = difSecondary.map((value, index) => (value - deaSecondary[index]) * 2);
         return miniMacdPair(histogram.slice(-10), histogramSecondary.slice(-10));
       };
-      // 缩略图是附属信息，不能阻塞个股池。此前每次 10 秒列表刷新都会为
-      // 100 行同时启动日线和分时请求，造成白名单主接口超时。首屏只并行补
-      // 12 行，且只加载当前视窗附近的行；滚动后再按需补齐，避免 100 个
-      // 单股历史请求在后台堆积并拖慢主行情。
+      // 缩略图采用小批次轮动预取：白名单全部个股都会补齐，而不是只有
+      // 当前可视区才加载。每轮只并发 4 只，避免把外部行情源瞬间打满。
       const allNodes = [...document.querySelectorAll("[data-whitelist-intraday]")];
       // 行情每 10 秒刷新会重绘表格。先把已经完成的缩略图回填到新 DOM，
       // 否则旧节点虽已加载，下一次重绘后又会变回空白。
@@ -4719,17 +4763,16 @@
         if (trendNode) { trendNode.textContent = cached.trend || "--"; applyWhitelistTrendStyle(trendNode, cached.trend); }
         if (maNode) maNode.innerHTML = cached.ma || "--";
       });
-      const viewportNodes = allNodes.filter(node => {
-        const rect = node.getBoundingClientRect();
-        return rect.bottom >= -160 && rect.top <= window.innerHeight + 320;
-      });
-      const nodes = viewportNodes
+      if (state.whitelistMiniChartBatchRunning) return;
+      const nodes = allNodes
         .filter(node => {
           const code = node.dataset.whitelistIntraday;
           return code && !state.whitelistChartCache[code] && !state.whitelistMiniChartLoading.has(code)
             && (state.whitelistMiniChartRetryAt[code] || 0) <= Date.now();
         })
-        .slice(0, 12);
+        .slice(0, 4);
+      if (!nodes.length) return;
+      state.whitelistMiniChartBatchRunning = true;
       for (let start = 0; start < nodes.length; start += 4) {
         const batch = nodes.slice(start, start + 4);
         await Promise.all(batch.map(async node => {
@@ -4772,15 +4815,17 @@
         } finally { state.whitelistMiniChartLoading.delete(code); }
         }));
       }
-      // 仅继续补齐当前视窗，避免页面外的请求持续占满行情连接。
-      const remaining = viewportNodes
+      state.whitelistMiniChartBatchRunning = false;
+      // 保持轮动，直到已展示名单的所有缩略图均写入缓存；滚到任意位置时
+      // 都只读本地缓存回填，不会再临时发起一大批请求。
+      const remaining = allNodes
         .some(item => {
           const code = item.dataset.whitelistIntraday;
           return code && !state.whitelistChartCache[code] && !state.whitelistMiniChartLoading.has(code)
             && (state.whitelistMiniChartRetryAt[code] || 0) <= Date.now();
         });
       if (remaining && ["whitelist", "etf-basket"].includes(state.pageView)) {
-        window.setTimeout(() => { if (["whitelist", "etf-basket"].includes(state.pageView)) loadWhitelistMiniCharts(); }, 180);
+        window.setTimeout(() => { if (["whitelist", "etf-basket"].includes(state.pageView)) loadWhitelistMiniCharts(); }, 450);
       }
     }
 
@@ -4804,8 +4849,8 @@
       clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
       // ETF 页面复用了白名单表格的数据容器；切回时必须重新读取真实白名单，
       // 不能把 ETF 固定成分误认为“已加载的白名单”。
-      const returningFromEtf = state.pageView === "etf-basket";
-      state.pageView = "whitelist"; state.etfBasketKey = null; state.whitelistShown = 100;
+      const returningFromEtf = ["etf-basket", "tech-basket"].includes(state.pageView);
+      state.pageView = "whitelist"; state.etfBasketKey = null; state.techBasketKey = null; state.whitelistShown = state.whitelistStocks.length;
       if (returningFromEtf) {
         state.whitelistStocks = [];
         forceRefresh = true;
@@ -4815,14 +4860,27 @@
       renderSectorNavigation(); render();
       if (state.whitelistStocks.length && !forceRefresh) return;
       try {
+        // 成员先从本地 SQLite 读取并立刻绘制；完整行情、指标与概念随后异步合并。
+        const fullRequest = fetch(`/api/whitelist${forceRefresh ? "?refresh=1" : ""}`, {cache:"no-store"});
+        const memberResponse = await fetch("/api/menu-members?menu=whitelist", {cache:"no-store"});
+        const memberPayload = await memberResponse.json();
+        if (memberResponse.ok && (memberPayload.members || []).length) {
+          state.whitelistStocks = memberPayload.members.map(stock => ({...stock, name: String(stock.name || stock.code || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock), dataLoading: true}));
+          state.whitelistShown = state.whitelistStocks.length;
+          applyListSource(memberPayload, "白名单");
+          refreshWhitelistIndustryFilterOptions();
+          el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · 正在按批补齐行情`;
+          renderWhitelistRows();
+        }
         await loadWhitelistLabelOverrides();
-        const response = await fetch(`/api/whitelist${forceRefresh ? "?refresh=1" : ""}`, {cache:"no-store"});
+        const response = await fullRequest;
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "白名单加载失败");
         state.whitelistStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock)}));
         applyListSource(payload, "白名单");
         refreshWhitelistIndustryFilterOptions();
-        state.whitelistShown = Math.min(100, state.whitelistStocks.length);
+        // 白名单规模可控，直接完整渲染；缩略图在后台按小批次轮动补齐。
+        state.whitelistShown = state.whitelistStocks.length;
         el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${payload.tradeDate || "日期待确认"}`;
         el.whitelistUpdated.title = `${payload.source || ""}；名单扫描日期：${payload.membershipDate || payload.tradeDate || "未知"}`;
         renderWhitelistRows();
@@ -4830,23 +4888,32 @@
       } catch (error) { el.whitelistBody.innerHTML = `<tr><td colspan="8">${escapeHtml(error.message || "白名单加载失败")}</td></tr>`; }
     }
 
-    async function openEtfBasket(key) {
-      const basket = ETF_BASKETS[key];
+    async function openFixedBasket(key, baskets, menu, pageView, poolLabel) {
+      const basket = baskets[key];
       if (!basket) return;
       clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
       if (state.chartOpen) closeChartModal();
-      state.pageView = "etf-basket";
-      state.etfBasketKey = key;
+      state.pageView = pageView;
+      state.etfBasketKey = pageView === "etf-basket" ? key : null;
+      state.techBasketKey = pageView === "tech-basket" ? key : null;
       state.whitelistShown = basket.codes.length;
       state.whitelistStocks = [];
       state.whitelistSearch = ""; state.whitelistTrendFilter = "all"; state.whitelistRiskFilter = "all";
       state.whitelistIndustryFilter = "all"; state.whitelistMarket = ["all"];
-      el.whitelistTitle.textContent = `盘中选股 · ETF · ${basket.label}`;
+      el.whitelistTitle.textContent = `盘中选股 · ${poolLabel} · ${basket.label}`;
       el.whitelistNote.textContent = "固定成分股池，不参与白名单、黑名单自动流转。";
       el.whitelistUpdated.textContent = `正在读取 ${basket.codes.length} 只固定成分…`;
-      el.whitelistBody.innerHTML = '<tr><td colspan="12">正在读取 ETF 固定成分行情…</td></tr>';
       renderSectorNavigation(); render();
+      // ETF 成分是固定名单：先绘制完整代码行，行情与图表在后台逐批回填。
+      state.whitelistStocks = basket.codes.map(code => ({code, name: code, industry: "--", dataLoading: true}));
+      refreshWhitelistIndustryFilterOptions();
+      renderWhitelistRows();
       const loaded = new Map();
+      try {
+        const memberResponse = await fetch(`/api/menu-members?${new URLSearchParams({menu, codes:basket.codes.join(",")})}`, {cache:"no-store"});
+        const memberPayload = await memberResponse.json();
+        if (memberResponse.ok) (memberPayload.members || []).forEach(stock => loaded.set(String(stock.code), stock));
+      } catch { /* 固定代码行已展示，继续按单股接口补齐 */ }
       // 分批取数，避免切换 ETF 页面时并发请求挤占行情源。
       for (let start = 0; start < basket.codes.length; start += 6) {
         const chunk = basket.codes.slice(start, start + 6);
@@ -4857,6 +4924,14 @@
             if (response.ok && payload.quote) loaded.set(code, payload.quote);
           } catch { /* 保留固定成员，并在表格中显示缺失行情 */ }
         }));
+        // 每批完成立即合并，避免等待整个 ETF 池后才出现价格和行业。
+        if (state.pageView === pageView && (pageView === "etf-basket" ? state.etfBasketKey : state.techBasketKey) === key) {
+          state.whitelistStocks = basket.codes.map(code => {
+            const quote = loaded.get(code) || {code, name: code, dataLoading: true};
+            return {...quote, code, name: String(quote.name || code).replace(/-U$/, ""), industry: normalizeWhitelistIndustry(quote)};
+          });
+          renderWhitelistRows();
+        }
       }
       // 固定列表即使单个行情接口暂不可用也不能丢失成员。
       state.whitelistStocks = basket.codes.map(code => {
@@ -4865,13 +4940,16 @@
       });
       const dates = state.whitelistStocks.map(stock => stock.quoteTradeDate).filter(Boolean).sort();
       const source = [...new Set(state.whitelistStocks.map(stock => stock.dataSource).filter(Boolean))].join(" / ") || "个股行情接口";
-      applyListSource({source:`ETF 固定成分 · ${source}`, tradeDate:dates.at(-1) || null, updatedAt:new Date().toISOString()}, `ETF · ${basket.label}`);
+      applyListSource({source:`${poolLabel} 固定成分 · ${source}`, tradeDate:dates.at(-1) || null, updatedAt:new Date().toISOString()}, `${poolLabel} · ${basket.label}`);
       refreshWhitelistIndustryFilterOptions();
       el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length} 只 · 行情 ${dates.at(-1) || "日期待确认"}`;
-      el.whitelistUpdated.title = `ETF 固定成分；${source}`;
+      el.whitelistUpdated.title = `${poolLabel} 固定成分；${source}`;
       renderWhitelistRows();
       loadAllWhitelistTrends();
     }
+
+    function openEtfBasket(key) { return openFixedBasket(key, ETF_BASKETS, "etf", "etf-basket", "ETF"); }
+    function openTechBasket(key) { return openFixedBasket(key, TECH_BASKETS, "tech", "tech-basket", "科技"); }
 
     function renderSectorNavigation() {
       document.getElementById("technologyNav").classList.toggle("active", ["cpo-panorama", "pcb-panorama", "fiber-panorama", "chip-panorama", "semiconductor-panorama"].includes(state.pageView));
@@ -4914,6 +4992,15 @@
         const expanded = submenu?.hidden !== true;
         if (submenu) submenu.hidden = expanded;
         document.getElementById("etfNav")?.setAttribute("aria-expanded", String(!expanded));
+      });
+      const activeTech = state.pageView === "tech-basket";
+      el.sectorNav.insertAdjacentHTML("beforeend", `<button class="nav-button${activeTech ? " active" : ""}" type="button" id="techNav" aria-expanded="true" aria-controls="techSubmenu"><span>科技</span><span class="nav-count">观察池</span></button><div class="nav-submenu" id="techSubmenu">${Object.entries(TECH_BASKETS).map(([key, basket]) => `<button class="nav-button${activeTech && state.techBasketKey === key ? " active" : ""}" type="button" data-tech-basket="${key}"><span>${basket.label}</span><span class="nav-count">${basket.codes.length}</span></button>`).join("")}</div>`);
+      document.querySelectorAll("[data-tech-basket]").forEach(button => button.addEventListener("click", () => openTechBasket(button.dataset.techBasket)));
+      document.getElementById("techNav")?.addEventListener("click", () => {
+        const submenu = document.getElementById("techSubmenu");
+        const expanded = submenu?.hidden !== true;
+        if (submenu) submenu.hidden = expanded;
+        document.getElementById("techNav")?.setAttribute("aria-expanded", String(!expanded));
       });
       el.hotSectorGroups.innerHTML = Object.entries(hotSectorGroups).map(([group, concepts]) => `
         <div class="hot-sector-group">
@@ -5170,6 +5257,13 @@
     }
 
     function marketSessionState(date = new Date()) {
+      const policy = state.dataPolicy;
+      if (policy && Date.now() - state.dataPolicyFetchedAt < 95_000) {
+        return {
+          active: Boolean(policy.live),
+          label: policy.live ? "交易中" : policy.mode === "previous-close" ? "最近交易日" : "已收盘"
+        };
+      }
       const clock = chinaMarketClock(date);
       if (["Sat", "Sun"].includes(clock.weekday)) return { active: false, label: "休市" };
       const morningStart = 9 * 3600 + 15 * 60;
@@ -5181,6 +5275,18 @@
       if (clock.seconds < afternoonStart) return { active: false, label: "午间休市" };
       if (clock.seconds < afternoonEnd) return { active: true, label: "交易中" };
       return { active: false, label: "已收盘" };
+    }
+
+    async function refreshDataPolicy() {
+      try {
+        const response = await fetch("/api/data-policy", { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "数据时段读取失败");
+        state.dataPolicy = payload;
+        state.dataPolicyFetchedAt = Date.now();
+      } catch {
+        // 网络短暂不可用时保留上一次服务端口径；过期后 marketSessionState 会退回本地时钟。
+      }
     }
 
     function aiComputeSessionActive(date = new Date()) {
@@ -5602,9 +5708,13 @@
         applyMarketPayload(payload);
       } catch (error) {
         if (requestedKey !== marketRequestKey()) return;
-        state.marketStatus = "error";
-        state.marketMessage = error.name === "AbortError" ? "行情接口响应较慢，请点击右上角刷新重试" : (error.message || "无法获取行情");
-        state.marketSource = null;
+        // 默认白名单已成功从本地收盘快照读取时，后台“市场总览”请求失败
+        // 不应覆盖顶部的可用数据源状态，避免出现页面有数据却显示连接失败。
+        if (state.pageView === "screener") {
+          state.marketStatus = "error";
+          state.marketMessage = error.name === "AbortError" ? "行情接口响应较慢，请点击右上角刷新重试" : (error.message || "无法获取行情");
+          state.marketSource = null;
+        }
       } finally {
         if (requestedKey === marketRequestKey()) {
           el.refreshBtn.disabled = false;
@@ -7565,7 +7675,7 @@
             const tone = signalLine.tone === 'red' ? 'macd-alert-signal-red' : 'macd-alert-signal-green';
             const rawSignal = String(signalLine.text || '--');
             const displaySignal = rawSignal === '--' || rawSignal.startsWith('MACD') || signalLine.alertType === 'openMove' || signalLine.alertType === 'maCross' ? rawSignal : `MACD ${rawSignal}`;
-            return `<span class="${tone}">${escapeHtml(displaySignal)}</span>`;
+            return `<span class="${tone}">${formatAlertSignal(displaySignal)}</span>`;
           }).join('<br>');
           const alertTime = String(item.time || '--').slice(0, 8);
           return `<div class="score-alert-item price-alert-item">${identity}<time class="price-alert-time">${escapeHtml(alertTime)}</time><b>${hasNumber(item.price) ? formatPrice(item.price) : '--'}</b><em class="${Number(item.changePct)<0?'down':''}">${hasNumber(item.changePct) ? formatPct(item.changePct) : '--'}</em><small>${escapeHtml(item.industry || '--')}</small><div class="alert-prediction" title="${escapeHtml(item.pool || '')}">${signalMarkup}</div></div>`;
@@ -7769,7 +7879,9 @@
     }
 
     function render() {
-      const showLoading = (state.marketStatus === "loading" && !stocks.length)
+      // 全屏遮罩仅服务于“盘中选股”主扫描页的首次请求。白/黑名单和 ETF
+      // 都有各自的列表加载态，不能因全市场快照延迟而被全屏遮挡。
+      const showLoading = (state.pageView === "screener" && state.marketStatus === "loading" && !stocks.length)
         || (state.pageView === "midterm" && ["loading", "running"].includes(state.midtermScan?.status) && !state.midtermCandidates.length);
       el.pageLoading.hidden = ["cpo-panorama", "pcb-panorama", "fiber-panorama", "chip-panorama", "semiconductor-panorama"].includes(state.pageView) || !showLoading;
       if (showLoading) el.pageLoadingText.textContent = state.pageView === "midterm"
@@ -7785,14 +7897,14 @@
       el.indexAnalysisView.hidden = state.pageView !== "index-analysis";
       document.getElementById("conceptRankView").hidden = state.pageView !== "concept-rank";
       document.getElementById("blacklistView").hidden = state.pageView !== "blacklist";
-      document.getElementById("whitelistView").hidden = !["whitelist", "etf-basket"].includes(state.pageView);
+      document.getElementById("whitelistView").hidden = !["whitelist", "etf-basket", "tech-basket"].includes(state.pageView);
       document.getElementById("cpoPanoramaView").hidden = state.pageView !== "cpo-panorama";
       document.getElementById("pcbPanoramaView").hidden = state.pageView !== "pcb-panorama";
       document.getElementById("fiberPanoramaView").hidden = state.pageView !== "fiber-panorama";
       document.getElementById("chipPanoramaView").hidden = state.pageView !== "chip-panorama";
       document.getElementById("semiconductorPanoramaView").hidden = state.pageView !== "semiconductor-panorama";
       syncDynamicControls();
-      if (["whitelist", "etf-basket"].includes(state.pageView)) renderWhitelistRows();
+      if (["whitelist", "etf-basket", "tech-basket"].includes(state.pageView)) renderWhitelistRows();
       el.scoreValue.textContent = state.minScore;
       renderMarketStatus();
       renderWeights();
@@ -7858,6 +7970,45 @@
       return board === "growth" ? "创业板" : board === "starBse" ? "科创 / 北交" : "主板";
     }
 
+    function formatAlertSignal(signal) {
+      return escapeHtml(String(signal || "--")).replace(/(\([^()\n]*\))/g, '<span class="signal-detail">$1</span>');
+    }
+
+    function syncMarketAlertSignalOptions(counts = {}) {
+      const labels = {
+        lowOpenUp: "低开高走", highOpenDown: "高开低走", maDown: "跌至日线",
+        maUp: "涨至日线", macdUp: "MACD翻红", macdDown: "MACD翻绿"
+      };
+      const selected = el.marketAlertHistorySignal.value;
+      const total = Object.values(counts).reduce((sum, count) => sum + Number(count || 0), 0);
+      el.marketAlertHistorySignal.innerHTML = `<option value="">全部信号 (${total})</option>${Object.entries(labels).map(([key, label]) => `<option value="${key}">${label} (${Number(counts[key] || 0)})</option>`).join("")}`;
+      el.marketAlertHistorySignal.value = selected;
+    }
+
+    function currentMenuAlertScope() {
+      if (state.pageView === "etf-basket") {
+        const basket = ETF_BASKETS[state.etfBasketKey] || {};
+        return {
+          label: `ETF · ${basket.label || "当前组合"}`,
+          codes: [...new Set((basket.codes || []).filter(code => /^\d{6}$/.test(String(code))))],
+        };
+      }
+      if (state.pageView === "tech-basket") {
+        const basket = TECH_BASKETS[state.techBasketKey] || {};
+        return {
+          label: `科技 · ${basket.label || "当前组合"}`,
+          codes: [...new Set((basket.codes || []).filter(code => /^\d{6}$/.test(String(code))))],
+        };
+      }
+      if (state.pageView === "whitelist") {
+        return {
+          label: "白名单",
+          codes: [...new Set((state.whitelistStocks || []).map(stock => String(stock.code || "")).filter(code => /^\d{6}$/.test(code)))],
+        };
+      }
+      return { label: "当日告警", codes: [] };
+    }
+
     function closeMarketAlertHistory() {
       el.marketAlertHistoryModal.hidden = true;
       document.body.classList.remove("modal-open");
@@ -7874,24 +8025,27 @@
       const footer = el.marketAlertHistoryBody.querySelector(".market-alert-load-more");
       if (footer) footer.textContent = "正在加载…";
       try {
-        const params = new URLSearchParams({ page: String(view.page + 1), pageSize: "50", q: el.marketAlertHistorySearch.value.trim(), market: el.marketAlertHistoryMarket.value });
+        const params = new URLSearchParams({ page: String(view.page + 1), pageSize: "50", q: el.marketAlertHistorySearch.value.trim(), market: el.marketAlertHistoryMarket.value, signalType: el.marketAlertHistorySignal.value });
+        const scope = currentMenuAlertScope();
+        if (scope.codes.length) params.set("codes", scope.codes.join(","));
         const response = await fetch(`/api/market-alert-history?${params}`, { cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "告警历史读取失败");
         const tbody = el.marketAlertHistoryBody.querySelector("tbody");
         const rows = payload.rows || [];
+        if (reset) syncMarketAlertSignalOptions(payload.signalCounts || {});
         if (!rows.length && reset) {
           el.marketAlertHistoryBody.innerHTML = '<div class="alert-pool-empty">当日暂未保存告警</div>';
         } else if (tbody) {
           tbody.insertAdjacentHTML("beforeend", rows.map(item => {
             const signals = Array.isArray(item.signals) && item.signals.length ? item.signals.map(signal => signal.text).join("\n") : item.signal || "--";
             const tone = item.tone === "red" ? "red" : item.tone === "green" ? "green" : "";
-            return `<tr><td>${escapeHtml(item.time || "--")}</td><td>${escapeHtml(alertHistoryBoardName(item.board))}</td><td><strong>${escapeHtml(item.name || item.code)}</strong><br><span class="whitelist-code">${escapeHtml(item.code || "--")}</span></td><td>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</td><td class="${quoteClass(item.changePct)}">${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</td><td>${escapeHtml(item.industry || "--")}</td><td>${escapeHtml(item.pool || "--")}</td><td><span class="market-alert-signal ${tone}">${escapeHtml(signals)}</span></td></tr>`;
+            return `<tr><td>${escapeHtml(item.time || "--")}</td><td>${escapeHtml(alertHistoryBoardName(item.board))}</td><td><strong>${escapeHtml(item.name || item.code)}</strong><br><span class="whitelist-code">${escapeHtml(item.code || "--")}</span></td><td>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</td><td class="${quoteClass(item.changePct)}">${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</td><td>${escapeHtml(item.industry || "--")}</td><td>${escapeHtml(item.pool || "--")}</td><td><span class="market-alert-signal ${tone}">${formatAlertSignal(signals)}</span></td></tr>`;
           }).join(""));
           view.page = payload.page;
           view.total = payload.total;
           view.hasMore = view.page < payload.pages;
-          el.marketAlertHistoryMeta.textContent = `${payload.tradeDate} · 已保存 ${payload.total.toLocaleString("zh-CN")} 条告警 · 向下滚动加载更多`;
+          el.marketAlertHistoryMeta.textContent = `${scope.label} · ${payload.tradeDate} · 已保存 ${payload.total.toLocaleString("zh-CN")} 条告警 · 向下滚动加载更多`;
           if (footer) footer.textContent = view.hasMore ? "继续向下滚动加载更多" : `已加载全部 ${payload.total.toLocaleString("zh-CN")} 条`;
         }
       } catch (error) {
@@ -7938,7 +8092,9 @@
       el.alertPoolBody.innerHTML = '<div class="alert-pool-empty">正在读取当日告警…</div>';
       try {
         const query = new URLSearchParams({ market: state.pageView === "screener" ? state.marketScope : "all" });
-        const pageCodes = state.pageView === "cpo-panorama" ? cpoCodes
+        const scopedCodes = currentMenuAlertScope().codes;
+        const pageCodes = scopedCodes.length ? scopedCodes
+          : state.pageView === "cpo-panorama" ? cpoCodes
           : state.pageView === "pcb-panorama" ? pcbCodes
           : state.pageView === "fiber-panorama" ? fiberCodes
           : state.pageView === "chip-panorama" ? chipCodes
@@ -7988,6 +8144,7 @@
       marketAlertHistorySearchTimer = window.setTimeout(() => loadMarketAlertHistory(true), 220);
     });
     el.marketAlertHistoryMarket.addEventListener("change", () => loadMarketAlertHistory(true));
+    el.marketAlertHistorySignal.addEventListener("change", () => loadMarketAlertHistory(true));
 
     el.resetBtn.addEventListener("click", () => {
       clearPendingStockClick();
@@ -8181,11 +8338,19 @@
 
     window.setInterval(() => {
       if (!marketSessionState().active || listRefreshInFlight) return;
-      if (state.pageView !== "whitelist" && state.pageView !== "blacklist") return;
+      if (!["whitelist", "blacklist", "etf-basket", "tech-basket"].includes(state.pageView)) return;
+      if (Date.now() < listRefreshNextAt) return;
       listRefreshInFlight = true;
-      const refresh = state.pageView === "whitelist" ? openWhitelist(true) : openBlacklist(true);
-      Promise.resolve(refresh).finally(() => { listRefreshInFlight = false; });
-    }, 10000);
+      const refreshDelay = state.pageView === "blacklist" ? 60_000 : 30_000;
+      const refresh = state.pageView === "whitelist" ? openWhitelist(true)
+        : state.pageView === "blacklist" ? openBlacklist(true)
+        : state.pageView === "etf-basket" ? openEtfBasket(state.etfBasketKey)
+          : openTechBasket(state.techBasketKey);
+      Promise.resolve(refresh).finally(() => {
+        listRefreshInFlight = false;
+        listRefreshNextAt = Date.now() + refreshDelay;
+      });
+    }, 1000);
 
     window.setInterval(() => {
       if (state.pageView === "sector-strength") {
@@ -8285,6 +8450,13 @@
     ];
     const fiberDescriptions = {"603688":"光纤级高纯石英砂。","300395":"光纤涂料与石英材料。","603938":"四氯化硅等光纤材料。","300398":"光纤涂料及电子材料。","600206":"高纯材料。","601869":"光纤预制棒、光纤光缆。","688143":"特种光纤及光纤绕组等产品。","600487":"光棒、光纤光缆。","600522":"光纤光缆与通信设备。","600498":"通信光纤光缆配套。","603618":"电缆与通信线缆。","002491":"通信线缆及互联。","600105":"光纤光缆及通信线缆。","600869":"电力通信与线缆。","600345":"通信光纤相关业务。"};
     const fiberCodes = fiberLayers.flatMap(([, , , members]) => members.split(",").map(member => { const parts = member.split(" "); return {name:parts[0], code:parts[1]}; }));
+    // 盘中选股 → 科技：复用 AI 算力中的三条产业链，固定成分不参与白/黑名单流转。
+    const fixedBasketCodes = (stocks) => [...new Map(stocks.map(stock => [String(stock.code), String(stock.code)])).keys()];
+    const TECH_BASKETS = {
+      cpo: {label: "CPO", codes: fixedBasketCodes(cpoCodes)},
+      pcb: {label: "PCB", codes: fixedBasketCodes(pcbCodes)},
+      fiber: {label: "光纤", codes: fixedBasketCodes(fiberCodes)},
+    };
     function renderFiberProfiles(quotes = []) { const byCode = Object.fromEntries(quotes.map(quote => [String(quote.code), quote])); const sortedLayers = sortLayerMembers(fiberLayers, byCode); renderLayerTags("fiberPanoramaGroups", sortedLayers); const table = (members) => `<div class="cpo-profile-table"><div class="profile-head">个股</div><div class="profile-head">分时</div><div class="profile-head">价格</div><div class="profile-head">涨幅</div><div class="profile-head">基本介绍</div>${members.split(",").map(member => { const parts = member.split(" "); const stock = {name:parts[0], code:parts[1]}; const quote = byCode[stock.code] || {}; const change = Number(quote.changePct); const tone = Number.isFinite(change) ? (change >= 0 ? "up" : "down") : ""; return `<div>${stockProfileNameLink(stock)}</div><div><span class="cpo-intraday-mini" data-cpo-mini-code="${stock.code}">加载</span></div><div class="cpo-price">${hasNumber(quote.price) ? formatPrice(quote.price) : "--"}</div><div class="cpo-change ${tone}">${Number.isFinite(change) ? formatPct(change) : "--"}</div><div>${escapeHtml(fiberDescriptions[stock.code] || "光纤产业链相关企业，具体业务以公司披露为准。")}</div>`; }).join("")}</div>`; document.getElementById("fiberProfileTable").innerHTML = sortedLayers.map(([title, , color, members]) => `<section class="cpo-profile-group" style="--cpo-color:${color}"><div class="cpo-profile-group-title">${escapeHtml(title)}</div>${table(members)}</section>`).join(""); loadConceptIntradayMiniCharts(); }
     document.getElementById("fiberPanoramaNav").addEventListener("click", () => {
       clearPendingStockClick(); clearSectorRefreshTimer(); clearScreenerRefreshTimer(); clearLimitUpRefreshTimer();
@@ -8408,24 +8580,45 @@
       state.pageView = "concept-rank";
       renderSectorNavigation(); render(); loadConceptRank();
     });
+    function revealMoreWhitelistRows() {
+      // 上限必须按当前筛选结果而非全量名单判断；否则选择市场/行业后会在
+      // 100 条附近错误停止。重绘后保留滚动锚点，用户可以连续向下浏览。
+      const total = whitelistFilteredStocks(true).length;
+      if (state.whitelistShown >= total) return false;
+      const scrollTop = el.whitelistTableWrap.scrollTop;
+      state.whitelistShown = Math.min(total, Math.max(state.whitelistShown, 0) + 100);
+      renderWhitelistRows();
+      requestAnimationFrame(() => { el.whitelistTableWrap.scrollTop = scrollTop; });
+      return true;
+    }
+
+    function revealMoreBlacklistRows() {
+      // 黑名单由服务端分页；接近底部才请求下一页，避免数千行同时渲染。
+      if (!state.blacklistHasMore || state.blacklistLoading) return false;
+      const scrollTop = el.blacklistTableWrap.scrollTop;
+      loadBlacklistPage().then(() => {
+        requestAnimationFrame(() => { el.blacklistTableWrap.scrollTop = scrollTop; });
+      }).catch(error => {
+        console.warn("黑名单下一页加载失败", error);
+      });
+      return true;
+    }
+
     let whitelistMiniChartScrollTimer = null;
     el.whitelistTableWrap.addEventListener("scroll", () => {
-      if (["whitelist", "etf-basket"].includes(state.pageView)) {
+      if (["whitelist", "etf-basket", "tech-basket"].includes(state.pageView)) {
         window.clearTimeout(whitelistMiniChartScrollTimer);
         whitelistMiniChartScrollTimer = window.setTimeout(loadWhitelistMiniCharts, 80);
       }
-      if (state.pageView !== "whitelist" || state.whitelistShown >= state.whitelistStocks.length) return;
+      if (state.pageView !== "whitelist") return;
       const nearBottom = el.whitelistTableWrap.scrollTop + el.whitelistTableWrap.clientHeight >= el.whitelistTableWrap.scrollHeight - 120;
-      if (nearBottom) { state.whitelistShown = Math.min(state.whitelistStocks.length, state.whitelistShown + 100); renderWhitelistRows(); }
+      if (nearBottom) revealMoreWhitelistRows();
     });
     window.addEventListener("resize", syncFixedAlertLayout, {passive:true});
     el.blacklistTableWrap.addEventListener("scroll", () => {
       if (state.pageView !== "blacklist") return;
       const nearBottom = el.blacklistTableWrap.scrollTop + el.blacklistTableWrap.clientHeight >= el.blacklistTableWrap.scrollHeight - 120;
-      if (nearBottom && state.blacklistShown < state.blacklistStocks.length) {
-        state.blacklistShown = Math.min(state.blacklistStocks.length, state.blacklistShown + 100);
-        renderBlacklistTable();
-      }
+      if (nearBottom) revealMoreBlacklistRows();
     });
     function bindStockTableDoubleClick(tableWrap, bodySelector) {
       tableWrap.addEventListener("dblclick", event => {
@@ -8466,13 +8659,16 @@
         const [blacklistPayload, whitelistPayload] = await Promise.all([blacklistResponse.json(), whitelistResponse.json()]);
         if (blacklistResponse.ok) {
           state.blacklistStocks = (blacklistPayload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, "")}));
-          state.blacklistShown = Math.min(100, state.blacklistStocks.length);
-          el.blacklistUpdated.textContent = `共 ${state.blacklistStocks.length} 只 · 行情 ${blacklistPayload.tradeDate || "日期待确认"}`;
+          state.blacklistPage = Number(blacklistPayload.page || 1);
+          state.blacklistTotal = Number(blacklistPayload.total || state.blacklistStocks.length);
+          state.blacklistHasMore = Boolean(blacklistPayload.hasMore);
+          state.blacklistShown = state.blacklistStocks.length;
+          el.blacklistUpdated.textContent = `共 ${state.blacklistTotal.toLocaleString("zh-CN")} 只 · 已加载 ${state.blacklistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${blacklistPayload.tradeDate || "日期待确认"}`;
           el.blacklistUpdated.title = `${blacklistPayload.source || ""}；名单扫描日期：${blacklistPayload.membershipDate || blacklistPayload.tradeDate || "未知"}`;
         }
         if (whitelistResponse.ok) {
           state.whitelistStocks = (whitelistPayload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock)}));
-          state.whitelistShown = Math.min(100, state.whitelistStocks.length);
+          state.whitelistShown = state.whitelistStocks.length;
           el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${whitelistPayload.tradeDate || "日期待确认"}`;
           el.whitelistUpdated.title = `${whitelistPayload.source || ""}；名单扫描日期：${whitelistPayload.membershipDate || whitelistPayload.tradeDate || "未知"}`;
           refreshWhitelistIndustryFilterOptions();
@@ -8489,18 +8685,20 @@
     document.querySelectorAll("[data-blacklist-sort]").forEach(button => button.addEventListener("click", () => updateBlacklistSort(button.dataset.blacklistSort)));
     initMarketMultiSelect("whitelistMarket");
     initMarketMultiSelect("blacklistMarket");
-    el.whitelistSearch.addEventListener("input", event => { state.whitelistSearch = event.target.value; state.whitelistShown = 100; renderWhitelistRows(); });
-    el.whitelistTrendFilter.addEventListener("change", event => { state.whitelistTrendFilter = event.target.value; state.whitelistShown = 100; renderWhitelistRows(); });
-    el.whitelistRiskFilter.addEventListener("change", event => { state.whitelistRiskFilter = event.target.value; state.whitelistShown = 100; renderWhitelistRows(); });
-    el.whitelistIndustryFilter.addEventListener("change", event => { state.whitelistIndustryFilter = event.target.value; state.whitelistShown = 100; renderWhitelistRows(); });
-    el.whitelistMarket.addEventListener("change", event => { state.whitelistMarket = normalizeMarketSelection(event.target, state.whitelistMarket); state.whitelistShown = 100; renderWhitelistRows(); });
-    el.blacklistSearch.addEventListener("input", event => { state.blacklistSearch = event.target.value; state.blacklistShown = 100; renderBlacklistTable(); });
-    el.blacklistReasonFilter.addEventListener("change", event => { state.blacklistReasonFilter = event.target.value; state.blacklistShown = 100; renderBlacklistTable(); });
-    el.blacklistIndustryFilter.addEventListener("change", event => { state.blacklistIndustryFilter = event.target.value; state.blacklistShown = 100; renderBlacklistTable(); });
-    el.blacklistMarket.addEventListener("change", event => { state.blacklistMarket = normalizeMarketSelection(event.target, state.blacklistMarket); state.blacklistShown = 100; renderBlacklistTable(); });
+    el.whitelistSearch.addEventListener("input", event => { state.whitelistSearch = event.target.value; state.whitelistShown = state.whitelistStocks.length; renderWhitelistRows(); });
+    el.whitelistTrendFilter.addEventListener("change", event => { state.whitelistTrendFilter = event.target.value; state.whitelistShown = state.whitelistStocks.length; renderWhitelistRows(); });
+    el.whitelistRiskFilter.addEventListener("change", event => { state.whitelistRiskFilter = event.target.value; state.whitelistShown = state.whitelistStocks.length; renderWhitelistRows(); });
+    el.whitelistIndustryFilter.addEventListener("change", event => { state.whitelistIndustryFilter = event.target.value; state.whitelistShown = state.whitelistStocks.length; renderWhitelistRows(); });
+    el.whitelistMarket.addEventListener("change", event => { state.whitelistMarket = normalizeMarketSelection(event.target, state.whitelistMarket); state.whitelistShown = state.whitelistStocks.length; renderWhitelistRows(); });
+    el.blacklistSearch.addEventListener("input", event => { state.blacklistSearch = event.target.value; state.blacklistShown = state.blacklistStocks.length; renderBlacklistTable(); });
+    el.blacklistReasonFilter.addEventListener("change", event => { state.blacklistReasonFilter = event.target.value; state.blacklistShown = state.blacklistStocks.length; renderBlacklistTable(); });
+    el.blacklistIndustryFilter.addEventListener("change", event => { state.blacklistIndustryFilter = event.target.value; state.blacklistShown = state.blacklistStocks.length; renderBlacklistTable(); });
+    el.blacklistMarket.addEventListener("change", event => { state.blacklistMarket = normalizeMarketSelection(event.target, state.blacklistMarket); state.blacklistShown = state.blacklistStocks.length; renderBlacklistTable(); });
 
     applyTheme(savedTheme(), false);
     render();
+    refreshDataPolicy();
+    window.setInterval(refreshDataPolicy, 60_000);
     loadIndustryFilterOptions();
     loadTechnologyConceptChanges();
     window.setInterval(() => {
@@ -8511,11 +8709,8 @@
       }
     }, 10000);
     refreshAiAggressiveAlerts();
-    loadSectors();
     loadMarketIndices();
-    // 收盘后只停止定时刷新，首次进入仍需读取服务端最近一次行情快照。
-    loadMarketData();
-    // 初始行情加载会通过 loadSectors() 进入一次默认选股页，最后再切回白名单作为默认主页。
+    // 默认主页直接进入白名单；全市场筛选仅在用户打开相应菜单时才按需请求。
     openWhitelist();
   </script>
 </body>
