@@ -1419,7 +1419,15 @@ def get_menu_quote_batch(menu: str, codes: List[str]) -> Dict[str, Any]:
     for member in base.get("members") or []:
         code = str(member.get("code") or "")
         quote = cached_quotes.get(code) or {}
-        base_members.append({**member, **quote, "code": code, "name": str(quote.get("name") or member.get("name") or code)})
+        # 盘中缓存可能来自上一个交易日，不能反向覆盖更新的日终快照。
+        # ISO 交易日可直接按字符串比较；无日期的缓存同样按失效处理。
+        member_date = str(member.get("quoteTradeDate") or "")
+        quote_date = str(quote.get("quoteTradeDate") or "")
+        if quote_date and quote_date >= member_date:
+            merged = {**member, **quote}
+        else:
+            merged = dict(member)
+        base_members.append({**merged, "code": code, "name": str(merged.get("name") or code)})
     payload = hydrate_list_quotes({
         "stocks": base_members,
         "tradeDate": base.get("tradeDate"),
@@ -3448,6 +3456,10 @@ def get_market_alert_history(
     codes: Optional[List[str]] = None,
     signal_filter: str = "",
     direction_filter: str = "",
+    dedupe_earliest: bool = False,
+    include_drawdowns: bool = False,
+    sort_key: str = "",
+    sort_dir: str = "desc",
 ) -> Dict[str, Any]:
     """Query durable alert events for the alert-pool dialog."""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", trade_date):
@@ -3462,6 +3474,10 @@ def get_market_alert_history(
         raise ValueError("信号筛选参数不正确")
     if direction_filter and direction_filter not in {"up", "down", "flat"}:
         raise ValueError("方向筛选参数不正确")
+    if sort_key not in {"", "alertTime", "changePct", "closePrice", "closeChangePct"}:
+        raise ValueError("告警历史排序字段不正确")
+    if sort_dir not in {"asc", "desc"}:
+        raise ValueError("告警历史排序方向不正确")
     clauses = ["trade_date=?"]
     params: List[Any] = [trade_date]
     if market != "all":
@@ -3496,6 +3512,65 @@ def get_market_alert_history(
             or needle in str(row[4] or "").lower()
             or needle in stock_name_initials(row[4])
         ]
+    # 默认收起告警后继续跌破 -1% 的记录。它们只是后续表现变弱，并不
+    # 代表原告警无效；用户可通过眼睛开关重新展示，因此不能删除审计记录。
+    all_codes_before_drawdown_filter = list(dict.fromkeys(
+        str(row[3] or "") for row in rows if re.fullmatch(r"\d{6}", str(row[3] or ""))
+    ))
+    latest_change_by_code: Dict[str, Optional[float]] = {}
+    latest_price_by_code: Dict[str, Optional[float]] = {}
+    if all_codes_before_drawdown_filter:
+        placeholders = ",".join("?" for _ in all_codes_before_drawdown_filter)
+        with open_backtest_db() as connection:
+            daily_rows = connection.execute(
+                f"SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=? AND code IN ({placeholders})",
+                (trade_date, *all_codes_before_drawdown_filter),
+            ).fetchall()
+            cached_rows = connection.execute(
+                f"SELECT code,quote_json FROM list_quote_cache WHERE code IN ({placeholders})",
+                tuple(all_codes_before_drawdown_filter),
+            ).fetchall()
+        # 收盘后以日终快照为准；盘中仅让同交易日的菜单实时缓存覆盖它。
+        for code, raw_quote in daily_rows:
+            try:
+                quote = json.loads(raw_quote or "{}")
+                latest_change_by_code[str(code)] = number(quote.get("changePct"))
+                latest_price_by_code[str(code)] = number(quote.get("price"))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        if is_intraday_alert_session(datetime.now(CHINA_TZ)):
+            for code, raw_quote in cached_rows:
+                try:
+                    quote = json.loads(raw_quote or "{}")
+                    if str(quote.get("quoteTradeDate") or "") == trade_date:
+                        latest_change_by_code[str(code)] = number(quote.get("changePct"))
+                        latest_price_by_code[str(code)] = number(quote.get("price"))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+    if not include_drawdowns:
+        rows = [
+            row for row in rows
+            if latest_change_by_code.get(str(row[3] or "")) is None
+            or latest_change_by_code[str(row[3] or "")] >= -1
+        ]
+    # “去重查看”保留每只个股当日最早的一次告警，但页面仍按时间倒序
+    # 展示。必须在分页前完成，避免只对当前页去重导致同一股票再次出现。
+    if dedupe_earliest:
+        earliest_by_code: Dict[str, Any] = {}
+        for row in rows:
+            code = str(row[3] or "")
+            current = earliest_by_code.get(code)
+            # 历史 id 同时兼容旧整数主键与新复合字符串主键；作为同秒
+            # 稳定排序的第二键即可，不能强制转为整数。
+            candidate_key = (str(row[2] or ""), str(row[0] or ""))
+            current_key = (str(current[2] or ""), str(current[0] or "")) if current else None
+            if current is None or candidate_key < current_key:
+                earliest_by_code[code] = row
+        rows = sorted(
+            earliest_by_code.values(),
+            key=lambda row: (str(row[2] or ""), str(row[0] or "")),
+            reverse=True,
+        )
     # 告警池的下拉框使用 MACD 规则文案；必须按实际入池文案精确计数，
     # 不能把所有 MACD 告警粗略合并成“MACD选股进入”。
     signal_counts = {label: 0 for label in MACD_SELECTION_RULE_LABELS.values()}
@@ -3533,6 +3608,22 @@ def get_market_alert_history(
             direction_counts[direction] += 1
     if direction_filter:
         rows = [row for row in rows if direction_by_code.get(str(row[3] or "")) == direction_filter]
+    if sort_key:
+        if sort_key == "alertTime":
+            rows.sort(key=lambda row: (str(row[2] or ""), str(row[0] or "")), reverse=sort_dir == "desc")
+        else:
+            def market_alert_sort_value(row: Any) -> Tuple[bool, float]:
+                if sort_key == "changePct":
+                    value = number(row[8])
+                elif sort_key == "closePrice":
+                    value = latest_price_by_code.get(str(row[3] or ""))
+                else:
+                    value = latest_change_by_code.get(str(row[3] or ""))
+                if value is None:
+                    return (True, 0.0)
+                # 空值始终排在最后；同值时保留原始的时间倒序。
+                return (False, -value if sort_dir == "desc" else value)
+            rows.sort(key=market_alert_sort_value)
     total = len(rows)
     start = (page - 1) * page_size
     rows = rows[start:start + page_size]
@@ -3941,6 +4032,30 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
             current["signal"] = "\n".join(event.get("signal") or "--" for event in same_round)
         visible.append(current)
     visible.sort(key=lambda item: item.get("time") or "")
+    # 同一股票、同一轮扫描（同一告警秒）算一次。必须从当天完整持久化历史
+    # 编号，不能依赖只保留最近 360 条的内存窗口。
+    occurrence_by_key: Dict[Tuple[str, str], int] = {}
+    try:
+        with open_backtest_db() as connection:
+            occurrence_rows = connection.execute(
+                "SELECT code,alert_time FROM market_alert_history "
+                "WHERE trade_date=? AND alert_type='macdScreenerEnter' "
+                "GROUP BY code,alert_time ORDER BY code ASC,alert_time ASC",
+                (trade_date,),
+            ).fetchall()
+        full_counts: Dict[str, int] = {}
+        for code_value, alert_time_value in occurrence_rows:
+            code_value = str(code_value or "")
+            full_counts[code_value] = full_counts.get(code_value, 0) + 1
+            occurrence_by_key[(code_value, str(alert_time_value or ""))] = full_counts[code_value]
+    except sqlite3.Error:
+        occurrence_by_key = {}
+    fallback_counts: Dict[str, int] = {}
+    for item in visible:
+        code = str(item.get("code") or "")
+        alert_time = str(item.get("time") or "")
+        fallback_counts[code] = fallback_counts.get(code, 0) + 1
+        item["alertCount"] = occurrence_by_key.get((code, alert_time), fallback_counts[code])
     return {"tradeDate": trade_date, "alerts": visible, "running": status.get("running", False), "updatedAt": datetime.now(CHINA_TZ).isoformat()}
 
 
@@ -4851,10 +4966,16 @@ def record_quote_provider_result(provider: str, success: bool) -> None:
 def hydrate_list_quotes(payload: Dict[str, Any], *, fetch_if_cache_missing: bool = False) -> Dict[str, Any]:
     """Refresh known members in batches; persist dated quotes independently of membership."""
     now_local = datetime.now(CHINA_TZ)
-    intraday = is_intraday_alert_session(now_local)
+    policy = get_market_data_policy(now_local)
+    expected_trade_date = str(policy.get("tradeDate") or now_local.date().isoformat())
+    intraday = bool(policy.get("live"))
     # 收盘后允许腾讯批量接口补一遍当日最终报价；开盘前则不再请求实时源，
     # 只使用已落库的最近交易日快照，避免把盘前报价误当成新交易日数据。
-    post_close = now_local.weekday() < 5 and now_local.hour >= 15
+    post_close = (
+        policy.get("mode") == "current-close"
+        and is_a_share_trading_day(now_local.date())
+        and now_local.hour >= 15
+    )
     if not intraday and not post_close and not fetch_if_cache_missing:
         return payload
     stocks = payload.get("stocks") or []
@@ -4869,21 +4990,22 @@ def hydrate_list_quotes(payload: Dict[str, Any], *, fetch_if_cache_missing: bool
                 placeholders = ",".join("?" for _ in codes)
                 snapshot_rows = db.execute(
                     f"SELECT code,trade_date,quote_json FROM daily_close_quotes "
-                    f"WHERE code IN ({placeholders}) AND trade_date<=? "
-                    f"ORDER BY code,trade_date DESC",
-                    (*codes, now_local.date().isoformat()),
+                    f"WHERE code IN ({placeholders}) AND trade_date=?",
+                    (*codes, expected_trade_date),
                 ).fetchall()
                 concepts = dict(db.execute("SELECT code,concepts_json FROM stock_concept_cache"))
             close_quotes: Dict[str, Dict[str, Any]] = {}
-            for code, _trade_date, raw in snapshot_rows:
+            for code, trade_date, raw in snapshot_rows:
                 code = str(code)
                 if code in close_quotes:
                     continue
-                close_quotes[code] = json.loads(raw)
+                quote = json.loads(raw)
+                quote["quoteTradeDate"] = str(quote.get("quoteTradeDate") or trade_date)
+                close_quotes[code] = quote
             # 停牌股的收盘价可能为 0/空，但只要该交易日已有归档就视为缓存
             # 命中，不能为它反复发起第三方请求。
             complete_snapshot = all(
-                (close_quotes.get(code) or {}).get("quoteTradeDate")
+                str((close_quotes.get(code) or {}).get("quoteTradeDate") or "") == expected_trade_date
                 for code in codes
             )
             if complete_snapshot:
@@ -4912,13 +5034,12 @@ def hydrate_list_quotes(payload: Dict[str, Any], *, fetch_if_cache_missing: bool
         with open_backtest_db() as db:
             db.execute("CREATE TABLE IF NOT EXISTS list_quote_cache (code TEXT PRIMARY KEY, quote_json TEXT NOT NULL)")
             quotes = {code: json.loads(raw) for code, raw in db.execute("SELECT code,quote_json FROM list_quote_cache")}
-        expected_trade_date = now_local.date().isoformat()
         # 开盘后，昨日缓存无论何时写入都不是有效实时报价，必须进入本轮批量刷新。
         due = [
             code for code in codes
             if code not in _list_quote_cache
             or time.monotonic() - _list_quote_cache[code] >= 10
-            or (intraday and str((quotes.get(code) or {}).get("quoteTradeDate") or "") != expected_trade_date)
+            or ((intraday or post_close) and str((quotes.get(code) or {}).get("quoteTradeDate") or "") != expected_trade_date)
         ]
 
         def batch(group):
@@ -5089,7 +5210,7 @@ def hydrate_list_quotes(payload: Dict[str, Any], *, fetch_if_cache_missing: bool
                            [(c, json.dumps(quotes[c], ensure_ascii=False)) for c in due if c in quotes])
             concepts = dict(db.execute("SELECT code,concepts_json FROM stock_concept_cache"))
         if post_close:
-            archive_post_close_quote_snapshot(now_local.date().isoformat())
+            archive_post_close_quote_snapshot(expected_trade_date)
         for stock in stocks:
             code = stock.get("code")
             quote = quotes.get(code)
@@ -9133,6 +9254,10 @@ class AppHandler(BaseHTTPRequestHandler):
                     codes,
                     query.get("signalType", [""])[0],
                     query.get("direction", [""])[0],
+                    query.get("dedupe", [""])[0] == "earliest",
+                    query.get("includeDrawdowns", [""])[0] == "1",
+                    query.get("sort", [""])[0],
+                    query.get("sortDir", ["desc"])[0],
                 ))
             except (ValueError, sqlite3.Error) as exc:
                 self.send_json(400, {"error": str(exc) or "告警历史读取失败"})

@@ -347,11 +347,12 @@
     .score-alert-item small { overflow: hidden; white-space: nowrap; color: var(--muted); font-size: 11px; }
     .score-alert-item > small:first-of-type { overflow: hidden; text-overflow: ellipsis; text-align: left; }
     .score-alert-item .consecutive { color: var(--cyan); font-weight: 800; text-align: right; }
-    .price-alert-item { grid-template-columns:68px 43px 54px 58px 60px 120px; column-gap:6px; }
+    .price-alert-item { grid-template-columns:83px 43px 54px 58px 54px 108px; column-gap:6px; }
     .price-alert-stock { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:2px; overflow:hidden; }
     .price-alert-stock-name { display:block; width:100%; overflow:hidden; color:var(--text); font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
     .price-alert-stock-meta { display:flex; align-items:center; gap:4px; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; line-height:1; }
     .price-alert-stock-meta .market-badge { min-width:16px; height:15px; padding:0 3px; border-radius:4px; font-size:9px; }
+    .price-alert-count { display:inline-flex; box-sizing:border-box; flex:0 0 12px; width:12px; height:12px; align-items:center; justify-content:center; border:1px solid #ef4444; border-radius:50%; color:#ef4444; background:rgba(239,68,68,.12); font-size:8px; font-style:normal; font-weight:900; line-height:1; }
     .price-alert-item > b,.price-alert-item > em { white-space:nowrap; }
     .price-alert-item > span,.price-alert-item > b,.price-alert-item > em,.price-alert-item > small { text-align:left; justify-self:stretch; }
     .price-alert-item .price-alert-time { color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; text-align:left; }
@@ -390,6 +391,11 @@
     .market-alert-history-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:14px 22px; border-bottom:1px solid var(--line); }
     .market-alert-history-controls input, .market-alert-history-controls select { height:34px; border:1px solid var(--line); border-radius:8px; padding:0 10px; background:var(--panel-strong); color:var(--text); font:inherit; }
     .market-alert-history-controls input { min-width:220px; }
+    .market-alert-history-icon { position:relative; display:inline-grid; width:34px; height:34px; place-items:center; border:1px solid var(--line); border-radius:8px; background:var(--panel-strong); color:var(--muted); cursor:pointer; }
+    .market-alert-history-icon:hover { color:var(--text); border-color:var(--muted); }
+    .market-alert-history-icon svg { width:19px; height:19px; }
+    .market-alert-history-icon.icon-active { color:var(--amber); border-color:var(--amber); background:rgba(245,158,11,.08); }
+    .market-alert-history-fold svg { width:20px; height:20px; }
     .market-alert-history-open { height:34px; padding:0 12px; border:1px solid var(--amber); border-radius:8px; background:rgba(245,158,11,.08); color:var(--amber); font-weight:700; cursor:pointer; white-space:nowrap; }
     .market-alert-history-open:hover { background:rgba(245,158,11,.16); }
     .market-alert-history-body { padding:0; overflow:hidden; max-height:calc(88vh - 150px); }
@@ -398,6 +404,8 @@
     .market-alert-history-head .alert-pool-table { margin:0; }
     .market-alert-history-grid { table-layout:fixed; }
     .market-alert-history-grid th, .market-alert-history-grid td { overflow:hidden; text-overflow:ellipsis; }
+    .market-alert-history-sort { display:inline-flex; align-items:center; gap:3px; max-width:100%; border:0; padding:0; color:inherit; background:transparent; font:inherit; font-weight:inherit; cursor:pointer; }
+    .market-alert-history-sort:hover, .market-alert-history-sort.active { color:var(--amber); }
     .market-alert-history-macd { display:inline-flex; width:82px; height:28px; align-items:center; justify-content:center; }
     .market-alert-history-scroll { flex:1 1 auto; min-height:0; overflow:auto; scrollbar-gutter:stable; padding:0 22px 22px; }
     .market-alert-history-scroll .alert-pool-table { margin:0; }
@@ -3270,6 +3278,8 @@
       </header>
       <div class="market-alert-history-controls">
         <input id="marketAlertHistorySearch" type="search" placeholder="搜索名称、代码或首字母" aria-label="搜索告警股票，支持首字母">
+        <button class="market-alert-history-icon" id="marketAlertHistoryDrawdownToggle" type="button" aria-pressed="false" aria-label="显示最新涨跌幅低于 -1% 的记录" title="显示最新涨跌幅低于 -1% 的记录"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button>
+        <button class="market-alert-history-icon market-alert-history-fold" id="marketAlertHistoryDedupe" type="button" aria-pressed="false" aria-label="折叠同一股票的重复告警" title="折叠同一股票的重复告警"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M9 9l3 3 3-3M9 15l3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <select id="marketAlertHistoryMarket" aria-label="筛选告警市场"><option value="all">全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="starBse">科创板 / 北交所</option></select>
         <select id="marketAlertHistoryDirection" aria-label="筛选告警方向"><option value="">全部方向</option></select>
         <select id="marketAlertHistorySignal" aria-label="筛选 MACD 指标"><option value="">全部 MACD指标</option></select>
@@ -3591,6 +3601,10 @@
       macdAlertBaselineKeys: new Set(),
       macdAlertReady: false,
       marketAlertHistory: { page: 0, total: 0, loading: false, hasMore: true },
+      marketAlertHistoryDedupe: false,
+      marketAlertHistoryShowDrawdowns: false,
+      marketAlertHistorySortKey: "",
+      marketAlertHistorySortDir: "desc",
       previewingPriceAlerts: false,
       reboundAlertFetchAt: 0,
       scoreTrace: { code: null, status: "idle", data: [] },
@@ -3706,6 +3720,8 @@
       marketAlertHistoryBody: document.getElementById("marketAlertHistoryBody"),
       marketAlertHistoryMeta: document.getElementById("marketAlertHistoryMeta"),
       marketAlertHistorySearch: document.getElementById("marketAlertHistorySearch"),
+      marketAlertHistoryDrawdownToggle: document.getElementById("marketAlertHistoryDrawdownToggle"),
+      marketAlertHistoryDedupe: document.getElementById("marketAlertHistoryDedupe"),
       marketAlertHistoryMarket: document.getElementById("marketAlertHistoryMarket"),
       marketAlertHistoryDirection: document.getElementById("marketAlertHistoryDirection"),
       marketAlertHistorySignal: document.getElementById("marketAlertHistorySignal"),
@@ -5719,11 +5735,18 @@
         if (!response.ok) throw new Error(payload.error || "数据时段读取失败");
         state.dataPolicy = payload;
         state.dataPolicyFetchedAt = Date.now();
-        // 午休或收盘边界只重读一次本地最终行情；非交易时段不轮询第三方。
+        // 午休边界重读一次；收盘结算在 15:00、15:05、15:10 各重读一次。
+        // 最终归档可能略晚于 15:00，有限补读可保证当前打开菜单自动切换到
+        // 当日最终数据，同时不会让非交易时段持续轮询。
         const justSettled = Boolean(previousPolicy?.live) && !payload.live;
-        const settledKey = justSettled
-          ? `${payload.tradeDate || ""}:${chinaMarketClock().seconds >= 15 * 3600 ? "close" : "lunch"}`
-          : "";
+        const clock = chinaMarketClock();
+        const closeElapsed = clock.seconds - 15 * 3600;
+        const closingWindow = payload.mode === "current-close"
+          && closeElapsed >= 0 && closeElapsed <= 11 * 60;
+        const closingBucket = closingWindow ? Math.min(2, Math.floor(closeElapsed / (5 * 60))) : -1;
+        const settledKey = closingWindow
+          ? `${payload.tradeDate || ""}:close:${closingBucket}`
+          : justSettled ? `${payload.tradeDate || ""}:lunch` : "";
         if (settledKey && state.settledListRefreshKey !== settledKey) {
           state.settledListRefreshKey = settledKey;
           state.whitelistStockDataCache = {};
@@ -8144,7 +8167,8 @@
         node.hidden = state.alertPanelDismissed[board] || !items.length;
         node.innerHTML = items.length ? `<div class="score-alert-panel"><div class="score-alert-head"><span>${title}</span><button class="score-alert-close" type="button" data-close-price-alert="${board}">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item price-alert-columns"><span>个股名称</span><span>时间</span><span>价格</span><span>涨跌幅</span><span>行业</span><span>信号</span></div>${items.map(item=>{
           const badge = /^(300|301)/.test(item.code) ? '创' : /^(688|689)/.test(item.code) ? '科' : /^(4|8|92)/.test(item.code) ? '北' : '';
-          const identity = `<span class="price-alert-stock"><strong class="price-alert-stock-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong><small class="price-alert-stock-meta">${badge ? `<i class="market-badge">${badge}</i>` : ''}${escapeHtml(item.code)}</small></span>`;
+          const alertCount = Math.max(1, Number(item.alertCount) || 1);
+          const identity = `<span class="price-alert-stock"><strong class="price-alert-stock-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong><small class="price-alert-stock-meta">${badge ? `<i class="market-badge">${badge}</i>` : ''}${escapeHtml(item.code)}<i class="price-alert-count" title="今日第 ${alertCount} 次告警">${alertCount}</i></small></span>`;
           const signalLines = Array.isArray(item.signals) && item.signals.length ? item.signals : [{text:item.signal || '--', tone:item.tone, alertType:item.alertType}];
           const signalMarkup = signalLines.map(signalLine => {
             const tone = signalLine.tone === 'red' ? 'macd-alert-signal-red' : 'macd-alert-signal-green';
@@ -8481,6 +8505,27 @@
       el.marketAlertHistoryDirection.value = selected;
     }
 
+    function syncMarketAlertHistoryDedupeButton() {
+      const dedupe = Boolean(state.marketAlertHistoryDedupe);
+      el.marketAlertHistoryDedupe.classList.toggle("icon-active", dedupe);
+      el.marketAlertHistoryDedupe.setAttribute("aria-pressed", String(dedupe));
+      const label = dedupe ? "展开同一股票的重复告警" : "折叠同一股票的重复告警";
+      el.marketAlertHistoryDedupe.setAttribute("aria-label", label);
+      el.marketAlertHistoryDedupe.title = label;
+    }
+
+    function syncMarketAlertHistoryDrawdownButton() {
+      const showDrawdowns = Boolean(state.marketAlertHistoryShowDrawdowns);
+      el.marketAlertHistoryDrawdownToggle.classList.toggle("icon-active", showDrawdowns);
+      el.marketAlertHistoryDrawdownToggle.setAttribute("aria-pressed", String(showDrawdowns));
+      const isMacdReview = state.pageView === "macd-screener";
+      const label = showDrawdowns
+        ? (isMacdReview ? "返回当前 MACD 选股池告警" : "隐藏最新涨跌幅低于 -1% 的记录")
+        : (isMacdReview ? "显示当日全部 MACD 告警与回落记录" : "显示最新涨跌幅低于 -1% 的记录");
+      el.marketAlertHistoryDrawdownToggle.setAttribute("aria-label", label);
+      el.marketAlertHistoryDrawdownToggle.title = label;
+    }
+
     async function loadMarketAlertHistoryMacdCharts() {
       const nodes = [...el.marketAlertHistoryBody.querySelectorAll("[data-alert-history-macd]")]
         .filter(node => !node.dataset.loaded && /^\d{6}$/.test(String(node.dataset.alertHistoryMacd || "")));
@@ -8542,6 +8587,10 @@
       return { label: "当日告警", codes: [] };
     }
 
+    function isMacdAlertReviewMode() {
+      return state.pageView === "macd-screener" && Boolean(state.marketAlertHistoryShowDrawdowns);
+    }
+
     function closeMarketAlertHistory() {
       el.marketAlertHistoryModal.hidden = true;
       document.body.classList.remove("modal-open");
@@ -8550,8 +8599,10 @@
     async function loadMarketAlertHistory(reset = false) {
       const view = state.marketAlertHistory;
       if (view.loading || (!reset && !view.hasMore)) return;
-      const alertHistoryColumns = '<colgroup><col style="width:8.4%"><col style="width:4.8%"><col style="width:8.4%"><col style="width:10%"><col style="width:6%"><col style="width:7%"><col style="width:5%"><col style="width:6%"><col style="width:8%"><col style="width:9%"><col style="width:23.04%"></colgroup>';
-      const alertHistoryHeader = '<thead><tr><th>时间</th><th>市场</th><th>个股名称</th><th>近10日MACD</th><th>价格</th><th>涨跌幅</th><th>方向</th><th>最新价</th><th>最新涨跌幅</th><th>行业</th><th>信号</th></tr></thead>';
+      const alertHistoryColumns = '<colgroup><col style="width:8.4%"><col style="width:5.76%"><col style="width:8.4%"><col style="width:10%"><col style="width:6%"><col style="width:7%"><col style="width:5%"><col style="width:6%"><col style="width:8%"><col style="width:9%"><col style="width:20.74%"></colgroup>';
+      const sortMark = key => state.marketAlertHistorySortKey === key ? (state.marketAlertHistorySortDir === "asc" ? "↑" : "↓") : "";
+      const sortClass = key => state.marketAlertHistorySortKey === key ? " active" : "";
+      const alertHistoryHeader = `<thead><tr><th><button class="market-alert-history-sort${sortClass("alertTime")}" type="button" data-market-alert-sort="alertTime">时间 ${sortMark("alertTime")}</button></th><th>市场</th><th>个股名称</th><th>近10日MACD</th><th>价格</th><th><button class="market-alert-history-sort${sortClass("changePct")}" type="button" data-market-alert-sort="changePct">涨跌幅 ${sortMark("changePct")}</button></th><th>方向</th><th><button class="market-alert-history-sort${sortClass("closePrice")}" type="button" data-market-alert-sort="closePrice">最新价 ${sortMark("closePrice")}</button></th><th><button class="market-alert-history-sort${sortClass("closeChangePct")}" type="button" data-market-alert-sort="closeChangePct">最新涨跌幅 ${sortMark("closeChangePct")}</button></th><th>行业</th><th>信号</th></tr></thead>`;
       if (reset) {
         view.page = 0; view.total = 0; view.hasMore = true;
         // 表头与数据区使用两张对齐表格；数据区单独滚动，无法跨越表头。
@@ -8559,12 +8610,23 @@
         el.marketAlertHistoryBody.querySelector(".market-alert-history-scroll").scrollTop = 0;
       }
       view.loading = true;
+      syncMarketAlertHistoryDedupeButton();
+      syncMarketAlertHistoryDrawdownButton();
       const footer = el.marketAlertHistoryBody.querySelector(".market-alert-load-more");
       if (footer) footer.textContent = "正在加载…";
       try {
         const params = new URLSearchParams({ page: String(view.page + 1), pageSize: "50", q: el.marketAlertHistorySearch.value.trim(), market: el.marketAlertHistoryMarket.value, direction: el.marketAlertHistoryDirection.value, signalType: el.marketAlertHistorySignal.value });
+        if (state.marketAlertHistoryDedupe) params.set("dedupe", "earliest");
+        if (state.marketAlertHistoryShowDrawdowns) params.set("includeDrawdowns", "1");
+        if (state.marketAlertHistorySortKey) {
+          params.set("sort", state.marketAlertHistorySortKey);
+          params.set("sortDir", state.marketAlertHistorySortDir);
+        }
         const scope = currentMenuAlertScope();
-        if (scope.codes.length) params.set("codes", scope.codes.join(","));
+        // MACD 页面开启眼睛后进入复盘模式：保留当天所有曾触发过的
+        // MACD 告警，哪怕该股后来已被动态条件移出当前选股池。
+        const macdReviewMode = isMacdAlertReviewMode();
+        if (scope.codes.length && !macdReviewMode) params.set("codes", scope.codes.join(","));
         const response = await fetch(`/api/market-alert-history?${params}`, { cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "告警历史读取失败");
@@ -8589,7 +8651,9 @@
           view.page = payload.page;
           view.total = payload.total;
           view.hasMore = view.page < payload.pages;
-          el.marketAlertHistoryMeta.textContent = `${scope.label} · ${payload.tradeDate} · 已保存 ${payload.total.toLocaleString("zh-CN")} 条告警 · 向下滚动加载更多`;
+          const scopeLabel = macdReviewMode ? "MACD选股 · 当日全部历史告警" : scope.label;
+          const modes = [state.marketAlertHistoryDedupe ? "每股仅最早告警" : "全部告警记录", state.marketAlertHistoryShowDrawdowns ? "含回落记录" : "隐藏回落超 -1%"];
+          el.marketAlertHistoryMeta.textContent = `${scopeLabel} · ${payload.tradeDate} · ${modes.join(" · ")} ${payload.total.toLocaleString("zh-CN")} 条 · 向下滚动加载更多`;
           if (footer) footer.textContent = view.hasMore ? "继续向下滚动加载更多" : `已加载全部 ${payload.total.toLocaleString("zh-CN")} 条`;
         }
       } catch (error) {
@@ -8683,10 +8747,26 @@
       if (!node) return;
       if (node.scrollTop + node.clientHeight >= node.scrollHeight - 100) loadMarketAlertHistory(false);
     }, true);
+    el.marketAlertHistoryBody.addEventListener("click", event => {
+      const button = event.target.closest?.("[data-market-alert-sort]");
+      if (!button) return;
+      const key = button.dataset.marketAlertSort;
+      state.marketAlertHistorySortDir = state.marketAlertHistorySortKey === key && state.marketAlertHistorySortDir === "desc" ? "asc" : "desc";
+      state.marketAlertHistorySortKey = key;
+      loadMarketAlertHistory(true);
+    });
     let marketAlertHistorySearchTimer = null;
     el.marketAlertHistorySearch.addEventListener("input", () => {
       window.clearTimeout(marketAlertHistorySearchTimer);
       marketAlertHistorySearchTimer = window.setTimeout(() => loadMarketAlertHistory(true), 220);
+    });
+    el.marketAlertHistoryDedupe.addEventListener("click", () => {
+      state.marketAlertHistoryDedupe = !state.marketAlertHistoryDedupe;
+      loadMarketAlertHistory(true);
+    });
+    el.marketAlertHistoryDrawdownToggle.addEventListener("click", () => {
+      state.marketAlertHistoryShowDrawdowns = !state.marketAlertHistoryShowDrawdowns;
+      loadMarketAlertHistory(true);
     });
     el.marketAlertHistoryMarket.addEventListener("change", () => loadMarketAlertHistory(true));
     el.marketAlertHistoryDirection.addEventListener("change", () => loadMarketAlertHistory(true));
