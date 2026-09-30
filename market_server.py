@@ -760,6 +760,7 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
     """交易时段扫描；收盘后归档并按小时修补全市场快照。"""
     captured_dates: set[str] = set()
     post_close_backfill_hours: set[str] = set()
+    post_close_history_repair_hours: set[str] = set()
     last_intraday_scan = 0.0
     last_ai_rebound_scan = 0.0
     last_macd_alert_scan = 0.0
@@ -800,6 +801,18 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
                 print(
                     f"收盘全市场快照补档：{trade_date}；获取 {result['fetched']}，"
                     f"新增 {result['inserted']}，更新 {result['updated']}，跳过 {result['skipped']}"
+                )
+            # 收盘后只做批量日线补档与标签复核，不在盘中抢占行情源。若
+            # Tushare 暂不可用则下一小时重试；成功后次日扫描即可使用完整
+            # 的最近交易日序列。
+            if post_close_due and hourly_key not in post_close_history_repair_hours:
+                history_result = refresh_macd_history_from_bulk_daily_snapshots(trade_date)
+                label_result = reconcile_macd_alert_labels_for_trade_date(trade_date)
+                post_close_history_repair_hours.add(hourly_key)
+                print(
+                    f"MACD 日线补档：{trade_date}；交易日 {history_result['days']}，"
+                    f"更新 {history_result['updated']}；告警标签校正 {label_result['updated']}，"
+                    f"移除 {label_result['removed']}，待补 {label_result['skipped']}"
                 )
         except (MarketDataError, OSError, ValueError, sqlite3.Error) as exc:
             print(f"后台全市场评分扫描失败: {exc}")
@@ -2882,13 +2895,119 @@ def macd_histogram_series(closes: List[float], fast_period: int, slow_period: in
 
 
 def macd_dual_red_rule(slow_red_days: int, fast_red_days: int,
-                       three_day_gain: Optional[float], latest_change_pct: Optional[float]) -> Optional[str]:
-    """Return the exclusive dual-MACD-red bucket used by the screener."""
-    if (slow_red_days < 2 or fast_red_days < 2 or three_day_gain is None or three_day_gain < 5
-            or latest_change_pct is None or latest_change_pct < -1):
+                       three_day_gain: Optional[float], latest_change_pct: Optional[float],
+                       three_days_ago_close: Optional[float] = None,
+                       previous_close: Optional[float] = None,
+                       slow_history_expanding: bool = False,
+                       fast_history_expanding: bool = False) -> Optional[str]:
+    """Return the first satisfied dual-red entry condition.
+
+    Both MACD histograms must stay red for at least two sessions. There are
+    then two alternative gates: 5% from the close three trading days ago, or
+    3% for the current session. When both pass, retain one signal and use the
+    lower price gate — the rule the stock could have reached first.
+    """
+    if (slow_red_days < 2 or fast_red_days < 2 or latest_change_pct is None
+            or not slow_history_expanding or not fast_history_expanding):
         return None
     days = min(slow_red_days, fast_red_days)
-    return "双线连红≥5日+涨5%" if days >= 5 else f"双线连红{days}日+涨5%"
+    bucket = "≥5日" if days >= 5 else f"{days}日"
+    three_day_passed = three_day_gain is not None and three_day_gain >= 5 and latest_change_pct >= -1
+    intraday_passed = latest_change_pct >= 3
+    if not three_day_passed and not intraday_passed:
+        return None
+    if intraday_passed and not three_day_passed:
+        return f"双线连红{bucket}+当日涨3%"
+    if three_day_passed and not intraday_passed:
+        return f"双线连红{bucket}+涨5%"
+    three_day_trigger = three_days_ago_close * 1.05 if three_days_ago_close and three_days_ago_close > 0 else None
+    intraday_trigger = previous_close * 1.03 if previous_close and previous_close > 0 else None
+    if intraday_trigger is not None and (three_day_trigger is None or intraday_trigger < three_day_trigger):
+        return f"双线连红{bucket}+当日涨3%"
+    return f"双线连红{bucket}+涨5%"
+
+
+def macd_recent_red_bars_accelerating(histogram: List[float], red_days: int) -> bool:
+    """Confirm current momentum with the latest one to three red bars.
+
+    A two-day red run compares its two available bars.  Longer runs require
+    today's red bar to exceed yesterday's and to be the largest of the latest
+    three red bars; earlier historical contractions do not veto a new burst.
+    """
+    if red_days < 2:
+        return False
+    recent = histogram[-min(3, red_days):]
+    return (all(value >= 0 for value in recent)
+            and recent[-1] > recent[-2]
+            and recent[-1] >= max(recent))
+
+
+def macd_is_bearish_arrangement(closes: List[float]) -> bool:
+    """Return whether the latest price puts MA5/10/20/30 in bearish order."""
+    valid = [close for close in closes if close is not None and close > 0]
+    if len(valid) < 30:
+        return False
+    averages = {period: sum(valid[-period:]) / period for period in (5, 10, 20, 30)}
+    return averages[5] < averages[10] < averages[20] < averages[30]
+
+
+def macd_flip_strength_passes(slow: List[float], fast: List[float],
+                              slow_red_days: int, fast_red_days: int,
+                              latest_change_pct: Optional[float]) -> Tuple[bool, bool]:
+    """Apply the per-rule histogram-strength gates for the two flip signals."""
+    if len(slow) < 2 or len(fast) < 2 or latest_change_pct is None or latest_change_pct < 0:
+        return False, False
+    slow_flip = slow[-2] < 0 <= slow[-1]
+    fast_flip = fast[-2] < 0 <= fast[-1]
+    simultaneous = (slow_flip and fast_flip
+                    and slow[-1] > abs(slow[-2]) and fast[-1] > abs(fast[-2]))
+    slow_fast = (slow_red_days >= 5 and fast_flip and slow[-2] >= 0
+                 and slow[-1] > slow[-2] * 1.10
+                 and fast[-1] > abs(fast[-2]) * 1.05)
+    return slow_fast, simultaneous
+
+
+def macd_rules_for_price(closes: List[float], price: Optional[float], latest_change_pct: Optional[float]) -> List[str]:
+    """Calculate MACD screener rules from completed closes plus one quote price."""
+    if price is None or price <= 0 or len(closes) < 3:
+        return []
+    three_days_ago_close = closes[-3]
+    three_day_gain = ((price / three_days_ago_close) - 1) * 100 if three_days_ago_close and three_days_ago_close > 0 else None
+    values = [*closes, price]
+    # MACD 形态再强，也不接纳 MA5 < MA10 < MA20 < MA30 的空头排列。
+    if macd_is_bearish_arrangement(values):
+        return []
+    slow = macd_histogram_series(values, 10, 20, 7)
+    fast = macd_histogram_series(values, 5, 10, 3)
+    if len(slow) < 2 or len(fast) < 2:
+        return []
+    slow_red_days = 0
+    for item in reversed(slow):
+        if item < 0:
+            break
+        slow_red_days += 1
+    fast_red_days = 0
+    for item in reversed(fast):
+        if item < 0:
+            break
+        fast_red_days += 1
+    rules: List[str] = []
+    slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+        slow, fast, slow_red_days, fast_red_days, latest_change_pct,
+    )
+    if slow_fast_passed:
+        rules.append("慢线连红+快线翻红")
+    if simultaneous_passed:
+        rules.append("双线同步翻红")
+    dual_red_rule = macd_dual_red_rule(
+        slow_red_days, fast_red_days, three_day_gain, latest_change_pct,
+        three_days_ago_close, closes[-1],
+        macd_recent_red_bars_accelerating(slow, slow_red_days),
+        macd_recent_red_bars_accelerating(fast, fast_red_days),
+    )
+    if dual_red_rule:
+        rules.append(dual_red_rule)
+    return rules
 
 
 MACD_SELECTION_RULE_LABELS = {
@@ -2898,6 +3017,10 @@ MACD_SELECTION_RULE_LABELS = {
     "双线连红3日+涨5%": "双线连红 3 日 + 近3日涨幅 ≥5%",
     "双线连红4日+涨5%": "双线连红 4 日 + 近3日涨幅 ≥5%",
     "双线连红≥5日+涨5%": "双线连红 ≥5 日 + 近3日涨幅 ≥5%",
+    "双线连红2日+当日涨3%": "双线连红 2 日 + 当日涨幅 ≥3%",
+    "双线连红3日+当日涨3%": "双线连红 3 日 + 当日涨幅 ≥3%",
+    "双线连红4日+当日涨3%": "双线连红 4 日 + 当日涨幅 ≥3%",
+    "双线连红≥5日+当日涨3%": "双线连红 ≥5 日 + 当日涨幅 ≥3%",
 }
 
 
@@ -2967,6 +3090,143 @@ def macd_passes_previous_day_liquidity(amount: Optional[float]) -> bool:
     # 缺失或 0 通常代表本地快照尚未覆盖，不可据此否决股票；仅在能确认
     # 上一交易日真实成交额为正、且明确低于门槛时排除。
     return amount is None or amount <= 0 or amount >= MACD_PREVIOUS_DAY_MIN_AMOUNT
+
+
+def canonical_history_date(value: Any) -> str:
+    """Normalize provider dates so MACD comparisons never mix 20260929/2026-09-29."""
+    raw = str(value or "").strip()
+    for pattern in ("%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(raw, pattern).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return raw
+
+
+def refresh_macd_history_from_bulk_daily_snapshots(trade_date: str, calendar_days: int = 10) -> Dict[str, int]:
+    """Merge recent full-market daily closes into local MACD histories.
+
+    One bulk daily request covers the market; this avoids thousands of
+    per-stock history calls and keeps tomorrow's live MACD input continuous.
+    """
+    try:
+        end_date = datetime.strptime(str(trade_date), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return {"days": 0, "updated": 0}
+    snapshots: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for offset in range(max(1, int(calendar_days))):
+        date_key = (end_date - timedelta(days=offset)).isoformat()
+        try:
+            rows = fetch_tushare_daily_snapshot(date_key)
+        except (MarketDataError, OSError, TypeError, ValueError):
+            continue
+        # Ignore weekend and partial responses: neither is a valid MACD bar.
+        if len(rows) >= 1000:
+            snapshots[date_key] = rows
+    if not snapshots:
+        return {"days": 0, "updated": 0}
+    try:
+        with open_backtest_db() as connection:
+            cached_rows = connection.execute("SELECT code,bars_json FROM midterm_history_cache").fetchall()
+    except sqlite3.Error:
+        return {"days": len(snapshots), "updated": 0}
+    writes: List[Tuple[str, str, str, str]] = []
+    fetched_at = datetime.now(CHINA_TZ).isoformat()
+    for code, raw_history in cached_rows:
+        code = str(code)
+        try:
+            history = [dict(item) for item in json.loads(raw_history or "[]") if isinstance(item, dict)]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        changed = False
+        by_date: Dict[str, Dict[str, Any]] = {}
+        for item in history:
+            raw_date = str(item.get("date") or "")
+            date_key = canonical_history_date(raw_date)
+            if date_key:
+                item["date"] = date_key
+                by_date[date_key] = item
+                changed = changed or raw_date != date_key
+        for date_key, rows in snapshots.items():
+            quote = rows.get(code)
+            close = number((quote or {}).get("price"))
+            if close is None or close <= 0:
+                continue
+            bar = by_date.get(date_key)
+            if bar is None:
+                bar = {"date": date_key, "open": close, "high": close, "low": close, "volume": number(quote.get("volume")) or 0.0}
+                by_date[date_key] = bar
+                changed = True
+            if number(bar.get("close")) != close:
+                bar["close"] = close
+                changed = True
+            if number(quote.get("changePct")) is not None:
+                bar["changePct"] = number(quote.get("changePct"))
+        if not changed:
+            continue
+        merged = [by_date[key] for key in sorted(by_date)][-HISTORY_DAYS:]
+        add_moving_averages(merged)
+        writes.append((code, str(merged[-1].get("date") or ""), json.dumps(merged, ensure_ascii=False), fetched_at))
+    if writes:
+        with open_backtest_db() as connection:
+            connection.executemany(
+                "INSERT OR REPLACE INTO midterm_history_cache(code,latest_date,bars_json,fetched_at) VALUES (?,?,?,?)",
+                writes,
+            )
+            connection.commit()
+    return {"days": len(snapshots), "updated": len(writes)}
+
+
+def reconcile_macd_alert_labels_for_trade_date(trade_date: str) -> Dict[str, int]:
+    """Correct saved MACD labels after complete daily bars have been merged."""
+    previous_date = latest_local_market_trade_date(trade_date, strictly_before=True)
+    if not previous_date:
+        return {"updated": 0, "removed": 0, "skipped": 0}
+    try:
+        with open_backtest_db() as connection:
+            alerts = connection.execute(
+                "SELECT id,code,price,change_pct,signal FROM market_alert_history "
+                "WHERE trade_date=? AND alert_type='macdScreenerEnter'", (trade_date,)
+            ).fetchall()
+            histories = {str(code): raw for code, raw in connection.execute(
+                "SELECT code,bars_json FROM midterm_history_cache"
+            ).fetchall()}
+    except sqlite3.Error:
+        return {"updated": 0, "removed": 0, "skipped": 0}
+    updates: List[Tuple[str, str, str]] = []
+    removals: List[Tuple[str]] = []
+    skipped = 0
+    for alert_id, code, price, change_pct, old_signal in alerts:
+        try:
+            bars = [item for item in json.loads(histories.get(str(code)) or "[]") if isinstance(item, dict)]
+            for item in bars:
+                item["date"] = canonical_history_date(item.get("date"))
+            bars = [item for item in bars if str(item.get("date") or "") < trade_date]
+            bars.sort(key=lambda item: str(item.get("date") or ""))
+            closes = [number(item.get("close")) for item in bars if number(item.get("close")) is not None]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            skipped += 1
+            continue
+        if not bars or str(bars[-1].get("date") or "") != previous_date:
+            skipped += 1
+            continue
+        rules = macd_rules_for_price(closes, number(price), number(change_pct))
+        labels = [macd_selection_rule_label(rule) for rule in rules]
+        if not labels:
+            removals.append((str(alert_id),))
+        elif str(old_signal or "") not in labels:
+            rule = rules[0]
+            updates.append((macd_selection_rule_label(rule), f"macd-screener:{rule}", str(alert_id)))
+    try:
+        with open_backtest_db() as connection:
+            if updates:
+                connection.executemany("UPDATE market_alert_history SET signal=?,config=? WHERE id=?", updates)
+            if removals:
+                connection.executemany("DELETE FROM market_alert_history WHERE id=?", removals)
+            connection.commit()
+    except sqlite3.Error:
+        return {"updated": 0, "removed": 0, "skipped": skipped}
+    return {"updated": len(updates), "removed": len(removals), "skipped": skipped}
 
 
 def prune_macd_screener_for_previous_day_liquidity(trade_date: str) -> Dict[str, Any]:
@@ -3044,15 +3304,27 @@ def scan_macd_screener(scan_id: int) -> None:
                 continue
             try:
                 history = json.loads(raw_history or "[]")
-                closes = [number(item.get("close")) for item in history
-                          if str(item.get("date") or "").replace("-", "") < trade_date.replace("-", "") and number(item.get("close")) is not None]
+                completed_history = [dict(item) for item in history if isinstance(item, dict)]
+                for item in completed_history:
+                    item["date"] = canonical_history_date(item.get("date"))
+                completed_history = [item for item in completed_history if str(item.get("date") or "") < trade_date]
+                completed_history.sort(key=lambda item: str(item.get("date") or ""))
+                # Do not turn a stale cache into a false "连续红柱" signal.  The
+                # prior completed session must be present before this code can
+                # enter, leave, or emit a MACD alert.
+                if previous_amount_date and (not completed_history or str(completed_history[-1].get("date") or "") != previous_amount_date):
+                    continue
+                closes = [number(item.get("close")) for item in completed_history if number(item.get("close")) is not None]
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
             # 当前实时价相对「前 3 个交易日收盘价」的涨幅：不把今天计入三天。
             three_days_ago_close = closes[-3] if len(closes) >= 3 else None
+            previous_close = closes[-1] if closes else None
             three_day_gain = ((price / three_days_ago_close) - 1) * 100 if three_days_ago_close and three_days_ago_close > 0 else None
             latest_change_pct = number((quote or {}).get("f3"))
             closes.append(price)
+            if macd_is_bearish_arrangement(closes):
+                continue
             slow = macd_histogram_series(closes, 10, 20, 7)
             fast = macd_histogram_series(closes, 5, 10, 3)
             if len(slow) < 2 or len(fast) < 2:
@@ -3070,17 +3342,20 @@ def scan_macd_screener(scan_id: int) -> None:
                     fast_red_days += 1
                 else:
                     break
-            fast_flip = fast[-2] < 0 <= fast[-1]
-            slow_flip = slow[-2] < 0 <= slow[-1]
             rules: List[str] = []
-            # 两个“翻红”条件还需当日不在水下；下拉菜单文案保持原样，
-            # 只收紧实际入选规则。
-            if latest_change_pct is not None and latest_change_pct >= 0:
-                if slow_red_days >= 5 and fast_flip:
-                    rules.append("慢线连红+快线翻红")
-                if slow_flip and fast_flip:
-                    rules.append("双线同步翻红")
-            dual_red_rule = macd_dual_red_rule(slow_red_days, fast_red_days, three_day_gain, latest_change_pct)
+            slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+                slow, fast, slow_red_days, fast_red_days, latest_change_pct,
+            )
+            if slow_fast_passed:
+                rules.append("慢线连红+快线翻红")
+            if simultaneous_passed:
+                rules.append("双线同步翻红")
+            dual_red_rule = macd_dual_red_rule(
+                slow_red_days, fast_red_days, three_day_gain, latest_change_pct,
+                three_days_ago_close, previous_close,
+                macd_recent_red_bars_accelerating(slow, slow_red_days),
+                macd_recent_red_bars_accelerating(fast, fast_red_days),
+            )
             if dual_red_rule:
                 rules.append(dual_red_rule)
             if not rules:
@@ -3235,9 +3510,12 @@ def bootstrap_macd_screener_from_local_close() -> None:
                 except (TypeError, ValueError, json.JSONDecodeError):
                     continue
                 three_days_ago_close = closes[-3] if len(closes) >= 3 else None
+                previous_close = closes[-1] if closes else None
                 three_day_gain = ((price / three_days_ago_close) - 1) * 100 if three_days_ago_close and three_days_ago_close > 0 else None
                 latest_change_pct = number(quote.get("f3"))
                 closes.append(price)
+                if macd_is_bearish_arrangement(closes):
+                    continue
                 slow = macd_histogram_series(closes, 10, 20, 7)
                 fast = macd_histogram_series(closes, 5, 10, 3)
                 if len(slow) < 2 or len(fast) < 2:
@@ -3251,10 +3529,17 @@ def bootstrap_macd_screener_from_local_close() -> None:
                     if value >= 0: fast_red_days += 1
                     else: break
                 rules: List[str] = []
-                if latest_change_pct is not None and latest_change_pct >= 0:
-                    if red_days >= 5 and fast[-2] < 0 <= fast[-1]: rules.append("慢线连红+快线翻红")
-                    if slow[-2] < 0 <= slow[-1] and fast[-2] < 0 <= fast[-1]: rules.append("双线同步翻红")
-                dual_red_rule = macd_dual_red_rule(red_days, fast_red_days, three_day_gain, latest_change_pct)
+                slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+                    slow, fast, red_days, fast_red_days, latest_change_pct,
+                )
+                if slow_fast_passed: rules.append("慢线连红+快线翻红")
+                if simultaneous_passed: rules.append("双线同步翻红")
+                dual_red_rule = macd_dual_red_rule(
+                    red_days, fast_red_days, three_day_gain, latest_change_pct,
+                    three_days_ago_close, previous_close,
+                    macd_recent_red_bars_accelerating(slow, red_days),
+                    macd_recent_red_bars_accelerating(fast, fast_red_days),
+                )
                 if dual_red_rule: rules.append(dual_red_rule)
                 if not rules:
                     continue
@@ -3324,10 +3609,13 @@ def bootstrap_macd_screener_from_local_close() -> None:
         price = number((quotes.get(code) or {}).get("price")) or closes[-1]
         # 本地收盘序列末尾就是最新交易日，基准取其之前第 3 个交易日。
         three_days_ago_close = closes[-4] if len(closes) >= 4 else None
+        previous_close = closes[-2] if len(closes) >= 2 else None
         three_day_gain = ((price / three_days_ago_close) - 1) * 100 if three_days_ago_close and three_days_ago_close > 0 else None
         latest_change_pct = number((quotes.get(code) or {}).get("changePct"))
         if latest_change_pct is None and len(closes) >= 2 and closes[-2] > 0:
             latest_change_pct = ((price / closes[-2]) - 1) * 100
+        if macd_is_bearish_arrangement(closes):
+            continue
         slow = macd_histogram_series(closes, 10, 20, 7)
         fast = macd_histogram_series(closes, 5, 10, 3)
         if len(slow) < 2 or len(fast) < 2:
@@ -3345,12 +3633,19 @@ def bootstrap_macd_screener_from_local_close() -> None:
             else:
                 break
         rules: List[str] = []
-        if latest_change_pct is not None and latest_change_pct >= 0:
-            if red_days >= 5 and fast[-2] < 0 <= fast[-1]:
-                rules.append("慢线连红+快线翻红")
-            if slow[-2] < 0 <= slow[-1] and fast[-2] < 0 <= fast[-1]:
-                rules.append("双线同步翻红")
-        dual_red_rule = macd_dual_red_rule(red_days, fast_red_days, three_day_gain, latest_change_pct)
+        slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+            slow, fast, red_days, fast_red_days, latest_change_pct,
+        )
+        if slow_fast_passed:
+            rules.append("慢线连红+快线翻红")
+        if simultaneous_passed:
+            rules.append("双线同步翻红")
+        dual_red_rule = macd_dual_red_rule(
+            red_days, fast_red_days, three_day_gain, latest_change_pct,
+            three_days_ago_close, previous_close,
+            macd_recent_red_bars_accelerating(slow, red_days),
+            macd_recent_red_bars_accelerating(fast, fast_red_days),
+        )
         if dual_red_rule:
             rules.append(dual_red_rule)
         if not rules:
@@ -3494,7 +3789,7 @@ def record_market_alert(event: Dict[str, Any]) -> None:
         with open_backtest_db() as connection:
             price = number(event.get("price"))
             # 同一元角价格档位反复进出选股池属于扫描抖动噪声。忽略“分”，
-            # 如 17.86～17.89 都归入 17.8；同代码、同信号当日最多保留前三次。
+            # 如 17.86～17.89 都归入 17.8；同代码、同信号当日只保留一次。
             if price is not None:
                 prior_count = connection.execute(
                     "SELECT COUNT(*) FROM market_alert_history "
@@ -3502,7 +3797,7 @@ def record_market_alert(event: Dict[str, Any]) -> None:
                     "AND CAST(price * 10 AS INTEGER)=CAST(? * 10 AS INTEGER)",
                     (str(event.get("tradeDate") or ""), str(event.get("code") or ""), str(event.get("signal") or ""), price),
                 ).fetchone()[0]
-                if int(prior_count or 0) >= 3:
+                if int(prior_count or 0) >= 1:
                     return
             connection.execute(
                 "INSERT OR IGNORE INTO market_alert_history("
@@ -3529,12 +3824,12 @@ def record_market_alert(event: Dict[str, Any]) -> None:
 
 
 def purge_repeated_same_price_macd_alerts(trade_date: str) -> int:
-    """Keep the earliest three alerts for each code/signal/yuan-jiao price bucket."""
+    """Keep the earliest alert for each code/signal/yuan-jiao price bucket."""
     with open_backtest_db() as connection:
         removed = connection.execute(
             "DELETE FROM market_alert_history WHERE id IN ("
             "SELECT id FROM (SELECT id,ROW_NUMBER() OVER (PARTITION BY code,signal,CAST(price * 10 AS INTEGER) ORDER BY alert_time,id) AS row_num "
-            "FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter' AND price IS NOT NULL) WHERE row_num>3)",
+            "FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter' AND price IS NOT NULL) WHERE row_num>1)",
             (trade_date,),
         ).rowcount
         connection.commit()
@@ -3547,7 +3842,7 @@ def purge_repeated_same_price_macd_alerts(trade_date: str) -> int:
                 continue
             key = (trade_date, str(event.get("code") or ""), str(event.get("signal") or ""), alert_price_tenth_bucket(event.get("price")))
             kept[key] = kept.get(key, 0) + 1
-            if kept[key] <= 3:
+            if kept[key] <= 1:
                 filtered.append(event)
         _macd_alert_events[:] = filtered[-360:]
     return int(removed or 0)

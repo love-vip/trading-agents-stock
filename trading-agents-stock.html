@@ -4095,7 +4095,7 @@
       }
       if (state.pageView === "macd-screener") {
         el.pageTitle.textContent = "盘中选股 · MACD选股";
-        el.pageDescription.textContent = "全市场日线 MACD 动态筛选：慢线连红配合快线翻红、两套 MACD 同步翻红，或双线均连续红色至少 2 日、近 3 个交易日涨幅至少 5%且最新交易日涨跌幅不低于 -1%。交易时段每分钟更新，15:00 固化当日结果。";
+        el.pageDescription.textContent = "全市场日线 MACD 动态筛选：双线连红要求近期加速确认（当天柱大于前日且为最近 3 根最大）；同步翻红要求红柱超过前日绿柱；慢线连红 + 快线翻红要求慢线放大 10%、快线超过前日绿柱 5%；空头排列不入池、不告警。交易时段每分钟更新，15:00 固化当日结果。";
         el.sectorMode.textContent = "盘中选股：MACD选股";
         document.title = "盘中选股 · MACD选股";
         return;
@@ -4799,6 +4799,10 @@
         ["双线连红3日+涨5%", "双线连红 3 日 + 近3日涨幅 ≥5%"],
         ["双线连红4日+涨5%", "双线连红 4 日 + 近3日涨幅 ≥5%"],
         ["双线连红≥5日+涨5%", "双线连红 ≥5 日 + 近3日涨幅 ≥5%"],
+        ["双线连红2日+当日涨3%", "双线连红 2 日 + 当日涨幅 ≥3%"],
+        ["双线连红3日+当日涨3%", "双线连红 3 日 + 当日涨幅 ≥3%"],
+        ["双线连红4日+当日涨3%", "双线连红 4 日 + 当日涨幅 ≥3%"],
+        ["双线连红≥5日+当日涨3%", "双线连红 ≥5 日 + 当日涨幅 ≥3%"],
       ];
       const counts = Object.fromEntries(rules.map(([rule]) => [rule, 0]));
       (state.whitelistStocks || []).forEach(stock => {
@@ -5261,7 +5265,7 @@
         state.whitelistShown = 0;
       }
       el.whitelistTitle.textContent = "盘中选股 · MACD选股";
-      el.whitelistNote.textContent = "全市场日线 MACD 动态筛选：慢线连红 + 快线翻红、双线同步翻红，或双线均连红至少 2 日、近 3 日涨幅至少 5%且当日跌幅不超 1%；上一交易日全天成交额须不低于 8,000 万。交易中每分钟更新，15:00 固化。";
+      el.whitelistNote.textContent = "MACD 强度筛选：双线连红要求当天柱大于前日且为最近 3 根最大；同步翻红柱超过前日绿柱；慢线连红 + 快线翻红要求慢线放大 10%、快线超过前日绿柱 5%；空头排列不入池、不告警。上一交易日全天成交额须不低于 8,000 万。交易中每分钟更新，15:00 固化。";
       el.whitelistSearch.placeholder = "搜索个股名称、代码或首字母";
       el.whitelistUpdated.textContent = "正在读取 MACD 动态选股池…";
       renderSectorNavigation(); render();
@@ -8491,7 +8495,11 @@
         "双线连红 2 日 + 近3日涨幅 ≥5%": "双线连红 2 日 + 近3日涨幅 ≥5%",
         "双线连红 3 日 + 近3日涨幅 ≥5%": "双线连红 3 日 + 近3日涨幅 ≥5%",
         "双线连红 4 日 + 近3日涨幅 ≥5%": "双线连红 4 日 + 近3日涨幅 ≥5%",
-        "双线连红 ≥5 日 + 近3日涨幅 ≥5%": "双线连红 ≥5 日 + 近3日涨幅 ≥5%"
+        "双线连红 ≥5 日 + 近3日涨幅 ≥5%": "双线连红 ≥5 日 + 近3日涨幅 ≥5%",
+        "双线连红 2 日 + 当日涨幅 ≥3%": "双线连红 2 日 + 当日涨幅 ≥3%",
+        "双线连红 3 日 + 当日涨幅 ≥3%": "双线连红 3 日 + 当日涨幅 ≥3%",
+        "双线连红 4 日 + 当日涨幅 ≥3%": "双线连红 4 日 + 当日涨幅 ≥3%",
+        "双线连红 ≥5 日 + 当日涨幅 ≥3%": "双线连红 ≥5 日 + 当日涨幅 ≥3%"
       };
       const selected = el.marketAlertHistorySignal.value;
       const total = Object.values(counts).reduce((sum, count) => sum + Number(count || 0), 0);
