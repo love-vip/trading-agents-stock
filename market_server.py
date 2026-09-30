@@ -757,15 +757,16 @@ def auction_capture_loop(stop_event: threading.Event) -> None:
 
 
 def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
-    """交易时段后台扫描全市场，收盘后保存一次候选快照。"""
+    """交易时段扫描；收盘后归档并按小时修补全市场快照。"""
     captured_dates: set[str] = set()
+    post_close_backfill_hours: set[str] = set()
     last_intraday_scan = 0.0
     last_ai_rebound_scan = 0.0
     last_macd_alert_scan = 0.0
     last_macd_screener_scan = 0.0
     while not stop_event.wait(30):
         now = datetime.now(CHINA_TZ)
-        if now.weekday() >= 5:
+        if not is_a_share_trading_day(now.date()):
             continue
         trade_date = now.strftime("%Y-%m-%d")
         current_minutes = now.hour * 60 + now.minute
@@ -786,6 +787,20 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
                 archived = archive_post_close_quote_snapshot(trade_date)
                 captured_dates.add(trade_date)
                 print(f"收盘本地报价快照已归档：{trade_date}；{archived} 只")
+            # 15:05 首次补齐，之后每个整点补一次直到当天结束。每小时最多
+            # 一次，全市场拉取不会与盘中一分钟扫描竞争资源。
+            hourly_key = f"{trade_date}:{now.hour:02d}"
+            post_close_due = now.hour > 15 or (now.hour == 15 and now.minute >= 5)
+            if post_close_due and hourly_key not in post_close_backfill_hours:
+                try:
+                    result = backfill_post_close_market_snapshot(trade_date)
+                finally:
+                    # 失败则留给下一小时重试，避免 30 秒循环重复冲击数据源。
+                    post_close_backfill_hours.add(hourly_key)
+                print(
+                    f"收盘全市场快照补档：{trade_date}；获取 {result['fetched']}，"
+                    f"新增 {result['inserted']}，更新 {result['updated']}，跳过 {result['skipped']}"
+                )
         except (MarketDataError, OSError, ValueError, sqlite3.Error) as exc:
             print(f"后台全市场评分扫描失败: {exc}")
 
@@ -1634,6 +1649,124 @@ def number(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def eastmoney_secid(code: str) -> str:
+    normalized = str(code or "")
+    return f"1.{normalized}" if normalized.startswith(("5", "6", "9")) else f"0.{normalized}"
+
+
+def get_cached_stock_industries(codes: List[str]) -> Dict[str, str]:
+    normalized = sorted({str(code) for code in codes if re.fullmatch(r"\d{6}", str(code))})
+    if not normalized:
+        return {}
+    with open_backtest_db() as connection:
+        rows = connection.execute(
+            f"SELECT code,industry FROM stock_industry_cache WHERE code IN ({','.join('?' for _ in normalized)})",
+            tuple(normalized),
+        ).fetchall()
+    return {str(code): str(industry) for code, industry in rows if str(industry or "").strip() not in {"", "--"}}
+
+
+def backfill_stock_industries(codes: List[str], max_workers: int = 12) -> Dict[str, str]:
+    """Fetch only missing industries, then make SQLite the normal read path."""
+    cached = get_cached_stock_industries(codes)
+    missing = [str(code) for code in codes if re.fullmatch(r"\d{6}", str(code)) and str(code) not in cached]
+    if not missing:
+        return cached
+
+    def fetch_one(code: str) -> Tuple[str, str]:
+        try:
+            payload = request_json_fast(
+                "https://push2.eastmoney.com/api/qt/stock/get",
+                {"secid": eastmoney_secid(code), "fields": "f57,f58,f127"},
+            )
+            industry = str((payload.get("data") or {}).get("f127") or "").strip()
+            return code, industry
+        except (MarketDataError, OSError, ValueError, TypeError):
+            return code, ""
+
+    resolved: Dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(missing))) as executor:
+        for code, industry in executor.map(fetch_one, missing):
+            if industry:
+                resolved[code] = industry
+    if resolved:
+        saved_at = datetime.now(CHINA_TZ).isoformat()
+        with open_backtest_db() as connection:
+            connection.executemany(
+                "INSERT INTO stock_industry_cache(code,industry,source,updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(code) DO UPDATE SET industry=excluded.industry,source=excluded.source,updated_at=excluded.updated_at",
+                [(code, industry, "东方财富个股详情 f127", saved_at) for code, industry in resolved.items()],
+            )
+            connection.commit()
+    return {**cached, **resolved}
+
+
+def hydrate_macd_industries_for_trade_date(trade_date: str) -> Dict[str, int]:
+    """Backfill industry for the current MACD pool and its durable alerts."""
+    with open_backtest_db() as connection:
+        member_rows = connection.execute(
+            "SELECT code,stock_json FROM macd_screener_members WHERE trade_date=?", (trade_date,)
+        ).fetchall()
+        alert_codes = [str(row[0]) for row in connection.execute(
+            "SELECT DISTINCT code FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter'", (trade_date,)
+        ).fetchall()]
+    codes = sorted({str(code) for code, _ in member_rows} | set(alert_codes))
+    industries = backfill_stock_industries(codes)
+    if not industries:
+        return {"resolved": 0, "members": 0, "alerts": 0}
+    member_updates = []
+    for code, raw in member_rows:
+        industry = industries.get(str(code))
+        if not industry:
+            continue
+        try:
+            stock = json.loads(raw or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        stock["industry"] = industry
+        stock["actualIndustry"] = industry
+        member_updates.append((json.dumps(stock, ensure_ascii=False), trade_date, str(code)))
+    with open_backtest_db() as connection:
+        if member_updates:
+            connection.executemany("UPDATE macd_screener_members SET stock_json=? WHERE trade_date=? AND code=?", member_updates)
+        placeholders = ",".join("?" for _ in industries)
+        alerts = 0
+        if placeholders:
+            case_sql = " ".join("WHEN ? THEN ?" for _ in industries)
+            params: List[Any] = []
+            for code, industry in industries.items(): params.extend((code, industry))
+            params.extend((trade_date, *industries.keys()))
+            alerts = connection.execute(
+                f"UPDATE market_alert_history SET industry=CASE code {case_sql} ELSE industry END "
+                f"WHERE trade_date=? AND alert_type='macdScreenerEnter' AND code IN ({placeholders})", tuple(params)
+            ).rowcount
+        connection.commit()
+    return {"resolved": len(industries), "members": len(member_updates), "alerts": alerts}
+
+
+def get_retired_security_codes() -> Set[str]:
+    """Codes explicitly excluded from all derived stock scans."""
+    with open_backtest_db() as connection:
+        return {str(row[0]) for row in connection.execute(
+            "SELECT code FROM retired_security_codes WHERE active=1"
+        ).fetchall()}
+
+
+def prune_retired_securities_from_macd(trade_date: str) -> Dict[str, int]:
+    """Keep retired/history-only codes out of both MACD results and alerts."""
+    with open_backtest_db() as connection:
+        members = connection.execute(
+            "DELETE FROM macd_screener_members WHERE trade_date=? AND code IN "
+            "(SELECT code FROM retired_security_codes WHERE active=1)", (trade_date,)
+        ).rowcount
+        alerts = connection.execute(
+            "DELETE FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter' AND code IN "
+            "(SELECT code FROM retired_security_codes WHERE active=1)", (trade_date,)
+        ).rowcount
+        connection.commit()
+    return {"members": members, "alerts": alerts}
 
 
 def clamp(value: float, minimum: float = 0, maximum: float = 100) -> int:
@@ -2802,6 +2935,68 @@ def _macd_screener_trade_date(now: Optional[datetime] = None) -> str:
     return str(row[0] or "") if row else ""
 
 
+MACD_PREVIOUS_DAY_MIN_AMOUNT = 80_000_000
+
+
+def macd_previous_day_amounts(reference_trade_date: str, codes: Optional[List[str]] = None) -> Tuple[str, Dict[str, Optional[float]]]:
+    """Return prior *actual* trading day's full-day amounts from local close snapshots."""
+    previous_date = latest_local_market_trade_date(reference_trade_date, strictly_before=True)
+    if not previous_date:
+        return "", {}
+    normalized_codes = sorted({str(code) for code in (codes or []) if re.fullmatch(r"\d{6}", str(code))})
+    query = "SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=?"
+    params: List[Any] = [previous_date]
+    if normalized_codes:
+        query += f" AND code IN ({','.join('?' for _ in normalized_codes)})"
+        params.extend(normalized_codes)
+    amounts: Dict[str, Optional[float]] = {}
+    with open_backtest_db() as connection:
+        rows = connection.execute(query, tuple(params)).fetchall()
+    for code, raw_quote in rows:
+        try:
+            quote = json.loads(raw_quote or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            quote = {}
+        amounts[str(code)] = number(quote.get("amount"))
+        if amounts[str(code)] is None:
+            amounts[str(code)] = number(quote.get("f6"))
+    return previous_date, amounts
+
+
+def macd_passes_previous_day_liquidity(amount: Optional[float]) -> bool:
+    # 缺失或 0 通常代表本地快照尚未覆盖，不可据此否决股票；仅在能确认
+    # 上一交易日真实成交额为正、且明确低于门槛时排除。
+    return amount is None or amount <= 0 or amount >= MACD_PREVIOUS_DAY_MIN_AMOUNT
+
+
+def prune_macd_screener_for_previous_day_liquidity(trade_date: str) -> Dict[str, Any]:
+    """Remove same-day MACD members and entry alerts that fail the liquidity gate."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(trade_date or "")):
+        raise ValueError("无效交易日")
+    with open_backtest_db() as connection:
+        member_codes = [str(row[0]) for row in connection.execute(
+            "SELECT code FROM macd_screener_members WHERE trade_date=?", (trade_date,)
+        ).fetchall()]
+        alert_codes = [str(row[0]) for row in connection.execute(
+            "SELECT DISTINCT code FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter'", (trade_date,)
+        ).fetchall()]
+    all_codes = sorted(set(member_codes) | set(alert_codes))
+    previous_date, amounts = macd_previous_day_amounts(trade_date, all_codes)
+    rejected = [code for code in all_codes if not macd_passes_previous_day_liquidity(amounts.get(code))]
+    if not rejected:
+        return {"tradeDate": trade_date, "previousTradeDate": previous_date, "rejectedCodes": 0, "removedMembers": 0, "removedAlerts": 0}
+    placeholders = ",".join("?" for _ in rejected)
+    with open_backtest_db() as connection:
+        members = connection.execute(
+            f"DELETE FROM macd_screener_members WHERE trade_date=? AND code IN ({placeholders})", (trade_date, *rejected)
+        ).rowcount
+        alerts = connection.execute(
+            f"DELETE FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter' AND code IN ({placeholders})", (trade_date, *rejected)
+        ).rowcount
+        connection.commit()
+    return {"tradeDate": trade_date, "previousTradeDate": previous_date, "rejectedCodes": len(rejected), "removedMembers": members, "removedAlerts": alerts}
+
+
 def scan_macd_screener(scan_id: int) -> None:
     """Rebuild the two-rule MACD pool from all cached A-share histories.
 
@@ -2816,9 +3011,12 @@ def scan_macd_screener(scan_id: int) -> None:
     try:
         with open_backtest_db() as connection:
             histories = connection.execute("SELECT code,bars_json FROM midterm_history_cache").fetchall()
+        retired_codes = get_retired_security_codes()
+        history_codes = [str(code) for code, _raw_history in histories if str(code) not in retired_codes]
+        previous_amount_date, previous_amounts = macd_previous_day_amounts(trade_date, history_codes)
         # MACD 全市场重算只需要实时价格和涨跌幅。避免为了这一项扫描拉取
         # 东财的全市场分页列表，腾讯分组报价有硬超时，能在一分钟轮询内完成。
-        live = fetch_tencent_market_rows([str(code) for code, _raw_history in histories])
+        live = fetch_tencent_market_rows(history_codes)
         if not live:
             # 腾讯源整体不可用时才退回原有全市场源，保证策略不会因单源问题
             # 完全停止；下一轮仍会优先走快速批量通道。
@@ -2832,6 +3030,14 @@ def scan_macd_screener(scan_id: int) -> None:
         evaluated_codes: set[str] = set()
         for code, raw_history in histories:
             code = str(code)
+            if code in retired_codes:
+                evaluated_codes.add(code)
+                continue
+            # 选股流动性以昨天完整收盘额为准；仅明确低于 8,000 万才不入选。
+            # 缺失或 0 不作否决，避免因本地快照不完整误删成员。
+            if not macd_passes_previous_day_liquidity(previous_amounts.get(code)):
+                evaluated_codes.add(code)
+                continue
             quote = live.get(code)
             price = number((quote or {}).get("f2"))
             if price is None or price <= 0:
@@ -2903,6 +3109,8 @@ def scan_macd_screener(scan_id: int) -> None:
                 "macdFastRedDays": fast_red_days,
                 "macdThreeDayGain": three_day_gain,
                 "macdLatestChangePct": latest_change_pct,
+                "macdPreviousDayAmount": previous_amounts.get(code),
+                "macdPreviousDayTradeDate": previous_amount_date,
             }
             selected.append((trade_date, code, "/".join(rules), json.dumps(stock, ensure_ascii=False), now.isoformat()))
             selected_stocks[code] = stock
@@ -2938,6 +3146,18 @@ def scan_macd_screener(scan_id: int) -> None:
                     json.dumps(fallback_stock, ensure_ascii=False),
                     now.isoformat(),
                 ))
+            # 行业先走本地缓存；首次缺失时才并发补齐并写回，避免腾讯行情的
+            # 空行业字段传递到成员表和告警记录。
+            industries = backfill_stock_industries(list(selected_stocks))
+            for selected_code, stock in selected_stocks.items():
+                industry = industries.get(selected_code)
+                if industry:
+                    stock["industry"] = industry
+                    stock["actualIndustry"] = industry
+            selected = [
+                (trade_date, code, "/".join(stock.get("macdSelectionRules") or []), json.dumps(stock, ensure_ascii=False), now.isoformat())
+                for code, stock in selected_stocks.items()
+            ]
             connection.execute("DELETE FROM macd_screener_members WHERE trade_date=?", (trade_date,))
             if selected:
                 connection.executemany(
@@ -2991,11 +3211,19 @@ def bootstrap_macd_screener_from_local_close() -> None:
             live_quotes = {str(row.get("f12") or ""): row for row in live_rows if re.fullmatch(r"\d{6}", str(row.get("f12") or ""))}
             with open_backtest_db() as connection:
                 histories = connection.execute("SELECT code,bars_json FROM midterm_history_cache").fetchall()
+            retired_codes = get_retired_security_codes()
+            previous_amount_date, previous_amounts = macd_previous_day_amounts(
+                latest_close_date, [str(code) for code, _raw_history in histories]
+            )
             selected: List[Tuple[str, str, str, str, str]] = []
             saved_at = datetime.now(CHINA_TZ).isoformat()
             target_compact = latest_close_date.replace("-", "")
             for code, raw_history in histories:
                 code = str(code)
+                if code in retired_codes:
+                    continue
+                if not macd_passes_previous_day_liquidity(previous_amounts.get(code)):
+                    continue
                 quote = live_quotes.get(code)
                 price = number((quote or {}).get("f2"))
                 if price is None or price <= 0:
@@ -3041,6 +3269,8 @@ def bootstrap_macd_screener_from_local_close() -> None:
                     "macdFastRedDays": fast_red_days,
                     "macdThreeDayGain": three_day_gain,
                     "macdLatestChangePct": latest_change_pct,
+                    "macdPreviousDayAmount": previous_amounts.get(code),
+                    "macdPreviousDayTradeDate": previous_amount_date,
                 }
                 selected.append((latest_close_date, code, "/".join(rules), json.dumps(stock, ensure_ascii=False), saved_at))
             if selected:
@@ -3075,9 +3305,17 @@ def bootstrap_macd_screener_from_local_close() -> None:
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
     saved_at = datetime.now(CHINA_TZ).isoformat()
+    retired_codes = get_retired_security_codes()
+    previous_amount_date, previous_amounts = macd_previous_day_amounts(
+        trade_date, [str(code) for code, _raw_history in histories]
+    )
     selected: List[Tuple[str, str, str, str, str]] = []
     for code, raw_history in histories:
         code = str(code)
+        if code in retired_codes:
+            continue
+        if not macd_passes_previous_day_liquidity(previous_amounts.get(code)):
+            continue
         try:
             history = json.loads(raw_history or "[]")
             closes = [number(item.get("close")) for item in history if number(item.get("close")) is not None]
@@ -3131,6 +3369,8 @@ def bootstrap_macd_screener_from_local_close() -> None:
             "macdFastRedDays": fast_red_days,
             "macdThreeDayGain": three_day_gain,
             "macdLatestChangePct": latest_change_pct,
+            "macdPreviousDayAmount": previous_amounts.get(code),
+            "macdPreviousDayTradeDate": previous_amount_date,
         }
         selected.append((trade_date, code, "/".join(rules), json.dumps(stock, ensure_ascii=False), saved_at))
     if not selected:
@@ -3234,17 +3474,36 @@ def collect_macd_alert_universe() -> Dict[str, Dict[str, Any]]:
     return universe
 
 
+def alert_price_tenth_bucket(value: Any) -> Optional[float]:
+    """Return the price's yuan/jiao bucket, intentionally discarding cents."""
+    price = number(value)
+    if price is None:
+        return None
+    # 17.80～17.89 must all belong to 17.8, not be rounded into 17.9.
+    return math.floor(float(price) * 10 + 1e-8) / 10
+
+
 def record_market_alert(event: Dict[str, Any]) -> None:
     """Keep the in-page alert stream and a durable same-day alert audit trail."""
     # 告警系统现在只服务 MACD 选股规则；开高低走、涨跌幅档位和均线触达
     # 仍可作为内部行情判断，但不再进入顶部告警框或当日告警池。
     if str(event.get("alertType") or "") != "macdScreenerEnter":
         return
-    with _cache_lock:
-        _macd_alert_events.append(event)
-        del _macd_alert_events[:-360]
+    persisted = False
     try:
         with open_backtest_db() as connection:
+            price = number(event.get("price"))
+            # 同一元角价格档位反复进出选股池属于扫描抖动噪声。忽略“分”，
+            # 如 17.86～17.89 都归入 17.8；同代码、同信号当日最多保留前三次。
+            if price is not None:
+                prior_count = connection.execute(
+                    "SELECT COUNT(*) FROM market_alert_history "
+                    "WHERE trade_date=? AND alert_type='macdScreenerEnter' AND code=? AND signal=? "
+                    "AND CAST(price * 10 AS INTEGER)=CAST(? * 10 AS INTEGER)",
+                    (str(event.get("tradeDate") or ""), str(event.get("code") or ""), str(event.get("signal") or ""), price),
+                ).fetchone()[0]
+                if int(prior_count or 0) >= 3:
+                    return
             connection.execute(
                 "INSERT OR IGNORE INTO market_alert_history("
                 "id,trade_date,alert_time,code,name,board,pool,price,change_pct,industry,"
@@ -3259,8 +3518,39 @@ def record_market_alert(event: Dict[str, Any]) -> None:
                     json.dumps(event.get("signals") or [], ensure_ascii=False), datetime.now(CHINA_TZ).isoformat(),
                 ),
             )
+            connection.commit()
+            persisted = True
     except sqlite3.Error as exc:
         print(f"告警历史写入失败: {exc}")
+    if persisted:
+        with _cache_lock:
+            _macd_alert_events.append(event)
+            del _macd_alert_events[:-360]
+
+
+def purge_repeated_same_price_macd_alerts(trade_date: str) -> int:
+    """Keep the earliest three alerts for each code/signal/yuan-jiao price bucket."""
+    with open_backtest_db() as connection:
+        removed = connection.execute(
+            "DELETE FROM market_alert_history WHERE id IN ("
+            "SELECT id FROM (SELECT id,ROW_NUMBER() OVER (PARTITION BY code,signal,CAST(price * 10 AS INTEGER) ORDER BY alert_time,id) AS row_num "
+            "FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter' AND price IS NOT NULL) WHERE row_num>3)",
+            (trade_date,),
+        ).rowcount
+        connection.commit()
+    with _cache_lock:
+        kept: Dict[Tuple[str, str, str, float], int] = {}
+        filtered = []
+        for event in _macd_alert_events:
+            if event.get("tradeDate") != trade_date or event.get("alertType") != "macdScreenerEnter" or number(event.get("price")) is None:
+                filtered.append(event)
+                continue
+            key = (trade_date, str(event.get("code") or ""), str(event.get("signal") or ""), alert_price_tenth_bucket(event.get("price")))
+            kept[key] = kept.get(key, 0) + 1
+            if kept[key] <= 3:
+                filtered.append(event)
+        _macd_alert_events[:] = filtered[-360:]
+    return int(removed or 0)
 
 
 def purge_opposite_side_ma_alerts(trade_date: str) -> None:
@@ -3373,7 +3663,7 @@ def record_macd_screener_lifecycle_alerts(
     previous_stocks: Dict[str, Dict[str, Any]],
     selected_stocks: Dict[str, Dict[str, Any]],
 ) -> None:
-    """Persist new MACD pool entries as normal top-alert events."""
+    """Persist MACD entries and every further ±1pp move while still qualified."""
     if not is_alert_scan_session(now):
         return
     try:
@@ -3391,21 +3681,51 @@ def record_macd_screener_lifecycle_alerts(
     # 首次进入告警时段时把当前结果作为可见“进入”基线。
     entered_codes = selected_codes if first_alert_window_scan else selected_codes - previous_codes
     alert_time = now.strftime("%H:%M:%S")
-    event_suffix = str(time.time_ns())
 
-    for code in sorted(entered_codes):
+    def is_limit_up(stock: Dict[str, Any]) -> bool:
+        change = number(stock.get("changePct"))
+        return change is not None and change >= market_limit_ratio(str(stock.get("code") or ""), str(stock.get("name") or "")) * 100 - 0.01
+
+    def last_alert_change(code: str, signal: str) -> Optional[float]:
+        try:
+            with open_backtest_db() as connection:
+                row = connection.execute(
+                    "SELECT change_pct FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter' "
+                    "AND code=? AND signal=? ORDER BY alert_time DESC,id DESC LIMIT 1",
+                    (trade_date, code, signal),
+                ).fetchone()
+            return number(row[0]) if row else None
+        except sqlite3.Error:
+            return None
+
+    def emit(code: str, stock: Dict[str, Any], rule: str, reason: str) -> None:
+        if is_limit_up(stock):
+            return
+        signal = macd_selection_rule_label(rule)
+        if reason == "move":
+            previous_change = last_alert_change(code, signal)
+            current_change = number(stock.get("changePct"))
+            # 首次出现的新规则直接建立基准；已有告警仅在涨跌幅相对上次
+            # 实际告警变化满 1 个百分点时续报。
+            if previous_change is not None and (current_change is None or abs(current_change - previous_change) < 1.0):
+                return
+        record_market_alert({
+            "id": f"{trade_date}:{code}:macd-screener-{reason}:{rule}:{time.time_ns()}",
+            "tradeDate": trade_date, "time": alert_time, "code": code,
+            "name": str(stock.get("name") or code), "board": alert_board_for_code(code),
+            "pool": "MACD选股", "price": number(stock.get("price")),
+            "changePct": number(stock.get("changePct")),
+            "industry": str(stock.get("actualIndustry") or stock.get("industry") or "--"),
+            "alertType": "macdScreenerEnter", "config": f"macd-screener:{rule}",
+            "signal": signal, "tone": "red",
+        })
+
+    for code in sorted(selected_codes):
         stock = selected_stocks[code]
         for rule in stock.get("macdSelectionRules") or []:
-            record_market_alert({
-                "id": f"{trade_date}:{code}:macd-screener-enter:{rule}:{event_suffix}",
-                "tradeDate": trade_date, "time": alert_time, "code": code,
-                "name": str(stock.get("name") or code), "board": alert_board_for_code(code),
-                "pool": "MACD选股", "price": number(stock.get("price")),
-                "changePct": number(stock.get("changePct")),
-                "industry": str(stock.get("actualIndustry") or stock.get("industry") or "--"),
-                "alertType": "macdScreenerEnter", "config": f"macd-screener:{rule}",
-                "signal": macd_selection_rule_label(rule), "tone": "red",
-            })
+            emit(code, stock, rule, "enter" if code in entered_codes else "move")
+
+
 def ensure_macd_screener_lifecycle_alert_baseline(now: Optional[datetime] = None) -> None:
     """Backfill the first live MACD pool alert batch when a scan predates alert setup.
 
@@ -4888,6 +5208,98 @@ def archive_post_close_quote_snapshot(trade_date: str) -> int:
             )
             connection.commit()
     return len(values)
+
+
+def backfill_post_close_market_snapshot(trade_date: str) -> Dict[str, int]:
+    """Fill a trading day's SQLite close snapshot from a fresh all-market pull.
+
+    This is deliberately an off-hours repair task: it never runs during the
+    session and it only replaces a saved field when the fresh provider value is
+    usable.  Thus a partial provider response cannot erase a better close
+    record that was already archived.
+    """
+    try:
+        normalized = datetime.strptime(trade_date, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return {"fetched": 0, "inserted": 0, "updated": 0, "skipped": 0}
+    now = datetime.now(CHINA_TZ)
+    if normalized != now.date() or not is_a_share_trading_day(normalized) or now.hour < 15:
+        return {"fetched": 0, "inserted": 0, "updated": 0, "skipped": 0}
+    try:
+        rows, _ = fetch_market_rows("all")
+    except MarketDataError:
+        # 东财收盘后偶尔会短暂返回空包；腾讯批量报价可补齐核心价格、
+        # 涨跌幅与成交额字段，避免单源故障阻断本地归档。
+        with open_backtest_db() as connection:
+            codes = [str(row[0]) for row in connection.execute("SELECT code FROM midterm_history_cache").fetchall()]
+        rows = list(fetch_tencent_market_rows(codes).values())
+    fresh: Dict[str, Dict[str, Any]] = {}
+    retired_candidates: List[Tuple[str, str]] = []
+    for row in rows:
+        code = str(row.get("f12") or "")
+        name = str(row.get("f14") or "").strip()
+        if re.fullmatch(r"\d{6}", code) and (name.startswith("PT") or name.endswith("退") or "终止上市" in name or "已合并" in name):
+            retired_candidates.append((code, name or code))
+        price = number(row.get("f2"))
+        if not re.fullmatch(r"\d{6}", code) or price is None or price <= 0:
+            continue
+        fresh[code] = {
+            "code": code, "name": str(row.get("f14") or code), "price": price,
+            "changePct": number(row.get("f3")), "volume": number(row.get("f5")),
+            "amount": number(row.get("f6")), "high": number(row.get("f15")),
+            "low": number(row.get("f16")), "open": number(row.get("f17")),
+            "previousClose": number(row.get("f18")), "turnover": number(row.get("f8")),
+            "marketCap": number(row.get("f20")), "floatMarketCap": number(row.get("f21")),
+            "netInflow": number(row.get("f62")), "industry": str(row.get("f100") or "--"),
+            "quoteTradeDate": trade_date, "quoteTime": now.isoformat(),
+            "quoteSource": "东方财富全市场收盘补档", "liveQuote": False,
+        }
+    if not fresh:
+        raise MarketDataError("收盘补档未获取到有效全市场行情")
+    inserted = updated = skipped = 0
+    saved_at = now.isoformat()
+    with open_backtest_db() as connection:
+        if retired_candidates:
+            connection.executemany(
+                "INSERT OR IGNORE INTO retired_security_codes(code,name,reason,detected_at,active) VALUES (?,?,?, ?,1)",
+                [(code, name, "行情源退市/合并标记", saved_at) for code, name in retired_candidates],
+            )
+        existing_rows = connection.execute(
+            "SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=?", (trade_date,)
+        ).fetchall()
+        existing: Dict[str, Dict[str, Any]] = {}
+        for code, raw in existing_rows:
+            try:
+                existing[str(code)] = json.loads(raw or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                existing[str(code)] = {}
+        writes = []
+        for code, quote in fresh.items():
+            prior = existing.get(code)
+            if prior is None:
+                writes.append((trade_date, code, json.dumps(quote, ensure_ascii=False), saved_at))
+                inserted += 1
+                continue
+            merged = dict(prior)
+            changed = False
+            for key, value in quote.items():
+                # Keep a known value when this repair batch lacks the field.
+                if value is None or value == "":
+                    continue
+                if merged.get(key) != value:
+                    merged[key] = value
+                    changed = True
+            if changed:
+                writes.append((trade_date, code, json.dumps(merged, ensure_ascii=False), saved_at))
+                updated += 1
+            else:
+                skipped += 1
+        if writes:
+            connection.executemany(
+                "INSERT OR REPLACE INTO daily_close_quotes(trade_date,code,quote_json,saved_at) VALUES (?,?,?,?)", writes
+            )
+            connection.commit()
+    return {"fetched": len(fresh), "inserted": inserted, "updated": updated, "skipped": skipped}
 
 
 def persist_completed_close_quote(stock: Dict[str, Any]) -> None:
@@ -7613,6 +8025,21 @@ def open_backtest_db() -> sqlite3.Connection:
         PRIMARY KEY (trade_date, code)
     )""")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_daily_close_quotes_code_date ON daily_close_quotes(code, trade_date DESC)")
+    connection.execute("""CREATE TABLE IF NOT EXISTS stock_industry_cache (
+        code TEXT PRIMARY KEY, industry TEXT NOT NULL, source TEXT NOT NULL, updated_at TEXT NOT NULL
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS retired_security_codes (
+        code TEXT PRIMARY KEY, name TEXT, reason TEXT NOT NULL,
+        detected_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
+    )""")
+    # 用户已确认：最新全市场快照中这批成交额为 0 的历史证券不参与任何扫描。
+    connection.execute(
+        "INSERT OR IGNORE INTO retired_security_codes(code,name,reason,detected_at,active) "
+        "SELECT code,json_extract(quote_json,'$.name'),'最新全市场快照成交额为 0（历史/退市证券）',?,1 "
+        "FROM daily_close_quotes WHERE trade_date=(SELECT MAX(trade_date) FROM daily_close_quotes) "
+        "AND COALESCE(json_extract(quote_json,'$.amount'),0)<=0",
+        (datetime.now(CHINA_TZ).isoformat(),),
+    )
     connection.execute("""CREATE TABLE IF NOT EXISTS macd_screener_members (
         trade_date TEXT NOT NULL, code TEXT NOT NULL, rule TEXT NOT NULL,
         stock_json TEXT NOT NULL, scanned_at TEXT NOT NULL,
