@@ -1272,12 +1272,60 @@ def tushare_pro_request(api_name: str, params: Dict[str, Any], fields: str) -> D
 
 
 _a_share_trade_day_cache: Dict[str, bool] = {}
+# 交易日历主来源为 Tushare Pro。节假日前后若接口限流/不可用，绝不能把
+# 工作日简单视为开市日；否则会用上一交易日缓存制造虚假盘中告警。
+# 此表仅保存已经明确的休市日，优先级高于过期或错误的本地开市缓存。
+A_SHARE_KNOWN_CLOSED_DATES: Dict[str, str] = {
+    "2026-10-01": "国庆节",
+    "2026-10-02": "国庆节",
+    "2026-10-05": "国庆节",
+    "2026-10-06": "国庆节",
+    "2026-10-07": "国庆节",
+}
+
+
+def persist_known_a_share_holiday(trade_date: str) -> None:
+    """Persist a confirmed local holiday fallback for auditability."""
+    holiday_name = A_SHARE_KNOWN_CLOSED_DATES.get(trade_date)
+    if not holiday_name:
+        return
+    with open_backtest_db() as connection:
+        connection.execute(
+            "INSERT OR REPLACE INTO a_share_trading_calendar(trade_date,is_open,source,updated_at) VALUES (?,?,?,?)",
+            (trade_date, 0, f"法定节假日兜底：{holiday_name}", datetime.now(CHINA_TZ).isoformat()),
+        )
+        connection.commit()
+
+
+def prune_known_holiday_macd_artifacts() -> Dict[str, int]:
+    """Delete scans/alerts that were incorrectly written on known closed days."""
+    closed_dates = sorted(A_SHARE_KNOWN_CLOSED_DATES)
+    if not closed_dates:
+        return {"members": 0, "alerts": 0}
+    placeholders = ",".join("?" for _ in closed_dates)
+    with open_backtest_db() as connection:
+        members = connection.execute(
+            f"DELETE FROM macd_screener_members WHERE trade_date IN ({placeholders})", tuple(closed_dates)
+        ).rowcount
+        alerts = connection.execute(
+            f"DELETE FROM market_alert_history WHERE trade_date IN ({placeholders})", tuple(closed_dates)
+        ).rowcount
+        connection.commit()
+    for trade_date in closed_dates:
+        persist_known_a_share_holiday(trade_date)
+    return {"members": members, "alerts": alerts}
 
 
 def is_a_share_trading_day(value: date) -> bool:
     """Resolve the SSE trading calendar once, with SQLite persistence for holidays."""
     trade_date = value.isoformat()
     if value.weekday() >= 5:
+        return False
+    if trade_date in A_SHARE_KNOWN_CLOSED_DATES:
+        # 即使此前因三方日历缺失写入过错误的工作日记录，也要立即纠正。
+        persist_known_a_share_holiday(trade_date)
+        with _cache_lock:
+            _a_share_trade_day_cache[trade_date] = False
         return False
     with _cache_lock:
         cached = _a_share_trade_day_cache.get(trade_date)
@@ -10366,6 +10414,12 @@ def main() -> None:
     with open_backtest_db() as connection:
         pass
     connection.close()
+    holiday_cleanup = prune_known_holiday_macd_artifacts()
+    if holiday_cleanup["members"] or holiday_cleanup["alerts"]:
+        print(
+            "已清理法定休市日误扫描数据："
+            f"MACD 成员 {holiday_cleanup['members']} 条，告警 {holiday_cleanup['alerts']} 条"
+        )
     # “白名单·分钟量价预测”已从界面移除，不再启动它的全量后台轮询，
     # 以免与白名单、分时缩略图和告警争抢行情源与 CPU。
     _minute_predictions = None
