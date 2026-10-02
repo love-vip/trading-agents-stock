@@ -9746,6 +9746,7 @@ def fetch_eastmoney_intraday_data(code: str, requested_date: str) -> Dict[str, A
     data = payload.get("data") or {}
     raw_klines = data.get("klines") or []
     points: List[Dict[str, Any]] = []
+    first_open: Optional[float] = None
     for raw_kline in raw_klines:
         parts = str(raw_kline).split(",")
         if len(parts) < 7:
@@ -9753,6 +9754,7 @@ def fetch_eastmoney_intraday_data(code: str, requested_date: str) -> Dict[str, A
         date_time = parts[0].split()
         if len(date_time) != 2 or date_time[0] != requested_date:
             continue
+        opening_price = number(parts[1])
         price = number(parts[2])
         volume = number(parts[5])
         amount = number(parts[6])
@@ -9766,6 +9768,8 @@ def fetch_eastmoney_intraday_data(code: str, requested_date: str) -> Dict[str, A
                 "amount": max(0.0, amount),
             }
         )
+        if first_open is None and opening_price is not None:
+            first_open = opening_price
     if not points:
         # 非交易时段或行情源尚未提供当天分钟线时，自动回退到最近交易日，
         # 保证黑名单、白名单的“今日分时”缩略图不会因日期错位全部显示为 --。
@@ -9781,6 +9785,10 @@ def fetch_eastmoney_intraday_data(code: str, requested_date: str) -> Dict[str, A
                 except MarketDataError:
                     continue
         raise MarketDataError(f"{code} 在 {requested_date} 未返回分钟行情")
+    # 部分分钟源首根记录标为 09:31 或 09:35。补入真实开盘价作为 09:30
+    # 节点，让所有交易日分时线统一覆盖 09:30～15:00；成交量/额不重复计入。
+    if points[0]["time"] > "09:30:00" and first_open is not None:
+        points.insert(0, {"time": "09:30:00", "price": first_open, "volume": 0.0, "amount": 0.0})
     return {
         "source": "东方财富公开历史分钟行情",
         "code": code,
@@ -9798,10 +9806,12 @@ def fetch_sina_intraday_data(code: str, requested_date: str) -> Dict[str, Any]:
         {"symbol": stock_symbol(code), "scale": "5", "ma": "no", "datalen": "500"},
     )
     points: List[Dict[str, Any]] = []
+    first_open: Optional[float] = None
     for item in payload if isinstance(payload, list) else []:
         date_time = str(item.get("day") or "").split()
         if len(date_time) != 2 or date_time[0] != requested_date:
             continue
+        opening_price = number(item.get("open"))
         price = number(item.get("close"))
         volume = number(item.get("volume"))
         amount = number(item.get("amount"))
@@ -9813,8 +9823,14 @@ def fetch_sina_intraday_data(code: str, requested_date: str) -> Dict[str, Any]:
             "volume": max(0.0, volume),
             "amount": max(0.0, amount),
         })
+        if first_open is None and opening_price is not None:
+            first_open = opening_price
     if not points:
         raise MarketDataError(f"{code} 新浪分钟行情在 {requested_date} 未返回数据")
+    # 新浪的首根 5 分钟 K 线通常标为 09:35，但 open 就是 09:30 开盘价。
+    # 将其补为零成交量/额的起始节点，既完整展示时轴，也不重复累计成交数据。
+    if points[0]["time"] > "09:30:00" and first_open is not None:
+        points.insert(0, {"time": "09:30:00", "price": first_open, "volume": 0.0, "amount": 0.0})
     return {
         "source": "新浪 5 分钟行情（东方财富备用）",
         "code": code,
@@ -9850,14 +9866,21 @@ def fetch_intraday_data(code: str, requested_date: str) -> Dict[str, Any]:
 
 
 def get_intraday_data(code: str, requested_date: str, force_refresh: bool = False) -> Dict[str, Any]:
-    cache_key = f"{code}:{requested_date}"
+    # 日 K 来源同时存在 YYYYMMDD 与 YYYY-MM-DD 两种日期写法。分时弹框点击
+    # 任一根 K 线都必须能查询到对应日期，因此在接口边界统一为标准交易日格式。
+    normalized_date = canonical_history_date(requested_date)
+    try:
+        datetime.strptime(normalized_date, "%Y-%m-%d")
+    except (TypeError, ValueError) as exc:
+        raise MarketDataError("交易日格式应为 YYYY-MM-DD 或 YYYYMMDD") from exc
+    cache_key = f"{code}:{normalized_date}"
     now = time.monotonic()
     with _cache_lock:
         cached = _intraday_cache.get(cache_key)
         if cached and now - cached["created_at"] < INTRADAY_CACHE_TTL_SECONDS and not force_refresh:
             return cached["payload"]
 
-    payload = fetch_intraday_data(code, requested_date)
+    payload = fetch_intraday_data(code, normalized_date)
     with _cache_lock:
         _intraday_cache[cache_key] = {"created_at": time.monotonic(), "payload": payload}
     return payload
