@@ -1113,6 +1113,13 @@ def get_today_alert_pool(market_key: str = "all", requested_codes: Optional[set]
         })
     if not first_by_code:
         return {"tradeDate": trade_date, "isPreviousTradingDay": trade_date != today, "updatedAt": local_now.isoformat(), "stocks": []}
+    cached_industries = get_cached_stock_industries(list(first_by_code))
+    missing_industries = [code for code in first_by_code if code not in cached_industries]
+    if missing_industries:
+        try:
+            cached_industries = backfill_stock_industries(missing_industries)
+        except (MarketDataError, OSError, ValueError, sqlite3.Error):
+            pass
     try:
         market_rows, _ = fetch_market_rows("all")
         live_by_code = {str(row.get("f12") or ""): row for row in market_rows}
@@ -1127,7 +1134,7 @@ def get_today_alert_pool(market_key: str = "all", requested_codes: Optional[set]
         if live and (high_open_fade(live) or intraday_limit_up_fade(live) or blacklisted_industry(live)):
             continue
         item.update({
-            "industry": str(live.get("f100") or "--"),
+            "industry": str(live.get("f100") or cached_industries.get(code) or "行业待补齐"),
             "currentPrice": number(live.get("f2")),
             "currentChangePct": number(live.get("f3")),
         })
@@ -1710,6 +1717,57 @@ def number(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+VOLUME_PRICE_TAGS = (
+    "量增价升", "量增价平", "量增价跌", "量平价升", "量平价跌",
+    "量缩价升", "量缩价平", "量缩价跌",
+)
+
+
+def get_volume_price_tags(codes: List[str]) -> Dict[str, str]:
+    """Return a durable, separately queryable volume/price classification.
+
+    The source is the locally archived Tushare full-market daily snapshots so
+    every compared volume uses the same unit (hands), never a mixed provider
+    history cache.  Neutral ``量平价平`` intentionally has no display tag.
+    """
+    requested = {str(code) for code in codes if re.fullmatch(r"\d{6}", str(code or ""))}
+    if not requested:
+        return {}
+    snapshot_dir = BASE_DIR / "data" / "tushare_daily_snapshots"
+    snapshots: List[Dict[str, Any]] = []
+    for path in sorted(snapshot_dir.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if ((payload.get("data") or {}).get("items") or []):
+                snapshots.append(payload)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+    snapshots = snapshots[-5:]
+    if len(snapshots) < 5:
+        return {}
+    series: Dict[str, List[List[Any]]] = {code: [] for code in requested}
+    for payload in snapshots:
+        for item in ((payload.get("data") or {}).get("items") or []):
+            code = str(item[0] if item else "").split(".")[0]
+            if code in series and len(item) > 9 and number(item[8]) is not None and number(item[9]) is not None:
+                series[code].append(item)
+    tags: Dict[str, str] = {}
+    for code, rows in series.items():
+        if len(rows) != 5:
+            continue
+        average_volume = sum(float(number(row[9]) or 0) for row in rows[:-1]) / 4
+        if average_volume <= 0:
+            continue
+        volume_change = float(number(rows[-1][9]) or 0) / average_volume - 1
+        change_pct = float(number(rows[-1][8]) or 0)
+        volume_side = "量增" if volume_change > .2 else "量缩" if volume_change < -.2 else "量平"
+        price_side = "价升" if change_pct > 1 else "价跌" if change_pct < -1 else "价平"
+        tag = volume_side + price_side
+        if tag in VOLUME_PRICE_TAGS:
+            tags[code] = tag
+    return tags
 
 
 def eastmoney_secid(code: str) -> str:
@@ -3330,6 +3388,15 @@ def scan_macd_screener(scan_id: int) -> None:
             # 完全停止；下一轮仍会优先走快速批量通道。
             rows, _ = fetch_market_rows("all")
             live = {str(row.get("f12") or ""): row for row in rows if re.fullmatch(r"\d{6}", str(row.get("f12") or ""))}
+        # 腾讯批量报价不提供行业，扫描阶段直接建立/读取行业缓存；后续每分钟
+        # 扫描只命中本地 SQLite，不会重复请求已补齐的个股。
+        industry_by_code = get_cached_stock_industries(history_codes)
+        missing_industry_codes = [code for code in history_codes if code not in industry_by_code]
+        if missing_industry_codes:
+            try:
+                industry_by_code = backfill_stock_industries(missing_industry_codes)
+            except (MarketDataError, OSError, ValueError, sqlite3.Error):
+                pass
         selected: List[Tuple[str, str, str, str, str]] = []
         selected_stocks: Dict[str, Dict[str, Any]] = {}
         # 只有拿到有效实时价、且本地日线足以重算 MACD 的股票，才可以
@@ -3411,8 +3478,8 @@ def scan_macd_screener(scan_id: int) -> None:
             stock = {
                 "code": code,
                 "name": str(quote.get("f14") or code),
-                "industry": str(quote.get("f100") or "--"),
-                "actualIndustry": str(quote.get("f100") or "--"),
+                "industry": str(quote.get("f100") or industry_by_code.get(code) or "--"),
+                "actualIndustry": str(quote.get("f100") or industry_by_code.get(code) or "--"),
                 "price": price,
                 "changePct": number(quote.get("f3")),
                 "open": number(quote.get("f17")),
@@ -3740,6 +3807,13 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
     if not is_macd_screener_session(now) and not trade_date:
         bootstrap_macd_screener_from_local_close()
         trade_date = _macd_screener_trade_date(now)
+    # 行业不是腾讯批量行情字段的一部分。读取页面前补齐一次本地行业缓存，
+    # 这样即使扫描阶段只拿到腾讯报价，MACD 列表也不会长期显示“--”。
+    if trade_date:
+        try:
+            hydrate_macd_industries_for_trade_date(trade_date)
+        except (MarketDataError, OSError, ValueError, sqlite3.Error):
+            pass
     with open_backtest_db() as connection:
         rows = connection.execute(
             "SELECT stock_json,rule,scanned_at FROM macd_screener_members WHERE trade_date=? ORDER BY code", (trade_date,)
@@ -3751,6 +3825,9 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
             stock = json.loads(raw or "{}")
             stock["macdSelectionRules"] = str(rule or "").split("/") if rule else []
             stock["nameInitials"] = stock_name_initials(stock.get("name"))
+            if str(stock.get("industry") or "").strip() in {"", "--"}:
+                stock["industry"] = "行业待补齐"
+                stock["actualIndustry"] = "行业待补齐"
             stocks.append(stock)
             scanned_at = max(scanned_at, str(saved_at or ""))
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -4130,7 +4207,7 @@ def get_market_alert_history(
     page = max(1, page)
     page_size = min(100, max(20, page_size))
     board_map = {"main": "main", "chinext": "growth", "starBse": "starBse"}
-    if market not in {"all", *board_map}:
+    if market not in {"all", *board_map, "star", "bse"}:
         raise ValueError("市场筛选参数不正确")
     valid_signal_filters = set(ALERT_SIGNAL_FILTERS) | set(MACD_SELECTION_RULE_LABELS.values())
     if signal_filter and signal_filter not in valid_signal_filters:
@@ -4141,11 +4218,20 @@ def get_market_alert_history(
         raise ValueError("告警历史排序字段不正确")
     if sort_dir not in {"asc", "desc"}:
         raise ValueError("告警历史排序方向不正确")
+    # 告警记录与 MACD 选股池使用同一行业缓存；告警框单独打开时也必须兜底补齐。
+    try:
+        hydrate_macd_industries_for_trade_date(trade_date)
+    except (MarketDataError, OSError, ValueError, sqlite3.Error):
+        pass
     clauses = ["trade_date=?"]
     params: List[Any] = [trade_date]
-    if market != "all":
+    if market in board_map:
         clauses.append("board=?")
         params.append(board_map[market])
+    elif market == "star":
+        clauses.append("(code LIKE '688%' OR code LIKE '689%')")
+    elif market == "bse":
+        clauses.append("(code LIKE '8%' OR code LIKE '4%' OR code LIKE '92%')")
     if codes:
         valid_codes = list(dict.fromkeys(code for code in codes if re.fullmatch(r"\d{6}", code)))
         if len(valid_codes) != len(codes) or len(valid_codes) > 1000:
@@ -4177,6 +4263,10 @@ def get_market_alert_history(
         ]
     # 默认收起告警后继续跌破 -1% 的记录。它们只是后续表现变弱，并不
     # 代表原告警无效；用户可通过眼睛开关重新展示，因此不能删除审计记录。
+    now_local = datetime.now(CHINA_TZ)
+    intraday_session = is_intraday_alert_session(now_local)
+    minutes_now = now_local.hour * 60 + now_local.minute
+    midday_break = is_a_share_trading_day(now_local.date()) and 11 * 60 + 30 <= minutes_now < 13 * 60
     all_codes_before_drawdown_filter = list(dict.fromkeys(
         str(row[3] or "") for row in rows if re.fullmatch(r"\d{6}", str(row[3] or ""))
     ))
@@ -4201,7 +4291,7 @@ def get_market_alert_history(
                 latest_price_by_code[str(code)] = number(quote.get("price"))
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
-        if is_intraday_alert_session(datetime.now(CHINA_TZ)):
+        if intraday_session or midday_break:
             for code, raw_quote in cached_rows:
                 try:
                     quote = json.loads(raw_quote or "{}")
@@ -4254,11 +4344,20 @@ def get_market_alert_history(
             cached = connection.execute(f"SELECT code,quote_json FROM list_quote_cache WHERE code IN ({placeholders})", tuple(all_codes)).fetchall()
             daily = connection.execute(f"SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=? AND code IN ({placeholders})", (trade_date, *all_codes)).fetchall()
         latest_by_code: Dict[str, Dict[str, Any]] = {}
-        for code, raw in [*daily, *cached]:
+        for code, raw in daily:
             try:
                 latest_by_code[str(code)] = json.loads(raw or "{}")
             except (TypeError, json.JSONDecodeError):
                 continue
+        # 仅在连续竞价和午休使用当日盘中缓存；收盘后日终快照必须优先。
+        if intraday_session or midday_break:
+            for code, raw in cached:
+                try:
+                    quote = json.loads(raw or "{}")
+                    if str(quote.get("quoteTradeDate") or "") == trade_date:
+                        latest_by_code[str(code)] = quote
+                except (TypeError, json.JSONDecodeError):
+                    continue
         for row in rows:
             old_price = number(row[7])
             new_price = number((latest_by_code.get(str(row[3] or "")) or {}).get("price"))
@@ -4320,7 +4419,7 @@ def get_market_alert_history(
                 continue
             if str(quote.get("quoteTradeDate") or "") == trade_date:
                 cached_quotes[str(code)] = quote
-        if is_intraday_alert_session(datetime.now(CHINA_TZ)):
+        if intraday_session:
             try:
                 live_payload = hydrate_list_quotes(
                     {"stocks": [{"code": code, "name": code} for code in codes_on_page]},
@@ -4344,7 +4443,13 @@ def get_market_alert_history(
         price = number(row[7])
         change_pct = number(row[8])
         code = str(row[3] or "")
-        closing_quote = intraday_quotes.get(code) or cached_quotes.get(code) or close_quotes.get(code) or {}
+        # 连续竞价优先实时行情；午休使用上午的当日缓存；收盘后优先日终快照。
+        if intraday_session:
+            closing_quote = intraday_quotes.get(code) or cached_quotes.get(code) or close_quotes.get(code) or {}
+        elif midday_break:
+            closing_quote = cached_quotes.get(code) or close_quotes.get(code) or {}
+        else:
+            closing_quote = close_quotes.get(code) or cached_quotes.get(code) or {}
         close_price = number(closing_quote.get("price"))
         close_change_pct = number(closing_quote.get("changePct"))
         if close_price is None:
@@ -4353,7 +4458,7 @@ def get_market_alert_history(
             close_change_pct = change_pct
         items.append({
             "id": row[0], "tradeDate": row[1], "time": row[2], "code": row[3], "name": row[4],
-            "board": row[5], "pool": row[6], "price": price, "changePct": change_pct, "closePrice": close_price, "closeChangePct": close_change_pct, "industry": row[9],
+            "board": row[5], "pool": row[6], "price": price, "changePct": change_pct, "closePrice": close_price, "closeChangePct": close_change_pct, "industry": str(row[9] or "行业待补齐"),
             "alertType": row[10], "config": row[11], "signal": row[12], "tone": row[13], "signals": signals,
         })
     return {"tradeDate": trade_date, "rows": items, "total": total, "page": page, "pageSize": page_size, "pages": max(1, math.ceil(total / page_size)), "signalCounts": signal_counts, "directionCounts": direction_counts}
@@ -9805,6 +9910,13 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_json(200, get_macd_screener_members(query.get("quotes") == ["1"]))
             except (MarketDataError, OSError, ValueError, sqlite3.Error) as exc:
                 self.send_json(502, {"error": str(exc) or "MACD选股读取失败"})
+            return
+        if parsed.path == "/api/volume-price-tags":
+            codes = list(dict.fromkeys(code.strip() for code in query.get("codes", [""])[0].split(",") if code.strip()))
+            if len(codes) > 1000 or any(not re.fullmatch(r"\d{6}", code) for code in codes):
+                self.send_json(400, {"error": "量价标签股票范围不正确"})
+                return
+            self.send_json(200, {"tags": get_volume_price_tags(codes)})
             return
         if parsed.path == "/api/menu-members":
             try:
