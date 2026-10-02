@@ -5052,10 +5052,13 @@
       else if (["短线转弱", "空头排列"].includes(trend)) node.classList.add("trend-weak");
     }
 
-    function miniLine(values, color) {
+    function miniLine(values, color, flatY = 13) {
       if (!values || values.length < 2) return "--";
-      const min = Math.min(...values), max = Math.max(...values), span = Math.max(max - min, 0.0001);
-      const points = values.map((value, index) => `${1 + index * 78 / (values.length - 1)},${24 - ((value - min) / span) * 20}`).join(" ");
+      const min = Math.min(...values), max = Math.max(...values), rawSpan = max - min;
+      // 价格完全相同不能被缩放到 SVG 最下缘；无波动时应居中呈现。
+      const points = rawSpan < 0.000001
+        ? values.map((_, index) => `${1 + index * 78 / (values.length - 1)},${flatY}`).join(" ")
+        : values.map((value, index) => `${1 + index * 78 / (values.length - 1)},${24 - ((value - min) / rawSpan) * 20}`).join(" ");
       return `<svg viewBox="0 0 80 26" aria-hidden="true"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     }
     function miniMacdBars(values) {
@@ -5344,8 +5347,26 @@
           const ema = (values, period) => { const multiplier = 2 / (period + 1); let previous = values[0]; return values.map((value, index) => { previous = index ? (value - previous) * multiplier + previous : value; return previous; }); };
           const fast = ema(macdCloses, 10), slow = ema(macdCloses, 20); const dif = fast.map((value, index) => value - slow[index]); const dea = ema(dif, 7); const histogram = dif.map((value, index) => (value - dea[index]) * 2);
           const fastSecondary = ema(macdCloses, 5), slowSecondary = ema(macdCloses, 10); const difSecondary = fastSecondary.map((value, index) => value - slowSecondary[index]); const deaSecondary = ema(difSecondary, 3); const histogramSecondary = difSecondary.map((value, index) => (value - deaSecondary[index]) * 2);
-          const intradayMarkup = prices.length > 1
-            ? miniLine(prices, prices[prices.length - 1] >= prices[0] ? "var(--rising)" : "var(--falling)")
+          // 接口的首个 5 分钟点通常是 09:35；补入开盘价，才能显示开盘后
+          // 急拉/急跌，而不是把 09:35 后封板的股票误画成一字板。
+          const intradayOpen = Number(currentStock?.open);
+          const intradayValues = prices.length && Number.isFinite(intradayOpen)
+            && Math.abs(intradayOpen - prices[0]) > 0.000001
+            ? [intradayOpen, ...prices]
+            : prices;
+          // 一字涨停：按实际可绘制的分时序列判定，而非依赖日线 low。
+          // 日线快照偶尔会带入盘中低点（如 002242），但若开盘即涨停且
+          // 09:35 起所有分时点均为涨停价，缩略图仍应作为一字板置顶展示。
+          const quoteOpen = Number(currentStock?.open);
+          const quotePrice = Number(currentStock?.price);
+          const isFlatIntraday = intradayValues.length > 1
+            && Math.max(...intradayValues) - Math.min(...intradayValues) < 0.000001;
+          const isOneWordLimitUp = isFlatIntraday
+            && [quoteOpen, quotePrice].every(Number.isFinite)
+            && Math.abs(quoteOpen - quotePrice) < 0.000001
+            && Number(currentStock?.changePct) >= 9.5;
+          const intradayMarkup = intradayValues.length > 1
+            ? miniLine(intradayValues, intradayValues[intradayValues.length - 1] >= intradayValues[0] ? "var(--rising)" : "var(--falling)", isOneWordLimitUp ? 4 : 13)
             : "--";
           const macdMarkup = miniMacdPair(histogram.slice(-10), histogramSecondary.slice(-10)); const klineMarkup = miniKline(history); const trend = classifyWhitelistTrend(closes); const ma = miniMaDistribution(closes);
           state.whitelistChartCache[code] = {intraday:intradayMarkup, kline:klineMarkup, macd:macdMarkup, trend, ma}; state.whitelistTrendCache[code] = trend; node.innerHTML = intradayMarkup; if (klineNode) klineNode.innerHTML = klineMarkup; if (macdNode) macdNode.innerHTML = macdMarkup; if (trendNode) { trendNode.textContent = trend; applyWhitelistTrendStyle(trendNode, trend); } if (maNode) maNode.innerHTML = ma;
