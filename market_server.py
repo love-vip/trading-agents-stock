@@ -93,6 +93,10 @@ MACD_SLOW_FAST_FLIP_RED_RATIO = 2.0
 MACD_SLOW_FAST_MIN_FAST_HISTOGRAM = 0.06
 CONCEPT_CACHE_TTL_SECONDS = 600
 CONCEPT_DB_REFRESH_SECONDS = 7 * 24 * 60 * 60
+CONCEPT_RANK_CACHE_TTL_SECONDS = 60
+PUSH2_MIN_REQUEST_INTERVAL_SECONDS = 0.20
+PUSH2_CIRCUIT_BREAKER_SECONDS = 10 * 60
+PUSH2_FAILURES_BEFORE_OPEN = 2
 # 概念异动只关注真实产业题材，过滤“昨日涨停/连板”等情绪统计指数。
 CONCEPT_ALERT_MIN_CHANGE_PCT = 2.0
 CONCEPT_ALERT_MIN_CHANGE_ACCELERATION = 0.35
@@ -344,6 +348,12 @@ _concept_index_quote_cache: Dict[str, Dict[str, Any]] = {}
 _sector_change_cache: Dict[str, Any] = {"created_at": 0.0, "changes": {}}
 _concept_code_quote_cache: Dict[str, Dict[str, Any]] = {}
 _concept_scoring_context_cache: Dict[str, Any] = {}
+_concept_rank_cache: Dict[str, Any] = {"created_at": 0.0, "payload": None}
+_concept_rank_fetch_lock = threading.Lock()
+_push2_request_lock = threading.Lock()
+_push2_last_request_at: Dict[str, float] = {}
+_push2_failure_count: Dict[str, int] = {}
+_push2_blocked_until: Dict[str, float] = {}
 _concept_scoring_refresh_state: Dict[str, bool] = {"running": False}
 _limit_up_cache: Dict[str, Any] = {}
 _sector_money_flow_cache: Dict[str, Any] = {}
@@ -1203,6 +1213,45 @@ def auction_strength_score(auction: Optional[Dict[str, Any]], float_cap: Optiona
     }
 
 
+def _push2_cluster(url: str) -> Optional[str]:
+    """Return the independently rate-limited Eastmoney quote cluster."""
+    host = str(urlparse(url).hostname or "").lower()
+    if host == "push2.eastmoney.com" or re.fullmatch(r"\d+\.push2\.eastmoney\.com", host):
+        return "push2"
+    if host == "push2delay.eastmoney.com":
+        return "push2delay"
+    if host == "push2his.eastmoney.com":
+        return "push2his"
+    return None
+
+
+def _wait_for_push2_slot(cluster: str) -> None:
+    now = time.monotonic()
+    blocked_until = float(_push2_blocked_until.get(cluster) or 0)
+    if now < blocked_until:
+        remaining = max(1, math.ceil(blocked_until - now))
+        raise MarketDataError(f"东方财富 {cluster} 行情集群已熔断，约 {remaining} 秒后重试")
+    with _push2_request_lock:
+        elapsed = time.monotonic() - float(_push2_last_request_at.get(cluster) or 0)
+        if elapsed < PUSH2_MIN_REQUEST_INTERVAL_SECONDS:
+            time.sleep(PUSH2_MIN_REQUEST_INTERVAL_SECONDS - elapsed)
+        _push2_last_request_at[cluster] = time.monotonic()
+
+
+def _record_push2_result(cluster: Optional[str], succeeded: bool) -> None:
+    if not cluster:
+        return
+    with _push2_request_lock:
+        if succeeded:
+            _push2_failure_count[cluster] = 0
+            _push2_blocked_until[cluster] = 0.0
+            return
+        failures = int(_push2_failure_count.get(cluster) or 0) + 1
+        _push2_failure_count[cluster] = failures
+        if failures >= PUSH2_FAILURES_BEFORE_OPEN:
+            _push2_blocked_until[cluster] = time.monotonic() + PUSH2_CIRCUIT_BREAKER_SECONDS
+
+
 def request_json(
     url: str,
     params: Dict[str, Any],
@@ -1214,6 +1263,9 @@ def request_json(
     process_timeout: float = 12,
 ) -> Dict[str, Any]:
     full_url = f"{url}?{urlencode(params, safe=',')}"
+    push2_cluster = _push2_cluster(url)
+    if push2_cluster:
+        _wait_for_push2_slot(push2_cluster)
     # curl 的 --connect-timeout/--max-time 在当前环境要求整数秒。
     curl_connect_timeout = str(max(1, math.ceil(float(connect_timeout))))
     curl_max_timeout = str(max(1, math.ceil(float(max_timeout))))
@@ -1223,18 +1275,21 @@ def request_json(
             [
                 "curl",
                 "-fsSL",
+                "--compressed",
                 "--connect-timeout",
                 curl_connect_timeout,
                 "--max-time",
                 curl_max_timeout,
                 "--retry",
-                str(retries),
+                str(0 if push2_cluster else retries),
                 "--retry-delay",
                 "0",
                 "--retry-max-time",
                 curl_retry_max_time,
                 "-A",
                 "Mozilla/5.0",
+                "-e",
+                "https://quote.eastmoney.com/",
                 full_url,
             ],
             check=True,
@@ -1242,13 +1297,16 @@ def request_json(
             text=True,
             timeout=process_timeout,
         )
-        return json.loads(result.stdout)
+        payload = json.loads(result.stdout)
+        _record_push2_result(push2_cluster, True)
+        return payload
     except (
         FileNotFoundError,
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
         json.JSONDecodeError,
     ) as exc:
+        _record_push2_result(push2_cluster, False)
         raise MarketDataError(f"行情服务请求失败: {exc}") from exc
 
 
@@ -8282,13 +8340,53 @@ def fetch_sector_strength_data(market_key: str) -> Dict[str, Any]:
     }
 
 
-def fetch_concept_rank_data() -> Dict[str, Any]:
-    """Fetch Eastmoney's live concept-board ranking."""
+def _load_persisted_concept_rank() -> Optional[Dict[str, Any]]:
+    try:
+        with open_backtest_db() as connection:
+            row = connection.execute(
+                "SELECT payload_json,updated_at FROM concept_rank_cache WHERE cache_key='concept-all'"
+            ).fetchone()
+        if not row:
+            return None
+        payload = json.loads(row[0] or "{}")
+        if not isinstance(payload.get("concepts"), list) or not payload["concepts"]:
+            return None
+        payload["source"] = "本地完整概念排行快照（东方财富实时集群暂不可用）"
+        payload["updatedAt"] = str(payload.get("updatedAt") or row[1] or "")
+        return payload
+    except (sqlite3.Error, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _save_concept_rank(payload: Dict[str, Any]) -> None:
+    try:
+        with open_backtest_db() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO concept_rank_cache(cache_key,payload_json,updated_at) VALUES ('concept-all',?,?)",
+                (json.dumps(payload, ensure_ascii=False), str(payload.get("updatedAt") or datetime.now(CHINA_TZ).isoformat())),
+            )
+    except (sqlite3.Error, TypeError, ValueError):
+        pass
+
+
+def fetch_concept_rank_data(force_refresh: bool = False) -> Dict[str, Any]:
+    with _concept_rank_fetch_lock:
+        return _fetch_concept_rank_data_inner(force_refresh)
+
+
+def _fetch_concept_rank_data_inner(force_refresh: bool = False) -> Dict[str, Any]:
+    """Fetch one full concept ranking per minute, then serve all consumers from cache."""
+    now_monotonic = time.monotonic()
+    with _cache_lock:
+        cached_payload = _concept_rank_cache.get("payload")
+        cached_at = float(_concept_rank_cache.get("created_at") or 0)
+        if cached_payload and not force_refresh and now_monotonic - cached_at < CONCEPT_RANK_CACHE_TTL_SECONDS:
+            return cached_payload
     params = {
         "pn": 1, "pz": 2000, "po": 1, "np": 1,
         "ut": "bd1d9ddb04089700cf9c27f6f7426281", "fltt": 2, "invt": 2,
         "fid": "f3", "fs": "m:90+t:3+f:!50",
-        "fields": "f12,f14,f2,f3,f4,f6,f62,f104,f105,f128",
+        "fields": "f12,f14,f2,f3,f4,f6,f62,f104,f105,f106,f107,f108,f128,f140,f141",
     }
     errors = []
     payload = None
@@ -8303,6 +8401,11 @@ def fetch_concept_rank_data() -> Dict[str, Any]:
         except MarketDataError as exc:
             errors.append(str(exc))
     if payload is None:
+        persisted = _load_persisted_concept_rank()
+        if persisted:
+            with _cache_lock:
+                _concept_rank_cache.update(created_at=now_monotonic, payload=persisted)
+            return persisted
         # 网络瞬断或东方财富临时拒绝时，复用最近一次一分钟扫描已落库的完整
         # 概念排行快照。这样个股列表仍可按 BK 代码匹配“板块涨幅”，不会退化为
         # 全部 --；下次直连恢复后会自动以实时数据覆盖。
@@ -8341,12 +8444,15 @@ def fetch_concept_rank_data() -> Dict[str, Any]:
                     }
                     for rank, row in enumerate(cached_rows, 1)
                 ]
-                return {
+                fallback_payload = {
                     "updatedAt": f"{latest[0]}T{latest[1]}:00+08:00",
                     "concepts": concepts,
                     "count": len(concepts),
                     "source": "本地概念排行快照（东方财富接口暂不可用）",
                 }
+                with _cache_lock:
+                    _concept_rank_cache.update(created_at=now_monotonic, payload=fallback_payload)
+                return fallback_payload
         except sqlite3.Error:
             pass
         raise MarketDataError("概念排行数据源暂不可用；已尝试东方财富主接口和备用接口。")
@@ -8398,7 +8504,16 @@ def fetch_concept_rank_data() -> Dict[str, Any]:
     rows.sort(key=lambda item: item.get("changePct") if item.get("changePct") is not None else -999, reverse=True)
     for index, item in enumerate(rows, 1):
         item["rank"] = index
-    return {"updatedAt": datetime.now(CHINA_TZ).isoformat(), "concepts": rows, "count": len(rows)}
+    result = {
+        "updatedAt": datetime.now(CHINA_TZ).isoformat(),
+        "concepts": rows,
+        "count": len(rows),
+        "source": "东方财富概念板块完整排行",
+    }
+    _save_concept_rank(result)
+    with _cache_lock:
+        _concept_rank_cache.update(created_at=now_monotonic, payload=result)
+    return result
 
 
 def is_emotion_concept_board(name: Any) -> bool:
@@ -9237,6 +9352,11 @@ def open_backtest_db() -> sqlite3.Connection:
         PRIMARY KEY (trade_date, captured_minute, concept_code)
     )""")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_concept_alert_snapshots_lookup ON concept_alert_snapshots(trade_date, concept_code, captured_at DESC)")
+    connection.execute("""CREATE TABLE IF NOT EXISTS concept_rank_cache (
+        cache_key TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
     connection.execute("""CREATE TABLE IF NOT EXISTS concept_alert_history (
         id TEXT PRIMARY KEY, trade_date TEXT NOT NULL, alert_time TEXT NOT NULL,
         concept_code TEXT NOT NULL, concept_name TEXT NOT NULL, alert_kind TEXT NOT NULL,
