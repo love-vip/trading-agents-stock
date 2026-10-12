@@ -91,6 +91,10 @@ MACD_MIN_ENTRY_PRICE = 5.0
 MACD_SLOW_FAST_FLIP_RED_RATIO = 2.0
 # 同时排除贴近零轴、仅因前日绿柱极短而放大倍数虚高的翻红。
 MACD_SLOW_FAST_MIN_FAST_HISTOGRAM = 0.06
+# “快线提前翻红 + 慢线翻红”要求慢线当天红柱反包前一日绿柱，
+# 并排除贴近零轴的弱翻红。
+MACD_FAST_LEADS_SLOW_FLIP_RATIO = 1.2
+MACD_FAST_LEADS_MIN_SLOW_HISTOGRAM = 0.05
 CONCEPT_CACHE_TTL_SECONDS = 600
 CONCEPT_DB_REFRESH_SECONDS = 7 * 24 * 60 * 60
 CONCEPT_RANK_CACHE_TTL_SECONDS = 60
@@ -3215,12 +3219,13 @@ def macd_flip_strength_passes(slow: List[float], fast: List[float],
     # 双线同步翻红允许提前确认：两套 MACD 当天红柱均达到前一日绿柱
     # 绝对值的 70% 以上，同时继续要求当日涨幅不为负。
     simultaneous = (slow_flip and fast_flip
-                    and slow[-1] >= abs(slow[-2]) * 0.70
-                    and fast[-1] >= abs(fast[-2]) * 0.70)
-    # 快线已在前一交易日翻红并继续增强，慢线今天补翻红。慢线新红柱仍需
-    # 达到前一日绿柱绝对值的 70%，避免贴近零轴的弱翻红产生噪音。
+                    and slow[-1] >= abs(slow[-2]) * 0.80
+                    and fast[-1] >= abs(fast[-2]) * 0.80)
+    # 快线已在前一交易日翻红并继续增强，慢线今天补翻红。慢线新红柱必须
+    # 反包前一日绿柱，并且不能贴近零轴，过滤弱翻红噪音。
     fast_leads_slow = (slow_flip
-                       and slow[-1] >= abs(slow[-2]) * 0.70
+                       and slow[-1] > abs(slow[-2]) * MACD_FAST_LEADS_SLOW_FLIP_RATIO
+                       and slow[-1] >= MACD_FAST_LEADS_MIN_SLOW_HISTOGRAM
                        and fast[-2] >= 0
                        and fast[-1] > fast[-2])
     # 慢线连续走红、快线当日翻红：慢线继续放大 10%，且快线红柱
