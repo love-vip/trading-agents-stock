@@ -3074,6 +3074,10 @@
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(13),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(13) { display:table-cell; width:100px; min-width:100px; max-width:100px; }
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(14),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(14),
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(15),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(15) { display:none; }
+    /* MACD 选股：量价列固定为 85px。新增板块涨幅列不改变它的列序。 */
+    #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(6),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(6) { width:85px; min-width:85px; max-width:85px; }
+    /* MACD 选股：板块涨幅列之后的价格列固定为 90px。 */
+    #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(10),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(10) { width:90px; min-width:90px; max-width:90px; }
     #blacklistTableWrap .whitelist-table th:nth-child(5),#blacklistTableWrap .whitelist-table td:nth-child(5) { width:9.6%; }
     #blacklistTableWrap .whitelist-table th:nth-child(6),#blacklistTableWrap .whitelist-table td:nth-child(6) { width:6.4%; }
     #blacklistTableWrap .whitelist-table th:nth-child(7),#blacklistTableWrap .whitelist-table td:nth-child(7) { width:7.2%; }
@@ -4682,8 +4686,9 @@
     }
 
     const MACD_SELECTION_RULES = [
-      ["慢线连红≥3日+快线翻红", "慢线连红 ≥3 日 + 快线翻红"],
       ["双线同步翻红", "双线同步翻红"],
+      ["慢线连红≥3日+快线翻红", "慢线连红 ≥3 日 + 快线翻红"],
+      ["快线提前翻红+慢线翻红", "快线提前翻红 + 慢线翻红"],
       ["双线连红2日+涨5%", "双线连红 2 日 + 近3日涨幅 ≥5%"],
       ["双线连红3日+涨5%", "双线连红 3 日 + 近3日涨幅 ≥5%"],
       ["双线连红4日+涨5%", "双线连红 4 日 + 近3日涨幅 ≥5%"],
@@ -5613,7 +5618,7 @@
         state.macdScreenerTradeDate = "";
       }
       el.whitelistTitle.textContent = "盘中选股 · MACD选股";
-        el.whitelistNote.textContent = "MACD 强度筛选：双线连红 2 日 + 近3日涨幅 ≥5% 要求最近两日快慢线柱体均达到此前 3/4/5 日平均柱高的 1.5 倍；双线连红 3 日 + 近3日涨幅 ≥5% 要求近三日柱体总和较此前三日提高 50%；其它双线连红要求当天柱大于前日且为最近 3 根最大；同步翻红柱超过前日绿柱；慢线连红 ≥3 日 + 快线翻红要求慢线放大 10%、快线红柱严格超过前日绿柱绝对值的 200%且不低于 0.06；交易中每分钟更新，15:00 固化。";
+        el.whitelistNote.textContent = "MACD 强度筛选：双线连红 2 日 + 近3日涨幅 ≥5% 要求最近两日快慢线柱体均达到此前 3/4/5 日平均柱高的 1.5 倍；双线连红 3 日 + 近3日涨幅 ≥5% 要求近三日柱体总和较此前三日提高 50%；其它双线连红要求当天柱大于前日且为最近 3 根最大；同步翻红柱超过前日绿柱；慢线连红 ≥3 日 + 快线翻红要求慢线放大 10%、快线红柱严格超过前日绿柱绝对值的 200%且不低于 0.06；快线提前翻红 + 慢线翻红要求快线红柱继续放大、慢线新红柱达到前日绿柱绝对值的 70%；交易中每分钟更新，收盘后最终固化。";
       el.whitelistSearch.placeholder = "搜索个股名称、代码或首字母";
       el.whitelistUpdated.textContent = "正在读取 MACD 动态选股池…";
       renderSectorNavigation(); render();
@@ -8556,7 +8561,7 @@
         const response = await fetch('/api/concept-alerts', {cache:'no-store'});
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || '概念异动告警读取失败');
-        const alerts = payload.alerts || [];
+        const alerts = payload.active === false ? [] : (payload.alerts || []);
         const unseen = alerts.filter(item => item.id && !state.conceptAlertKeys.has(item.id));
         alerts.forEach(item => { if (item.id) state.conceptAlertKeys.add(item.id); });
         state.conceptAlertHistory = alerts;
@@ -8927,6 +8932,7 @@
       const text = String(signal || "");
       if (/慢线连红/.test(text)) return "signal-tone-slow-fast";
       if (/双线同步翻红/.test(text)) return "signal-tone-sync";
+      if (/快线提前翻红/.test(text)) return "signal-tone-sync";
       const redDays = text.includes("≥5") ? "5" : (text.match(/双线连红\s*([234])\s*日/) || [])[1];
       const source = /当日涨幅/.test(text) ? "day" : "near";
       return redDays ? `signal-tone-red${redDays}-${source}` : "";
@@ -8952,8 +8958,9 @@
 
     function syncMarketAlertSignalOptions(counts = {}) {
       const labels = {
-        "慢线连红 ≥3 日 + 快线翻红": "慢线连红 ≥3 日 + 快线翻红",
         "双线同步翻红": "双线同步翻红",
+        "慢线连红 ≥3 日 + 快线翻红": "慢线连红 ≥3 日 + 快线翻红",
+        "快线提前翻红 + 慢线翻红": "快线提前翻红 + 慢线翻红",
         "双线连红 2 日 + 近3日涨幅 ≥5%": "双线连红 2 日 + 近3日涨幅 ≥5%",
         "双线连红 3 日 + 近3日涨幅 ≥5%": "双线连红 3 日 + 近3日涨幅 ≥5%",
         "双线连红 4 日 + 近3日涨幅 ≥5%": "双线连红 4 日 + 近3日涨幅 ≥5%",
@@ -9073,10 +9080,10 @@
     async function loadMarketAlertHistory(reset = false) {
       const view = state.marketAlertHistory;
       if (view.loading || (!reset && !view.hasMore)) return;
-      const alertHistoryColumns = '<colgroup><col style="width:10%"><col style="width:11%"><col style="width:10.5%"><col style="width:7%"><col style="width:8%"><col style="width:5%"><col style="width:8%"><col style="width:10%"><col style="width:10%"><col style="width:20.5%"></colgroup>';
+      const alertHistoryColumns = '<colgroup><col style="width:10%"><col style="width:11%"><col style="width:10.5%"><col style="width:7%"><col style="width:8%"><col style="width:5%"><col style="width:8%"><col style="width:10%"><col style="width:10%"><col style="width:10.25%"><col style="width:10.25%"></colgroup>';
       const sortMark = key => state.marketAlertHistorySortKey === key ? (state.marketAlertHistorySortDir === "asc" ? "↑" : "↓") : "";
       const sortClass = key => state.marketAlertHistorySortKey === key ? " active" : "";
-      const alertHistoryHeader = `<thead><tr><th><button class="market-alert-history-sort${sortClass("alertTime")}" type="button" data-market-alert-sort="alertTime">时间 ${sortMark("alertTime")}</button></th><th>个股名称</th><th>近10日MACD</th><th>价格</th><th><button class="market-alert-history-sort${sortClass("changePct")}" type="button" data-market-alert-sort="changePct">涨跌幅 ${sortMark("changePct")}</button></th><th>方向</th><th><button class="market-alert-history-sort${sortClass("closePrice")}" type="button" data-market-alert-sort="closePrice">最新价 ${sortMark("closePrice")}</button></th><th><button class="market-alert-history-sort${sortClass("closeChangePct")}" type="button" data-market-alert-sort="closeChangePct">最新涨跌幅 ${sortMark("closeChangePct")}</button></th><th>概念</th><th>信号</th></tr></thead>`;
+      const alertHistoryHeader = `<thead><tr><th><button class="market-alert-history-sort${sortClass("alertTime")}" type="button" data-market-alert-sort="alertTime">时间 ${sortMark("alertTime")}</button></th><th>个股名称</th><th>近10日MACD</th><th>价格</th><th><button class="market-alert-history-sort${sortClass("changePct")}" type="button" data-market-alert-sort="changePct">告警 ${sortMark("changePct")}</button></th><th>方向</th><th><button class="market-alert-history-sort${sortClass("closePrice")}" type="button" data-market-alert-sort="closePrice">最新价 ${sortMark("closePrice")}</button></th><th><button class="market-alert-history-sort${sortClass("closeChangePct")}" type="button" data-market-alert-sort="closeChangePct">最新涨跌幅 ${sortMark("closeChangePct")}</button></th><th>概念</th><th><button class="market-alert-history-sort${sortClass("changeDelta")}" type="button" data-market-alert-sort="changeDelta">涨跌幅 ${sortMark("changeDelta")}</button></th><th>信号</th></tr></thead>`;
       if (reset) {
         view.page = 0; view.total = 0; view.hasMore = true;
         // 表头与数据区使用两张对齐表格；数据区单独滚动，无法跨越表头。
@@ -9126,9 +9133,13 @@
             const priceDirection = hasNumber(item.price) && hasNumber(item.closePrice)
               ? (Number(item.closePrice) > Number(item.price) ? '<span class="up" title="最新价高于告警价格">↑</span>' : Number(item.closePrice) < Number(item.price) ? '<span class="down" title="最新价低于告警价格">↓</span>' : "--")
               : "--";
+            const alertChangePct = hasNumber(item.changePct) ? Number(item.changePct) : null;
+            const alertChangeDelta = hasNumber(item.closeChangePct) && hasNumber(alertChangePct)
+              ? Number(item.closeChangePct) - Number(alertChangePct)
+              : null;
             const marketBadge = alertHistoryMarketBadge(item.code);
             const marketBadgeTone = alertHistoryMarketBadgeTone(item.code);
-            return `<tr><td>${escapeHtml(item.time || "--")}</td><td><strong>${escapeHtml(item.name || item.code)}</strong>${bTag}${bPlusTag}<br><span class="whitelist-code"><i class="market-badge ${marketBadgeTone}">${marketBadge}</i> ${escapeHtml(item.code || "--")}</span></td><td><span class="market-alert-history-macd" data-alert-history-macd="${escapeHtml(item.code || "")}">加载</span></td><td>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</td><td class="${quoteClass(item.changePct)}">${hasNumber(item.changePct) ? formatPct(item.changePct) : "--"}</td><td>${priceDirection}</td><td>${hasNumber(item.closePrice) ? formatPrice(item.closePrice) : "--"}</td><td class="${quoteClass(item.closeChangePct)}">${hasNumber(item.closeChangePct) ? formatPct(item.closeChangePct) : "--"}</td><td>${escapeHtml(item.industry || "--")}</td><td><span class="market-alert-signal ${tone}">${formatAlertSignalTags(signals)}</span></td></tr>`;
+            return `<tr><td>${escapeHtml(item.time || "--")}</td><td><strong>${escapeHtml(item.name || item.code)}</strong>${bTag}${bPlusTag}<br><span class="whitelist-code"><i class="market-badge ${marketBadgeTone}">${marketBadge}</i> ${escapeHtml(item.code || "--")}</span></td><td><span class="market-alert-history-macd" data-alert-history-macd="${escapeHtml(item.code || "")}">加载</span></td><td>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</td><td class="${quoteClass(alertChangePct)}">${hasNumber(alertChangePct) ? formatPct(alertChangePct) : "--"}</td><td>${priceDirection}</td><td>${hasNumber(item.closePrice) ? formatPrice(item.closePrice) : "--"}</td><td class="${quoteClass(item.closeChangePct)}">${hasNumber(item.closeChangePct) ? formatPct(item.closeChangePct) : "--"}</td><td>${escapeHtml(item.industry || "--")}</td><td class="${quoteClass(alertChangeDelta)}">${hasNumber(alertChangeDelta) ? formatPct(alertChangeDelta) : "--"}</td><td><span class="market-alert-signal ${tone}">${formatAlertSignalTags(signals)}</span></td></tr>`;
           }).join(""));
           loadMarketAlertHistoryMacdCharts();
           view.page = payload.page;

@@ -339,6 +339,7 @@ _macd_scan_status: Dict[str, Any] = {
 }
 _macd_screener_status: Dict[str, Any] = {
     "running": False, "lastStartedAt": 0.0, "tradeDate": "", "lastCompletedAt": "", "scanId": 0,
+    "lastError": "", "lastErrorAt": "", "consecutiveFailures": 0, "finalizedTradeDate": "",
 }
 _backtest_db_schema_ready = False
 _concept_cache: Dict[str, Dict[str, Any]] = {}
@@ -809,8 +810,8 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
             if alert_session and time.monotonic() - last_concept_alert_scan >= 60:
                 threading.Thread(target=scan_concept_alerts, name="concept-alert-scan", daemon=True).start()
                 last_concept_alert_scan = time.monotonic()
-            # MACD 选股独立于页面生命周期：交易中每分钟更新一次，15:00
-            # 的最后一轮写入当天收盘结果，之后不再触发外部行情请求。
+            # MACD 选股独立于页面生命周期：交易中每分钟更新一次。收盘最终
+            # 结果由 15:05 后的本地收盘快照独立重算，不依赖循环恰好命中 15:00:00。
             if is_macd_screener_session(now) and time.monotonic() - last_macd_screener_scan >= 60:
                 start_macd_screener_scan(force=True)
                 last_macd_screener_scan = time.monotonic()
@@ -834,6 +835,13 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
                     f"收盘全市场快照补档：{trade_date}；获取 {result['fetched']}，"
                     f"新增 {result['inserted']}，更新 {result['updated']}，跳过 {result['skipped']}"
                 )
+            # 收盘快照写入后独立执行一次最终重算。失败时 finalizedTradeDate
+            # 不会更新，30 秒后的下一轮会继续尝试，不把 14:59 快照冒充收盘结果。
+            if post_close_due:
+                with _cache_lock:
+                    close_finalized = _macd_screener_status.get("finalizedTradeDate") == trade_date
+                if not close_finalized:
+                    start_macd_screener_close_rebuild(trade_date)
             # 收盘后只做批量日线补档与标签复核，不在盘中抢占行情源。若
             # Tushare 暂不可用则下一小时重试；成功后次日扫描即可使用完整
             # 的最近交易日序列。
@@ -3198,10 +3206,10 @@ def macd_is_bearish_arrangement(closes: List[float]) -> bool:
 
 def macd_flip_strength_passes(slow: List[float], fast: List[float],
                               slow_red_days: int, fast_red_days: int,
-                              latest_change_pct: Optional[float]) -> Tuple[bool, bool]:
-    """Apply the per-rule histogram-strength gates for the two flip signals."""
+                              latest_change_pct: Optional[float]) -> Tuple[bool, bool, bool]:
+    """Apply the per-rule histogram-strength gates for the three flip signals."""
     if len(slow) < 2 or len(fast) < 2 or latest_change_pct is None or latest_change_pct < 0:
-        return False, False
+        return False, False, False
     slow_flip = slow[-2] < 0 <= slow[-1]
     fast_flip = fast[-2] < 0 <= fast[-1]
     # 双线同步翻红允许提前确认：两套 MACD 当天红柱均达到前一日绿柱
@@ -3209,6 +3217,12 @@ def macd_flip_strength_passes(slow: List[float], fast: List[float],
     simultaneous = (slow_flip and fast_flip
                     and slow[-1] >= abs(slow[-2]) * 0.70
                     and fast[-1] >= abs(fast[-2]) * 0.70)
+    # 快线已在前一交易日翻红并继续增强，慢线今天补翻红。慢线新红柱仍需
+    # 达到前一日绿柱绝对值的 70%，避免贴近零轴的弱翻红产生噪音。
+    fast_leads_slow = (slow_flip
+                       and slow[-1] >= abs(slow[-2]) * 0.70
+                       and fast[-2] >= 0
+                       and fast[-1] > fast[-2])
     # 慢线连续走红、快线当日翻红：慢线继续放大 10%，且快线红柱
     # 必须严格超过前一日快线绿柱绝对值的 200%，且绝对柱高不低于
     # 0.06，避免弱势、贴零翻红。
@@ -3216,7 +3230,7 @@ def macd_flip_strength_passes(slow: List[float], fast: List[float],
                  and slow[-1] > slow[-2] * 1.10
                  and fast[-1] > abs(fast[-2]) * MACD_SLOW_FAST_FLIP_RED_RATIO
                  and fast[-1] >= MACD_SLOW_FAST_MIN_FAST_HISTOGRAM)
-    return slow_fast, simultaneous
+    return slow_fast, simultaneous, fast_leads_slow
 
 
 def macd_rules_for_price(closes: List[float], price: Optional[float], latest_change_pct: Optional[float]) -> List[str]:
@@ -3244,13 +3258,15 @@ def macd_rules_for_price(closes: List[float], price: Optional[float], latest_cha
             break
         fast_red_days += 1
     rules: List[str] = []
-    slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+    slow_fast_passed, simultaneous_passed, fast_leads_slow_passed = macd_flip_strength_passes(
         slow, fast, slow_red_days, fast_red_days, latest_change_pct,
     )
     if slow_fast_passed:
         rules.append("慢线连红≥3日+快线翻红")
     if simultaneous_passed:
         rules.append("双线同步翻红")
+    if fast_leads_slow_passed:
+        rules.append("快线提前翻红+慢线翻红")
     dual_red_rule = macd_dual_red_rule(
         slow_red_days, fast_red_days, three_day_gain, latest_change_pct,
         three_days_ago_close, closes[-1],
@@ -3267,8 +3283,9 @@ def macd_rules_for_price(closes: List[float], price: Optional[float], latest_cha
 
 
 MACD_SELECTION_RULE_LABELS = {
-    "慢线连红≥3日+快线翻红": "慢线连红 ≥3 日 + 快线翻红",
     "双线同步翻红": "双线同步翻红",
+    "慢线连红≥3日+快线翻红": "慢线连红 ≥3 日 + 快线翻红",
+    "快线提前翻红+慢线翻红": "快线提前翻红 + 慢线翻红",
     "双线连红2日+涨5%": "双线连红 2 日 + 近3日涨幅 ≥5%",
     "双线连红3日+涨5%": "双线连红 3 日 + 近3日涨幅 ≥5%",
     "双线连红4日+涨5%": "双线连红 4 日 + 近3日涨幅 ≥5%",
@@ -3583,31 +3600,75 @@ def prune_macd_screener_for_previous_day_liquidity(trade_date: str) -> Dict[str,
     return {"tradeDate": trade_date, "previousTradeDate": previous_date, "rejectedCodes": len(rejected), "removedMembers": members, "removedAlerts": alerts}
 
 
-def scan_macd_screener(scan_id: int) -> None:
+def _close_quote_as_market_row(code: str, quote: Dict[str, Any]) -> Dict[str, Any]:
+    """Adapt a durable close quote to the field names used by the live scanner."""
+    return {
+        "f12": code,
+        "f14": quote.get("name") or code,
+        "f2": quote.get("price"),
+        "f3": quote.get("changePct"),
+        "f5": quote.get("volume"),
+        "f6": quote.get("amount"),
+        "f8": quote.get("turnover"),
+        "f15": quote.get("high"),
+        "f16": quote.get("low"),
+        "f17": quote.get("open"),
+        "f18": quote.get("previousClose"),
+        "f20": quote.get("marketCap"),
+        "f21": quote.get("floatMarketCap"),
+        "f62": quote.get("netInflow"),
+        "f100": quote.get("industry"),
+    }
+
+
+def scan_macd_screener(scan_id: int, final_close_trade_date: str = "") -> None:
     """Rebuild the two-rule MACD pool from all cached A-share histories.
 
     During the session the final daily bar is represented by the latest market
-    price.  Therefore a stock immediately leaves the table when it no longer
-    satisfies either condition; the 15:00 run becomes the frozen close result.
+    price. A separate post-close invocation reads the durable full-market close
+    snapshot and replaces the intraday membership with the authoritative result.
     """
     now = datetime.now(CHINA_TZ)
-    if not is_macd_screener_session(now):
+    is_final_close = bool(final_close_trade_date)
+    if not is_final_close and not is_macd_screener_session(now):
         return
-    trade_date = now.date().isoformat()
+    trade_date = final_close_trade_date or now.date().isoformat()
     try:
         with open_backtest_db() as connection:
             histories = connection.execute("SELECT code,bars_json FROM midterm_history_cache").fetchall()
         retired_codes = get_retired_security_codes()
         history_codes = [str(code) for code, _raw_history in histories if str(code) not in retired_codes]
         previous_amount_date, previous_amounts = macd_previous_day_amounts(trade_date, history_codes)
-        # MACD 全市场重算只需要实时价格和涨跌幅。避免为了这一项扫描拉取
-        # 东财的全市场分页列表，腾讯分组报价有硬超时，能在一分钟轮询内完成。
-        live = fetch_tencent_market_rows(history_codes)
-        if not live:
-            # 腾讯源整体不可用时才退回原有全市场源，保证策略不会因单源问题
-            # 完全停止；下一轮仍会优先走快速批量通道。
-            rows, _ = fetch_market_rows("all")
-            live = {str(row.get("f12") or ""): row for row in rows if re.fullmatch(r"\d{6}", str(row.get("f12") or ""))}
+        if is_final_close:
+            with open_backtest_db() as connection:
+                close_rows = connection.execute(
+                    "SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=?", (trade_date,)
+                ).fetchall()
+            live = {}
+            for close_code, raw_quote in close_rows:
+                try:
+                    close_quote = json.loads(raw_quote or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if number(close_quote.get("price")) is not None:
+                    live[str(close_code)] = _close_quote_as_market_row(str(close_code), close_quote)
+            if not live:
+                raise MarketDataError(f"{trade_date} 收盘快照为空，无法执行 MACD 最终重算")
+            minimum_complete_count = max(1, int(len(history_codes) * 0.95))
+            if len(live) < minimum_complete_count:
+                raise MarketDataError(
+                    f"{trade_date} 收盘快照不完整：{len(live)}/{len(history_codes)}，"
+                    f"至少需要 {minimum_complete_count} 只"
+                )
+        else:
+            # MACD 全市场重算只需要实时价格和涨跌幅。避免为了这一项扫描拉取
+            # 东财的全市场分页列表，腾讯分组报价有硬超时，能在一分钟轮询内完成。
+            live = fetch_tencent_market_rows(history_codes)
+            if not live:
+                # 腾讯源整体不可用时才退回原有全市场源，保证策略不会因单源问题
+                # 完全停止；下一轮仍会优先走快速批量通道。
+                rows, _ = fetch_market_rows("all")
+                live = {str(row.get("f12") or ""): row for row in rows if re.fullmatch(r"\d{6}", str(row.get("f12") or ""))}
         # 腾讯批量报价不提供行业，扫描阶段直接建立/读取行业缓存；后续每分钟
         # 扫描只命中本地 SQLite，不会重复请求已补齐的个股。
         industry_by_code = get_cached_stock_industries(history_codes)
@@ -3635,7 +3696,10 @@ def scan_macd_screener(scan_id: int) -> None:
                 continue
             quote = live.get(code)
             price = number((quote or {}).get("f2"))
-            if price is None or price < MACD_MIN_ENTRY_PRICE:
+            if price is None:
+                # 没有可靠价格属于“无法判定”，旧成员仅作暂存，不能误删。
+                continue
+            if price < MACD_MIN_ENTRY_PRICE:
                 evaluated_codes.add(code)
                 continue
             # 异常报价不触发入池或告警；也不把旧成员视为“不符合条件”，
@@ -3664,6 +3728,8 @@ def scan_macd_screener(scan_id: int) -> None:
             latest_change_pct = number((quote or {}).get("f3"))
             closes.append(price)
             if macd_is_bearish_arrangement(closes):
+                # 已有足够行情与历史并明确判定为空头排列，必须从旧池移除。
+                evaluated_codes.add(code)
                 continue
             slow = macd_histogram_series(closes, 10, 20, 7)
             fast = macd_histogram_series(closes, 5, 10, 3)
@@ -3683,13 +3749,15 @@ def scan_macd_screener(scan_id: int) -> None:
                 else:
                     break
             rules: List[str] = []
-            slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+            slow_fast_passed, simultaneous_passed, fast_leads_slow_passed = macd_flip_strength_passes(
                 slow, fast, slow_red_days, fast_red_days, latest_change_pct,
             )
             if slow_fast_passed:
                 rules.append("慢线连红≥3日+快线翻红")
             if simultaneous_passed:
                 rules.append("双线同步翻红")
+            if fast_leads_slow_passed:
+                rules.append("快线提前翻红+慢线翻红")
             dual_red_rule = macd_dual_red_rule(
                 slow_red_days, fast_red_days, three_day_gain, latest_change_pct,
                 three_days_ago_close, previous_close,
@@ -3721,8 +3789,11 @@ def scan_macd_screener(scan_id: int) -> None:
                 "turnover": number(quote.get("f8")),
                 "updatedAt": now.isoformat(),
                 "quoteTradeDate": trade_date,
-                "liveQuote": True,
-                "dataSource": "全市场实时行情 + 本地日线 MACD",
+                "liveQuote": not is_final_close,
+                "dataSource": (
+                    "本地全市场收盘快照 + 本地日线 MACD（收盘最终重算）"
+                    if is_final_close else "全市场实时行情 + 本地日线 MACD"
+                ),
                 "macdSelectionRules": rules,
                 "macdSlowRedDays": slow_red_days,
                 "macdFastRedDays": fast_red_days,
@@ -3808,8 +3879,10 @@ def scan_macd_screener(scan_id: int) -> None:
                         "industry": stock.get("industry") or "",
                         "quoteTime": stock.get("updatedAt") or now.isoformat(),
                         "quoteTradeDate": trade_date,
-                        "quoteSource": "MACD 全市场扫描实时行情",
-                        "liveQuote": True,
+                        "quoteSource": (
+                            "MACD 收盘最终重算" if is_final_close else "MACD 全市场扫描实时行情"
+                        ),
+                        "liveQuote": not is_final_close,
                     }, ensure_ascii=False),
                 ))
             if quote_cache_rows:
@@ -3822,8 +3895,18 @@ def scan_macd_screener(scan_id: int) -> None:
         with _cache_lock:
             if _macd_screener_status.get("scanId") == scan_id:
                 _macd_screener_status["lastCompletedAt"] = now.isoformat()
-    except (MarketDataError, OSError, ValueError, sqlite3.Error, TypeError):
-        pass
+                _macd_screener_status["lastError"] = ""
+                _macd_screener_status["consecutiveFailures"] = 0
+                if is_final_close:
+                    _macd_screener_status["finalizedTradeDate"] = trade_date
+    except (MarketDataError, OSError, ValueError, sqlite3.Error, TypeError) as exc:
+        error_text = f"{type(exc).__name__}: {exc}"
+        print(f"MACD 选股扫描失败（{trade_date}{' 收盘最终重算' if is_final_close else ''}）：{error_text}")
+        with _cache_lock:
+            if _macd_screener_status.get("scanId") == scan_id:
+                _macd_screener_status["lastError"] = error_text
+                _macd_screener_status["lastErrorAt"] = datetime.now(CHINA_TZ).isoformat()
+                _macd_screener_status["consecutiveFailures"] = int(_macd_screener_status.get("consecutiveFailures") or 0) + 1
     finally:
         with _cache_lock:
             if _macd_screener_status.get("scanId") == scan_id:
@@ -3848,6 +3931,21 @@ def start_macd_screener_scan(force: bool = False) -> None:
             "scanId": scan_id,
         })
     threading.Thread(target=scan_macd_screener, args=(scan_id,), name="macd-screener-scan", daemon=True).start()
+
+
+def start_macd_screener_close_rebuild(trade_date: str) -> None:
+    """Run one authoritative post-close rebuild from the durable close snapshot."""
+    with _cache_lock:
+        if _macd_screener_status.get("running"):
+            return
+        scan_id = int(_macd_screener_status.get("scanId") or 0) + 1
+        _macd_screener_status.update({
+            "running": True,
+            "lastStartedAt": time.monotonic(),
+            "tradeDate": trade_date,
+            "scanId": scan_id,
+        })
+    scan_macd_screener(scan_id, final_close_trade_date=trade_date)
 
 
 def bootstrap_macd_screener_from_local_close() -> None:
@@ -3910,11 +4008,12 @@ def bootstrap_macd_screener_from_local_close() -> None:
                     if value >= 0: fast_red_days += 1
                     else: break
                 rules: List[str] = []
-                slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+                slow_fast_passed, simultaneous_passed, fast_leads_slow_passed = macd_flip_strength_passes(
                     slow, fast, red_days, fast_red_days, latest_change_pct,
                 )
                 if slow_fast_passed: rules.append("慢线连红≥3日+快线翻红")
                 if simultaneous_passed: rules.append("双线同步翻红")
+                if fast_leads_slow_passed: rules.append("快线提前翻红+慢线翻红")
                 dual_red_rule = macd_dual_red_rule(
                     red_days, fast_red_days, three_day_gain, latest_change_pct,
                     three_days_ago_close, previous_close,
@@ -4018,13 +4117,15 @@ def bootstrap_macd_screener_from_local_close() -> None:
             else:
                 break
         rules: List[str] = []
-        slow_fast_passed, simultaneous_passed = macd_flip_strength_passes(
+        slow_fast_passed, simultaneous_passed, fast_leads_slow_passed = macd_flip_strength_passes(
             slow, fast, red_days, fast_red_days, latest_change_pct,
         )
         if slow_fast_passed:
             rules.append("慢线连红≥3日+快线翻红")
         if simultaneous_passed:
             rules.append("双线同步翻红")
+        if fast_leads_slow_passed:
+            rules.append("快线提前翻红+慢线翻红")
         dual_red_rule = macd_dual_red_rule(
             red_days, fast_red_days, three_day_gain, latest_change_pct,
             three_days_ago_close, previous_close,
@@ -4113,6 +4214,8 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
         "membershipUpdatedAt": scanned_at or None,
         "source": "本地 SQLite MACD 动态选股池（全市场日线 MACD）",
     }
+    with _cache_lock:
+        payload["scanStatus"] = dict(_macd_screener_status)
     if hydrate_quotes and stocks:
         # 开盘时走腾讯批量报价并并发补齐东财扩展字段；午休、盘后和盘前则由
         # hydrate_list_quotes 自动遵循本地最新交易日快照策略，不重复请求三方。
@@ -4434,6 +4537,10 @@ def record_macd_screener_lifecycle_alerts(
 
     for code in sorted(selected_codes):
         stock = selected_stocks[code]
+        # 行情或历史不足时，旧成员仅用于页面连续展示。绝不能拿上一轮价格
+        # 生成新的进入/涨跌幅续报告警。
+        if stock.get("quoteUnavailable"):
+            continue
         for rule in stock.get("macdSelectionRules") or []:
             emit(code, stock, rule, "enter" if code in entered_codes else "move")
 
@@ -4506,7 +4613,7 @@ def get_market_alert_history(
         raise ValueError("信号筛选参数不正确")
     if direction_filter and direction_filter not in {"up", "down", "flat"}:
         raise ValueError("方向筛选参数不正确")
-    if sort_key not in {"", "alertTime", "changePct", "closePrice", "closeChangePct"}:
+    if sort_key not in {"", "alertTime", "changePct", "closePrice", "closeChangePct", "changeDelta"}:
         raise ValueError("告警历史排序字段不正确")
     if sort_dir not in {"asc", "desc"}:
         raise ValueError("告警历史排序方向不正确")
@@ -4695,6 +4802,11 @@ def get_market_alert_history(
                     value = number(row[8])
                 elif sort_key == "closePrice":
                     value = latest_price_by_code.get(str(row[3] or ""))
+                elif sort_key == "changeDelta":
+                    code = str(row[3] or "")
+                    latest_change = latest_change_by_code.get(code)
+                    alert_change = number(row[8])
+                    value = latest_change - alert_change if latest_change is not None and alert_change is not None else None
                 else:
                     value = latest_change_by_code.get(str(row[3] or ""))
                 if value is None:
@@ -8678,7 +8790,17 @@ def scan_concept_alerts() -> None:
 
 def get_concept_alerts(trade_date: Optional[str] = None) -> Dict[str, Any]:
     """Return durable same-day concept alerts for the left alert rail."""
-    normalized_date = trade_date or datetime.now(CHINA_TZ).date().isoformat()
+    now = datetime.now(CHINA_TZ)
+    normalized_date = trade_date or now.date().isoformat()
+    minutes = now.hour * 60 + now.minute
+    display_active = (
+        is_a_share_trading_day(now.date())
+        and 9 * 60 + 30 <= minutes < 15 * 60
+    )
+    # 顶部概念异动只服务当日盘中观察。收盘后不返回展示项，但历史记录
+    # 仍保留在 SQLite；显式查询历史日期时仍允许读取。
+    if trade_date is None and not display_active:
+        return {"tradeDate": normalized_date, "active": False, "alerts": []}
     with open_backtest_db() as connection:
         rows = connection.execute(
             """SELECT id,alert_time,concept_code,concept_name,alert_kind,change_pct,main_net_inflow,
@@ -8712,7 +8834,7 @@ def get_concept_alerts(trade_date: Optional[str] = None) -> Dict[str, Any]:
             for item in items:
                 if item["id"] in by_id:
                     item["leaders"] = by_id[item["id"]]
-    return {"tradeDate": normalized_date, "alerts": items}
+    return {"tradeDate": normalized_date, "active": display_active, "alerts": items}
 
 
 def get_concept_scoring_context() -> Dict[str, Dict[str, Any]]:
