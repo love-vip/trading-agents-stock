@@ -3078,6 +3078,9 @@
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(6),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(6) { width:85px; min-width:85px; max-width:85px; }
     /* MACD 选股：板块涨幅列之后的价格列固定为 90px。 */
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(10),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(10) { width:90px; min-width:90px; max-width:90px; }
+    /* MACD 选股：近10日 MACD 与概念列的最终宽度。 */
+    #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(4),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(4) { width:140px; min-width:140px; max-width:140px; }
+    #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(8),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(8) { width:105px; min-width:105px; max-width:105px; }
     #blacklistTableWrap .whitelist-table th:nth-child(5),#blacklistTableWrap .whitelist-table td:nth-child(5) { width:9.6%; }
     #blacklistTableWrap .whitelist-table th:nth-child(6),#blacklistTableWrap .whitelist-table td:nth-child(6) { width:6.4%; }
     #blacklistTableWrap .whitelist-table th:nth-child(7),#blacklistTableWrap .whitelist-table td:nth-child(7) { width:7.2%; }
@@ -5618,7 +5621,7 @@
         state.macdScreenerTradeDate = "";
       }
       el.whitelistTitle.textContent = "盘中选股 · MACD选股";
-        el.whitelistNote.textContent = "MACD 强度筛选：双线连红 2 日 + 近3日涨幅 ≥5% 要求最近两日快慢线柱体均达到此前 3/4/5 日平均柱高的 1.5 倍；双线连红 3 日 + 近3日涨幅 ≥5% 要求近三日柱体总和较此前三日提高 50%；其它双线连红要求当天柱大于前日且为最近 3 根最大；双线同步翻红要求两套红柱均达到前日绿柱绝对值的 80%；慢线连红 ≥3 日 + 快线翻红要求慢线放大 10%、快线红柱严格超过前日绿柱绝对值的 200%且不低于 0.06；快线提前翻红 + 慢线翻红要求慢线红柱达到前日绿柱绝对值的 120%且不低于 0.05、快线红柱继续放大；交易中每分钟更新，收盘后最终固化。";
+        el.whitelistNote.textContent = "交易中每分钟更新，收盘后最终固化。";
       el.whitelistSearch.placeholder = "搜索个股名称、代码或首字母";
       el.whitelistUpdated.textContent = "正在读取 MACD 动态选股池…";
       renderSectorNavigation(); render();
