@@ -87,11 +87,11 @@ MACD_SLOW_PERIOD = 20
 MACD_SIGNAL_PERIOD = 7
 MACD_MIN_ENTRY_PRICE = 5.0
 # “慢线连红≥3日 + 快线翻红”需要当日快线红柱显著超过前一日绿柱。
-# 2.0 表示红柱必须严格大于前日绿柱绝对值的 200%。
-MACD_SLOW_FAST_FLIP_RED_RATIO = 2.0
+# 1.0 表示红柱必须严格大于前日绿柱绝对值的 100%。
+MACD_SLOW_FAST_FLIP_RED_RATIO = 1.0
 # 同时排除贴近零轴、仅因前日绿柱极短而放大倍数虚高的翻红。
 MACD_SLOW_FAST_MIN_FAST_HISTOGRAM = 0.06
-# “快线提前翻红 + 慢线翻红”要求慢线当天红柱反包前一日绿柱，
+# “快线连红≥2日 + 慢线翻红”要求快线先连续红柱，慢线当天翻红，
 # 并排除贴近零轴的弱翻红。
 MACD_FAST_LEADS_SLOW_FLIP_RATIO = 1.2
 MACD_FAST_LEADS_MIN_SLOW_HISTOGRAM = 0.05
@@ -3223,13 +3223,17 @@ def macd_flip_strength_passes(slow: List[float], fast: List[float],
                     and fast[-1] >= abs(fast[-2]) * 0.80)
     # 快线已在前一交易日翻红并继续增强，慢线今天补翻红。慢线新红柱必须
     # 反包前一日绿柱，并且不能贴近零轴，过滤弱翻红噪音。
+    # 快线连红至少 2 日、慢线补翻红：原慢线强度条件与“快线快速放大”条件二选一。
+    # 条件 B 用于捕捉快线明显加速、但慢线尚未完成强反包的早期信号。
+    slow_strength = (slow[-1] > abs(slow[-2]) * MACD_FAST_LEADS_SLOW_FLIP_RATIO
+                     and slow[-1] >= MACD_FAST_LEADS_MIN_SLOW_HISTOGRAM)
+    fast_acceleration = (fast_red_days >= 2
+                         and fast[-1] >= fast[-2] * 1.50)
     fast_leads_slow = (slow_flip
-                       and slow[-1] > abs(slow[-2]) * MACD_FAST_LEADS_SLOW_FLIP_RATIO
-                       and slow[-1] >= MACD_FAST_LEADS_MIN_SLOW_HISTOGRAM
-                       and fast[-2] >= 0
-                       and fast[-1] > fast[-2])
+                       and fast_red_days >= 2
+                       and (slow_strength or fast_acceleration))
     # 慢线连续走红、快线当日翻红：慢线继续放大 10%，且快线红柱
-    # 必须严格超过前一日快线绿柱绝对值的 200%，且绝对柱高不低于
+    # 必须严格超过前一日快线绿柱绝对值的 100%，且绝对柱高不低于
     # 0.06，避免弱势、贴零翻红。
     slow_fast = (slow_red_days >= 3 and fast_flip and slow[-2] >= 0
                  and slow[-1] > slow[-2] * 1.10
@@ -3271,7 +3275,7 @@ def macd_rules_for_price(closes: List[float], price: Optional[float], latest_cha
     if simultaneous_passed:
         rules.append("双线同步翻红")
     if fast_leads_slow_passed:
-        rules.append("快线提前翻红+慢线翻红")
+        rules.append("快线连红≥2日+慢线翻红")
     dual_red_rule = macd_dual_red_rule(
         slow_red_days, fast_red_days, three_day_gain, latest_change_pct,
         three_days_ago_close, closes[-1],
@@ -3290,7 +3294,7 @@ def macd_rules_for_price(closes: List[float], price: Optional[float], latest_cha
 MACD_SELECTION_RULE_LABELS = {
     "双线同步翻红": "双线同步翻红",
     "慢线连红≥3日+快线翻红": "慢线连红 ≥3 日 + 快线翻红",
-    "快线提前翻红+慢线翻红": "快线提前翻红 + 慢线翻红",
+    "快线连红≥2日+慢线翻红": "快线连红 ≥2 日 + 慢线翻红",
     "双线连红2日+涨5%": "双线连红 2 日 + 近3日涨幅 ≥5%",
     "双线连红3日+涨5%": "双线连红 3 日 + 近3日涨幅 ≥5%",
     "双线连红4日+涨5%": "双线连红 4 日 + 近3日涨幅 ≥5%",
@@ -3762,7 +3766,7 @@ def scan_macd_screener(scan_id: int, final_close_trade_date: str = "") -> None:
             if simultaneous_passed:
                 rules.append("双线同步翻红")
             if fast_leads_slow_passed:
-                rules.append("快线提前翻红+慢线翻红")
+                rules.append("快线连红≥2日+慢线翻红")
             dual_red_rule = macd_dual_red_rule(
                 slow_red_days, fast_red_days, three_day_gain, latest_change_pct,
                 three_days_ago_close, previous_close,
@@ -4018,7 +4022,7 @@ def bootstrap_macd_screener_from_local_close() -> None:
                 )
                 if slow_fast_passed: rules.append("慢线连红≥3日+快线翻红")
                 if simultaneous_passed: rules.append("双线同步翻红")
-                if fast_leads_slow_passed: rules.append("快线提前翻红+慢线翻红")
+                if fast_leads_slow_passed: rules.append("快线连红≥2日+慢线翻红")
                 dual_red_rule = macd_dual_red_rule(
                     red_days, fast_red_days, three_day_gain, latest_change_pct,
                     three_days_ago_close, previous_close,
@@ -4130,7 +4134,7 @@ def bootstrap_macd_screener_from_local_close() -> None:
         if simultaneous_passed:
             rules.append("双线同步翻红")
         if fast_leads_slow_passed:
-            rules.append("快线提前翻红+慢线翻红")
+            rules.append("快线连红≥2日+慢线翻红")
         dual_red_rule = macd_dual_red_rule(
             red_days, fast_red_days, three_day_gain, latest_change_pct,
             three_days_ago_close, previous_close,
