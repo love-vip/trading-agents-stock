@@ -445,22 +445,26 @@
     .market-alert-history-macd { display:inline-flex; width:82px; height:28px; align-items:center; justify-content:center; }
     .market-alert-history-scroll { flex:1 1 auto; min-height:0; overflow:auto; scrollbar-gutter:stable; padding:0 22px 22px; }
     .market-alert-history-scroll .alert-pool-table { margin:0; }
-    .market-alert-signal { white-space:pre-line; line-height:1.45; font-weight:700; }
+    .market-alert-history-scroll .market-alert-history-grid td { padding:3px 6px; vertical-align:middle; }
+    .market-alert-history-scroll .market-alert-history-grid td:has(> .market-alert-signal) { padding:1px 2px; }
+    .market-alert-signal { white-space:pre-line; line-height:1.15; font-weight:700; }
     .market-alert-signal.red { color:var(--red); }.market-alert-signal.green { color:var(--green); }
     .market-alert-signal .signal-detail, .alert-prediction .signal-detail { font-size:.82em; color:var(--muted); font-weight:600; }
     /* 告警池信号统一以浅红底标签呈现，避免整列红字影响阅读。 */
-    .market-alert-signal .macd-condition-tags { gap:4px; }
-    .market-alert-signal .macd-condition-tag { border-color:#f3b5c2; color:var(--text); background:#fff0f3; font-weight:700; }
-    .market-alert-signal .macd-condition-tag.signal-tone-slow-fast { border-color:#cbb8f1; background:#f3edff; }
-    .market-alert-signal .macd-condition-tag.signal-tone-sync { border-color:#9ccbf2; background:#eaf5ff; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red2-near { border-color:#f5c28b; background:#fff3e4; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red3-near { border-color:#eed398; background:#fff8e2; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red4-near { border-color:#badfae; background:#eef9ea; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red5-near { border-color:#e9b0c5; background:#fff0f5; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red2-day { border-color:#a8d9c0; background:#eaf9f1; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red3-day { border-color:#9fd9d7; background:#e8f8f8; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red4-day { border-color:#a9c8ec; background:#edf5ff; }
-    .market-alert-signal .macd-condition-tag.signal-tone-red5-day { border-color:#c3b3eb; background:#f2efff; }
+    .market-alert-signal { padding:1px 2px !important; overflow:visible; white-space:normal; }
+    .market-alert-signal .macd-condition-tags { gap:2px; max-height:none; overflow:visible; }
+    .market-alert-signal .macd-condition-tag { padding:1px 7px; background:transparent; font-weight:700; }
+    .market-alert-signal .macd-condition-tag.signal-tone-sync { border-color:#2876ad; color:#2876ad; }
+    .market-alert-signal .macd-condition-tag.signal-tone-fast-lead { border-color:#7652c4; color:#7652c4; }
+    .market-alert-signal .macd-condition-tag.signal-tone-slow-fast { border-color:#c44f70; color:#c44f70; }
+    .market-alert-signal .macd-condition-tag.signal-tone-red2-near,
+    .market-alert-signal .macd-condition-tag.signal-tone-red3-near,
+    .market-alert-signal .macd-condition-tag.signal-tone-red4-near,
+    .market-alert-signal .macd-condition-tag.signal-tone-red5-near { border-color:#b86b18; color:#b86b18; }
+    .market-alert-signal .macd-condition-tag.signal-tone-red2-day,
+    .market-alert-signal .macd-condition-tag.signal-tone-red3-day,
+    .market-alert-signal .macd-condition-tag.signal-tone-red4-day,
+    .market-alert-signal .macd-condition-tag.signal-tone-red5-day { border-color:#b18b00; color:#b18b00; }
     .market-alert-load-more { padding:14px; text-align:center; color:var(--muted); font-size:12px; }
 
     .brand {
@@ -3017,6 +3021,10 @@
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(7),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(7) { width:85px; min-width:85px; max-width:85px; }
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(8),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(8) { width:140px; min-width:140px; max-width:140px; }
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(12),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(12) { width:100px; min-width:100px; max-width:100px; }
+    #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(6),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(6) { display:none; }
+    #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(8),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(8) { width:120px; min-width:120px; max-width:120px; }
+    #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(12),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(12) { width:150px; min-width:150px; max-width:150px; }
+    #whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(12) { padding:5px 12px; overflow:visible; }
     /* MACD 表最终列宽：概念、板块涨幅、信号。 */
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(8),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(8) { width:100px; min-width:100px; max-width:100px; }
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(9),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(9) { width:85px; min-width:85px; max-width:85px; }
@@ -3034,8 +3042,17 @@
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(8),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(8) { width:140px; min-width:140px; max-width:140px; }
     #whitelistTableWrap.macd-screener-view .whitelist-table th:nth-child(12),#whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(12) { width:100px; min-width:100px; max-width:100px; }
     #whitelistTableWrap.macd-screener-view .whitelist-table td:nth-child(12) { white-space:normal; line-height:1.3; vertical-align:middle; }
-    .macd-condition-tags { display:flex; flex-direction:column; align-items:flex-start; gap:3px; }
-    .macd-condition-tag { display:inline-block; padding:2px 5px; border:1px solid color-mix(in srgb,var(--accent) 48%,var(--line)); border-radius:4px; color:var(--accent); background:color-mix(in srgb,var(--accent) 9%,transparent); font-size:10px; font-style:normal; line-height:1.25; white-space:nowrap; }
+    .macd-condition-tags { display:flex; flex-wrap:wrap; align-items:center; gap:2px; max-height:42px; overflow:hidden; white-space:normal; }
+    .macd-condition-tag { display:inline-flex; padding:1px 7px; border:1px solid var(--green); border-radius:5px; color:var(--green); background:rgba(16,185,129,.08); font-size:12px; font-style:normal; line-height:1.35; white-space:nowrap; }
+    .macd-condition-tag.signal-tone-sync { border-color:#2876ad; color:#2876ad; background:#eaf5ff; }
+    .macd-condition-tag.signal-tone-fast-lead { border-color:#7652c4; color:#7652c4; background:#f0eaff; }
+    .macd-condition-tag.signal-tone-slow-fast { border-color:#c44f70; color:#c44f70; background:#fff0f3; }
+    .macd-condition-tag.signal-tone-dual-red { border-color:#b86b18; color:#b86b18; background:#fff3e4; }
+    .macd-condition-tag.signal-tone-dual-red-near { border-color:#b86b18; color:#b86b18; background:#fff3e4; }
+    .macd-condition-tag.signal-tone-dual-red-day { border-color:#b18b00; color:#b18b00; background:#fff8d8; }
+    .macd-condition-tag.signal-tone-default { border-color:#53657b; color:#53657b; background:#f2f5f9; }
+    .macd-condition-tag { background:transparent !important; }
+    #whitelistTableWrap.macd-screener-view .macd-signal-cell { padding:1px 1px !important; overflow:visible; }
     .macd-only-header { display:none; }
     #whitelistTableWrap.macd-screener-view .macd-only-header { display:inline; }
     #whitelistTableWrap.macd-screener-view .non-macd-header { display:none; }
@@ -4110,7 +4127,8 @@
 
     function displayConceptName(name) {
       const value = String(name || "").trim();
-      return value === "共封装光学(CPO)" || value === "共封装光学（CPO）" ? "CPO" : value;
+      const normalized = value === "共封装光学(CPO)" || value === "共封装光学（CPO）" ? "CPO" : value;
+      return normalized.replace(/概念$/, "");
     }
 
     function renderRelatedConcepts(stock) {
@@ -5104,9 +5122,10 @@
           row.insertBefore(sectorChangeCell, row.cells[8]);
           const cell = row.cells[12];
           if (!cell) return;
+          cell.classList.add("macd-signal-cell");
           const rules = Array.isArray(stock.macdSelectionRules) ? stock.macdSelectionRules : [];
           const labels = rules.map(rule => (MACD_SELECTION_RULES.find(item => item[0] === rule) || ["", rule])[1]).filter(Boolean);
-          cell.innerHTML = labels.length ? `<span class="macd-condition-tags">${labels.flatMap(label => label.split(/\s*\+\s*/).filter(Boolean).map(part => `<i class="macd-condition-tag">${escapeHtml(part)}</i>`)).join("")}</span>` : "--";
+          cell.innerHTML = labels.length ? `<span class="macd-condition-tags">${labels.flatMap(label => label.split(/\s*\+\s*/).filter(Boolean).map(part => { const tone = /双线同步翻红/.test(label) ? "signal-tone-sync" : /快线连红/.test(label) ? "signal-tone-fast-lead" : /慢线连红/.test(label) ? "signal-tone-slow-fast" : /双线连红/.test(label) ? (/当日涨幅/.test(label) ? "signal-tone-dual-red-day" : "signal-tone-dual-red-near") : "signal-tone-default"; return `<i class="macd-condition-tag ${tone}">${escapeHtml(part)}</i>`; })).join("")}</span>` : "--";
           cell.title = cell.textContent;
           if (rules.some(rule => /快线连红\s*≥?\s*2\s*日\s*\+\s*慢线翻红/.test(String(rule))) && row.cells[0] && !row.cells[0].querySelector(".market-alert-badge-m")) {
             row.cells[0].querySelector(".whitelist-name")?.insertAdjacentHTML("beforeend", '<i class="market-alert-badge-m" title="快线连红 ≥2 日 + 慢线翻红">M</i>');
@@ -5116,6 +5135,8 @@
           }
         });
       }
+      renameSectorHeaders();
+      formatMacdConceptCells();
       bindWhitelistConceptRemoval();
       renderMarketDistribution("whitelistView", filtered, `白名单 · ${state.whitelistTrendFilter === "all" ? "全部趋势" : state.whitelistTrendFilter}`);
       syncMacdScreenerStickyLayout();
@@ -8945,7 +8966,7 @@
       const text = String(signal || "");
       if (/慢线连红/.test(text)) return "signal-tone-slow-fast";
       if (/双线同步翻红/.test(text)) return "signal-tone-sync";
-      if (/快线连红/.test(text)) return "signal-tone-sync";
+      if (/快线连红/.test(text)) return "signal-tone-fast-lead";
       const redDays = text.includes("≥5") ? "5" : (text.match(/双线连红\s*([234])\s*日/) || [])[1];
       const source = /当日涨幅/.test(text) ? "day" : "near";
       return redDays ? `signal-tone-red${redDays}-${source}` : "";
@@ -9481,15 +9502,20 @@
       if (!wrap || !wrap.classList.contains("macd-screener-view")) return;
       wrap.querySelectorAll(".whitelist-table tbody tr").forEach(row => {
         const cell = row.cells && row.cells[7];
-        if (!cell || cell.querySelector(".whitelist-concept-tag")) return;
+        if (!cell) return;
+        cell.querySelectorAll(".whitelist-concept-tag").forEach(tag => {
+          const current = tag.textContent;
+          const cleaned = displayConceptName(current);
+          if (cleaned !== current) tag.textContent = cleaned;
+        });
+        if (cell.querySelector(".whitelist-concept-tag")) return;
         const text = cell.textContent.trim();
         if (!text || text === "--" || text === "加载") return;
-        cell.innerHTML = `<span class="whitelist-concepts"><i class="whitelist-concept-tag">${escapeHtml(text)}</i></span>`;
+        cell.innerHTML = `<span class="whitelist-concepts"><i class="whitelist-concept-tag">${escapeHtml(displayConceptName(text))}</i></span>`;
       });
     }
     renameSectorHeaders();
     formatMacdConceptCells();
-    new MutationObserver(() => { renameSectorHeaders(); formatMacdConceptCells(); }).observe(document.body, {childList: true, subtree: true});
 
     window.setInterval(() => {
       syncAlertSidebarWidth();
