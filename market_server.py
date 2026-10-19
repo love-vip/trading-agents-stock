@@ -3216,11 +3216,15 @@ def macd_flip_strength_passes(slow: List[float], fast: List[float],
         return False, False, False
     slow_flip = slow[-2] < 0 <= slow[-1]
     fast_flip = fast[-2] < 0 <= fast[-1]
-    # 双线同步翻红允许提前确认：两套 MACD 当天红柱均达到前一日绿柱
-    # 绝对值的 70% 以上，同时继续要求当日涨幅不为负。
-    simultaneous = (slow_flip and fast_flip
-                    and slow[-1] >= abs(slow[-2]) * 0.80
-                    and fast[-1] >= abs(fast[-2]) * 0.80)
+    # 双线同步翻红满足以下任一方案即可：
+    # A：快、慢线红柱分别达到前一日绿柱绝对值的 80%；
+    # B：快线红柱达到前一日绿柱绝对值的 200%，不再要求慢线柱体高度。
+    simultaneous_a = (slow_flip and fast_flip
+                      and slow[-1] >= abs(slow[-2]) * 0.80
+                      and fast[-1] >= abs(fast[-2]) * 0.80)
+    simultaneous_b = (slow_flip and fast_flip
+                      and fast[-1] >= abs(fast[-2]) * 2.00)
+    simultaneous = simultaneous_a or simultaneous_b
     # 快线已在前一交易日翻红并继续增强，慢线今天补翻红。慢线新红柱必须
     # 反包前一日绿柱，并且不能贴近零轴，过滤弱翻红噪音。
     # 快线连红至少 2 日、慢线补翻红：原慢线强度条件与“快线快速放大”条件二选一。
