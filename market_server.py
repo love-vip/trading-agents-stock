@@ -1195,7 +1195,7 @@ def get_today_alert_pool(market_key: str = "all", requested_codes: Optional[set]
                     names = [str(concept.get("name") or "") for concept in concepts]
                 except (MarketDataError, OSError, ValueError):
                     names = []
-                concept_by_code[item["code"]] = select_primary_business_concept(item["code"], item.get("industry"), names)
+                concept_by_code[item["code"]] = _resolve_top_concept_for_stock(item["code"], item.get("industry"))
     for item in stocks:
         concept = concept_by_code.get(item["code"], "")
         if concept in ("共封装光学(CPO)", "共封装光学（CPO）"):
@@ -2959,7 +2959,9 @@ def add_related_sectors(quotes: List[Dict[str, Any]]) -> None:
                 results[code] = []
     for quote in quotes:
         names = results.get(quote["code"], [])
-        primary = select_primary_business_concept(quote["code"], quote.get("actualIndustry"), names)
+        primary = _resolve_top_concept_for_stock(quote["code"], quote.get("actualIndustry"))
+        if primary == "板块待补齐" and names:
+            primary = names[0]
         quote["relatedSectors"] = ([primary] if primary else []) + [name for name in names if name != primary]
 
 
@@ -11106,7 +11108,7 @@ class AppHandler(BaseHTTPRequestHandler):
                             concepts = future.result()
                             concept_names = [str(item.get("name") or "") for item in concepts]
                             target = next((item for item in topic_targets if item["code"] == code), {})
-                            concept_by_code[code] = select_primary_business_concept(code, target.get("industry"), concept_names)
+                            concept_by_code[code] = _resolve_top_concept_for_stock(code, target.get("industry"))
                         except (MarketDataError, OSError, ValueError):
                             concept_by_code[code] = ""
                 for item in topic_targets:

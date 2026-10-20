@@ -147,8 +147,9 @@ class MacdBearService:
                              macdFastRedDays=fd, macdLatestChangePct=quote['changePct'],
                              macdThreeDayGain=(quote['price']/closes[-3]-1)*100,
                              macdPreviousDayAmount=amounts.get(code), macdPreviousDayTradeDate=prev_day)
-                # Preserve the entry concept; do not recalculate its rank every minute.
-                stock['industry'] = (old.get(code) or {}).get('industry') or a.top_concept_for_stock(code, quote.get('industry'), day)
+                # 每次扫描都按当前概念排行重新选择，不能沿用旧成员里的概念；
+                # 否则板块涨幅变化后会继续展示历史错误概念。
+                stock['industry'] = a.top_concept_for_stock(code, quote.get('industry'), day)
                 stock['actualIndustry'] = stock['industry']
                 stock['sector'] = stock['industry']
                 selected[code] = stock

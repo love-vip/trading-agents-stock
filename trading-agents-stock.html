@@ -446,6 +446,8 @@
     .market-alert-history-scroll .alert-pool-table { margin:0; }
     .market-alert-history-scroll .market-alert-history-grid td { padding:3px 6px; vertical-align:middle; }
     .market-alert-history-scroll .market-alert-history-grid td:has(> .market-alert-signal) { padding:1px 2px; }
+    .market-alert-history-grid .alert-concept-tags { display:inline-flex; max-width:100%; }
+    .market-alert-history-grid .alert-concept-tags .whitelist-concept-tag { font-size:12px; }
     .market-alert-signal { white-space:pre-line; line-height:1.15; font-weight:700; }
     .market-alert-signal.red { color:var(--red); }.market-alert-signal.green { color:var(--green); }
     .market-alert-signal .signal-detail, .alert-prediction .signal-detail { font-size:.82em; color:var(--muted); font-weight:600; }
@@ -2892,6 +2894,7 @@
     .macd-m-concept-row { display:grid; grid-template-columns:minmax(0,1fr) 1fr 24px; align-items:center; gap:8px; min-height:17px; }
     .macd-m-concept-name { overflow:hidden; color:var(--text); font-size:12px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
     .whitelist-concept-tag.macd-m-top-concept { border-color:#8b5cf6; color:#7c3aed; background:color-mix(in srgb,#8b5cf6 10%,transparent); }
+    .whitelist-concept-tag.macd-m-second-concept { border-color:#f0a35e; color:#c87524; background:color-mix(in srgb,#f0a35e 10%,transparent); }
     .macd-m-concept-track { height:7px; overflow:hidden; border-radius:999px; background:color-mix(in srgb,var(--purple) 12%,transparent); }
     .macd-m-concept-track i { display:block; height:100%; min-width:3px; border-radius:inherit; background:linear-gradient(90deg,#b99afa,#7652c4); }
     .macd-m-concept-count { color:#7652c4; font-size:12px; font-weight:900; text-align:right; font-variant-numeric:tabular-nums; }
@@ -2904,8 +2907,10 @@
     .market-alert-badge-b { display:inline-flex; width:16px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #7dd3fc; border-radius:50%; color:#0284c7; background:#e0f2fe; font-size:10px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
     .market-alert-badge-bplus { display:inline-flex; width:22px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #f3a6b7; border-radius:8px; color:#d94f70; background:#ffe7ee; font-size:9px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
     .market-alert-badge-m { display:inline-flex; width:16px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #a98be8; border-radius:50%; color:#7652c4; background:#f0eaff; font-size:10px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
+    .market-alert-badge-e { display:inline-flex; width:16px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #eab308; border-radius:50%; color:#a16207; background:#fef3c7; font-size:10px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
     .whitelist-name .market-alert-badge-m { margin-left:-4px; }
     .whitelist-name .market-alert-badge-b { margin-left:-4px; }
+    .whitelist-name .market-alert-badge-e { margin-left:-4px; }
     .whitelist-name .macd-alert-replay-badge { margin-left:-4px; }
     .blacklist-view .whitelist-table-wrap, #whitelistView .whitelist-table-wrap { clear:both; }
     @media(max-width:900px) { .market-distribution-panel,.macd-m-concept-panel { float:none; width:100%; min-width:0; margin:0 0 12px; } #whitelistView.macd-screener-sticky .whitelist-toolbar { float:none; clear:none; width:100%; grid-template-columns:130px minmax(160px,1fr) minmax(140px,.8fr) minmax(190px,1.2fr) auto; } .market-distribution-panel .market-distribution-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
@@ -4584,21 +4589,24 @@
       panel.innerHTML = `<div class="market-distribution-head"><strong>涨跌分布</strong><span>${escapeHtml(title)} · ${new Date().toLocaleTimeString("zh-CN", {hour12:false})}</span></div><div class="market-distribution-bars">${bars}</div><div class="market-distribution-summary"><span class="up">上涨<b>${up.toLocaleString("zh-CN")}</b></span><span class="down">下跌<b>${down.toLocaleString("zh-CN")}</b></span><span class="up">涨停<b>${limitUp.toLocaleString("zh-CN")}</b></span><span class="down">跌停<b>${limitDown.toLocaleString("zh-CN")}</b></span></div>`;
     }
 
-    function renderMacdMConceptDistribution(viewId, stocks) {
+    function renderMacdConceptDistribution(viewId, stocks, signalType = "E") {
       const view = document.getElementById(viewId);
       if (!view) return;
-      let panel = view.querySelector('.macd-m-concept-panel');
+      const panelSelector = signalType === "M" ? '.macd-m-concept-panel:not(.macd-e-concept-panel)' : '.macd-e-concept-panel';
+      let panel = view.querySelector(panelSelector);
       if (!panel) {
         panel = document.createElement('section');
-        panel.className = 'macd-m-concept-panel';
+        panel.className = signalType === "M" ? 'macd-m-concept-panel' : 'macd-m-concept-panel macd-e-concept-panel';
         const distribution = view.querySelector('.market-distribution-panel');
         if (distribution) distribution.insertAdjacentElement('afterend', panel);
+        else view.querySelector('.section-head')?.insertAdjacentElement('afterend', panel);
       }
-      const mRule = '快线连红≥2日+慢线翻红';
+      const rulesToMatch = signalType === "M" ? ['快线连红≥2日+慢线翻红'] : ['双线连红2日+涨5%', '双线连红2日+当日涨3%'];
+      const matchesRule = rules => rules.some(item => rulesToMatch.includes(String(item || '').replace(/\s+/g, '')));
       const groups = new Map();
       (stocks || []).forEach(stock => {
         const rules = Array.isArray(stock.macdSelectionRules) ? stock.macdSelectionRules : [];
-        if (!rules.includes(mRule)) return;
+        if (!matchesRule(rules)) return;
         const concept = displayConceptName(stock.industry || stock.actualIndustry || '--') || '--';
         if (!groups.has(concept)) groups.set(concept, []);
         groups.get(concept).push(stock);
@@ -4614,16 +4622,24 @@
         const width = (item.members.length / max * 100).toFixed(1);
         return `<div class="macd-m-concept-row${index === 0 ? ' top-concept' : ''}" title="${escapeHtml(names)}"><span class="macd-m-concept-name">${escapeHtml(item.concept)}</span><span class="macd-m-concept-track"><i style="width:${width}%"></i></span><b class="macd-m-concept-count">${item.members.length}</b></div>`;
       }).join('');
-      panel.innerHTML = `<div class="macd-m-concept-panel-head"><strong>M 信号概念分布</strong><span>前 4 · ${total} 只</span></div>${rows ? `<div class="macd-m-concept-list">${rows}</div>` : '<div class="macd-m-concept-empty">当前暂无 M 信号个股</div>'}`;
+      const signalLabel = signalType === "M" ? "M" : "E";
+      panel.innerHTML = `<div class="macd-m-concept-panel-head"><strong>${signalLabel} 信号概念分布</strong><span>前 4 · ${total} 只</span></div>${rows ? `<div class="macd-m-concept-list">${rows}</div>` : `<div class="macd-m-concept-empty">当前暂无 ${signalLabel} 信号个股</div>`}`;
       const topConcept = ranked[0]?.concept || "";
-      view.querySelectorAll(".whitelist-concept-tag.macd-m-top-concept").forEach(tag => tag.classList.remove("macd-m-top-concept"));
-      if (topConcept) {
-        const mCodes = new Set((stocks || []).filter(stock => Array.isArray(stock.macdSelectionRules) && stock.macdSelectionRules.includes(mRule)).map(stock => String(stock.code || "")));
+      const secondConcept = ranked[1]?.concept || "";
+      if (signalType === "M") {
+        view.querySelectorAll(".whitelist-concept-tag.macd-m-top-concept").forEach(tag => tag.classList.remove("macd-m-top-concept"));
+        view.querySelectorAll(".whitelist-concept-tag.macd-m-second-concept").forEach(tag => tag.classList.remove("macd-m-second-concept"));
+      }
+      if (signalType === "M" && topConcept) {
+        const signalCodes = new Set((stocks || []).filter(stock => Array.isArray(stock.macdSelectionRules) && matchesRule(stock.macdSelectionRules)).map(stock => String(stock.code || "")));
         view.querySelectorAll(".whitelist-table tbody tr").forEach(row => {
           const code = row.cells[0]?.querySelector(".whitelist-code")?.textContent?.replace(/[^0-9]/g, "") || "";
-          if (!mCodes.has(code)) return;
+          if (!signalCodes.has(code)) return;
           const concept = row.querySelector(".whitelist-concept-tag");
-          if (concept && displayConceptName(concept.textContent.trim()) === topConcept) concept.classList.add("macd-m-top-concept");
+          if (!concept) return;
+          const conceptName = displayConceptName(concept.textContent.trim());
+          if (conceptName === topConcept) concept.classList.add("macd-m-top-concept");
+          else if (conceptName === secondConcept) concept.classList.add("macd-m-second-concept");
         });
       }
     }
@@ -5193,6 +5209,9 @@
           if (rules.some(rule => /慢线连红\s*≥?\s*3\s*日\s*\+\s*快线翻红/.test(String(rule))) && row.cells[0] && !row.cells[0].querySelector(".market-alert-badge-b")) {
             row.cells[0].querySelector(".whitelist-name")?.insertAdjacentHTML("beforeend", '<i class="market-alert-badge-b" title="慢线连红 ≥3 日 + 快线翻红">B</i>');
           }
+          if (rules.some(rule => /双线连红\s*2\s*日\s*\+\s*(?:近3日涨幅\s*≥?\s*5\s*%|涨5%|当日涨幅\s*≥?\s*3\s*%|当日涨3%)|双线连红2日\+(?:涨5%|当日涨3%)/.test(String(rule))) && row.cells[0] && !row.cells[0].querySelector(".market-alert-badge-e")) {
+            row.cells[0].querySelector(".whitelist-name")?.insertAdjacentHTML("beforeend", '<i class="market-alert-badge-e" title="E类告警">E</i>');
+          }
         });
       }
       renameSectorHeaders();
@@ -5201,10 +5220,13 @@
       renderMarketDistribution("whitelistView", filtered, `白名单 · ${state.whitelistTrendFilter === "all" ? "全部趋势" : state.whitelistTrendFilter}`);
       if (isMacdScreener) {
         // Use the complete current pool rather than table filters: this is a
-        // real-time breadth view of the M signal, not a count of visible rows.
-        renderMacdMConceptDistribution("whitelistView", state.whitelistStocks);
+        // real-time breadth view of the E signal, not a count of visible rows.
+        document.querySelector("#whitelistView .market-distribution-panel")?.remove();
+        renderMacdConceptDistribution("whitelistView", state.whitelistStocks, "M");
+        renderMacdConceptDistribution("whitelistView", state.whitelistStocks, "E");
       } else {
-        document.querySelector("#whitelistView .macd-m-concept-panel")?.remove();
+        document.querySelector("#whitelistView .macd-m-concept-panel:not(.macd-e-concept-panel)")?.remove();
+        document.querySelector("#whitelistView .macd-e-concept-panel")?.remove();
       }
       syncMacdScreenerStickyLayout();
       syncFixedAlertLayout();
@@ -5224,7 +5246,7 @@
       select.innerHTML = [`<option value="all">全部 MACD 条件（${macdDisplayedStockCount().toLocaleString("zh-CN")}）</option>`,
         ...rules.map(([rule, label]) => `<option value="${escapeHtml(rule)}">${escapeHtml(label)}（${counts[rule]}）</option>`),
       ].join("");
-      state.macdConditionFilter = rules.some(([rule]) => rule === current) ? current : DEFAULT_MACD_CONDITION;
+      state.macdConditionFilter = current === "all" || rules.some(([rule]) => rule === current) ? current : DEFAULT_MACD_CONDITION;
       select.value = state.macdConditionFilter;
     }
 
@@ -8713,7 +8735,10 @@
           const bPlusTag = showBPlusTag ? '<i class="market-alert-badge-b" title="慢线连红 ≥3 日 + 快线翻红">B</i>' : '';
           const showMTag = /快线连红\s*≥?\s*2\s*日\s*\+\s*慢线翻红/.test(String(item.signal || '')) || (Array.isArray(item.signals) && item.signals.some(signal => /快线连红\s*≥?\s*2\s*日\s*\+\s*慢线翻红/.test(String(signal.text || ''))));
           const mTag = showMTag ? '<i class="market-alert-badge-m" title="快线连红 ≥2 日 + 慢线翻红">M</i>' : '';
-          const identity = `<span class="price-alert-stock"><span class="price-alert-stock-name-line"><strong class="price-alert-stock-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong>${bPlusTag}${mTag}</span><small class="price-alert-stock-meta">${badge ? `<i class="market-badge">${badge}</i>` : ''}${escapeHtml(item.code)}<i class="price-alert-count" title="今日第 ${alertCount} 次告警">${alertCount}</i></small></span>`;
+          const alertSignalText = [item.signal, ...(Array.isArray(item.signals) ? item.signals.map(signal => signal.text) : [])].filter(Boolean).join('\\n');
+          const showETag = /双线连红\s*2\s*日\s*\+\s*(?:近3日涨幅\s*≥?\s*5\s*%|涨5%|当日涨幅\s*≥?\s*3\s*%|当日涨3%)|双线连红2日\+(?:涨5%|当日涨3%)/.test(alertSignalText);
+          const eTag = showETag ? '<i class="market-alert-badge-e" title="E类告警">E</i>' : '';
+          const identity = `<span class="price-alert-stock"><span class="price-alert-stock-name-line"><strong class="price-alert-stock-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong>${bPlusTag}${mTag}${eTag}</span><small class="price-alert-stock-meta">${badge ? `<i class="market-badge">${badge}</i>` : ''}${escapeHtml(item.code)}<i class="price-alert-count" title="今日第 ${alertCount} 次告警">${alertCount}</i></small></span>`;
           const signalLines = Array.isArray(item.signals) && item.signals.length ? item.signals : [{text:item.signal || '--', tone:item.tone, alertType:item.alertType}];
           const signalMarkup = signalLines.map(signalLine => {
             const tone = signalLine.tone === 'red' ? 'macd-alert-signal-red' : 'macd-alert-signal-green';
@@ -9215,7 +9240,7 @@
       }
       if (state.pageView === "macd-screener") {
         return {
-          label: "MACD选股",
+          label: state.macdMode === "bear" ? "MACD空头" : "MACD选股",
           codes: [...new Set((state.whitelistStocks || []).map(stock => String(stock.code || "")).filter(code => /^\d{6}$/.test(code)))],
         };
       }
@@ -9262,7 +9287,10 @@
         // MACD 告警，哪怕该股后来已被动态条件移出当前选股池。
         const macdReviewMode = isMacdAlertReviewMode();
         if (scope.codes.length && !macdReviewMode) params.set("codes", scope.codes.join(","));
-        const response = await fetch(`/api/market-alert-history?${params}`, { cache: "no-store" });
+        const alertHistoryEndpoint = state.pageView === "macd-screener" && state.macdMode === "bear"
+          ? "/api/macd-bear/history"
+          : "/api/market-alert-history";
+        const response = await fetch(`${alertHistoryEndpoint}?${params}`, { cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "告警历史读取失败");
         const tbody = el.marketAlertHistoryBody.querySelector("tbody");
@@ -9274,6 +9302,16 @@
         if (!rows.length && reset) {
           el.marketAlertHistoryBody.innerHTML = '<div class="alert-pool-empty">当日暂未保存告警</div>';
         } else if (tbody) {
+          const mConceptCounts = new Map();
+          const mRule = "快线连红≥2日+慢线翻红";
+          (state.whitelistStocks || []).forEach(stock => {
+            if (!(Array.isArray(stock.macdSelectionRules) && stock.macdSelectionRules.includes(mRule))) return;
+            const concept = displayConceptName(stock.industry || stock.actualIndustry || "").trim();
+            if (concept) mConceptCounts.set(concept, (mConceptCounts.get(concept) || 0) + 1);
+          });
+          const rankedMConcepts = [...mConceptCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"));
+          const topMConcept = rankedMConcepts[0]?.[0] || "";
+          const secondMConcept = rankedMConcepts[1]?.[0] || "";
           tbody.insertAdjacentHTML("beforeend", rows.map(item => {
             const signalParts = Array.isArray(item.signals) && item.signals.length
               ? item.signals.map(signal => normalizeAlertSignalText(signal.text || "")).filter(Boolean)
@@ -9283,6 +9321,8 @@
             const bPlusTag = showBPlusTag ? '<i class="market-alert-badge-b" title="慢线连红 ≥3 日 + 快线翻红">B</i>' : '';
             const showMTag = /快线连红\s*≥?\s*2\s*日\s*\+\s*慢线翻红/.test(signals);
             const mTag = showMTag ? '<i class="market-alert-badge-m" title="快线连红 ≥2 日 + 慢线翻红">M</i>' : '';
+            const showETag = /双线连红\s*2\s*日\s*\+\s*(?:近3日涨幅\s*≥?\s*5\s*%|涨5%|当日涨幅\s*≥?\s*3\s*%|当日涨3%)|双线连红2日\+(?:涨5%|当日涨3%)/.test(signals);
+            const eTag = showETag ? '<i class="market-alert-badge-e" title="E类告警">E</i>' : '';
             const tone = item.tone === "red" ? "red" : item.tone === "green" ? "green" : "";
             const priceDirection = hasNumber(item.price) && hasNumber(item.closePrice)
               ? (Number(item.closePrice) > Number(item.price) ? '<span class="up" title="最新价高于告警价格">↑</span>' : Number(item.closePrice) < Number(item.price) ? '<span class="down" title="最新价低于告警价格">↓</span>' : "--")
@@ -9293,13 +9333,16 @@
               : null;
             const marketBadge = alertHistoryMarketBadge(item.code);
             const marketBadgeTone = alertHistoryMarketBadgeTone(item.code);
-            return `<tr><td>${escapeHtml(item.time || "--")}</td><td><strong>${escapeHtml(item.name || item.code)}</strong>${bPlusTag}${mTag}<br><span class="whitelist-code"><i class="market-badge ${marketBadgeTone}">${marketBadge}</i> ${escapeHtml(item.code || "--")}</span></td><td><span class="market-alert-history-macd" data-alert-history-macd="${escapeHtml(item.code || "")}">加载</span></td><td>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</td><td class="${quoteClass(alertChangePct)}">${hasNumber(alertChangePct) ? formatPct(alertChangePct) : "--"}</td><td>${priceDirection}</td><td>${hasNumber(item.closePrice) ? formatPrice(item.closePrice) : "--"}</td><td class="${quoteClass(item.closeChangePct)}">${hasNumber(item.closeChangePct) ? formatPct(item.closeChangePct) : "--"}</td><td>${escapeHtml(item.industry || "--")}</td><td class="${quoteClass(alertChangeDelta)}">${hasNumber(alertChangeDelta) ? formatPct(alertChangeDelta) : "--"}</td><td><span class="market-alert-signal ${tone}">${formatAlertSignalTags(signals)}</span></td></tr>`;
+            const concept = displayConceptName(item.industry || "").trim();
+            const conceptClass = concept === topMConcept ? " macd-m-top-concept" : concept === secondMConcept ? " macd-m-second-concept" : "";
+            const conceptMarkup = concept ? `<span class="whitelist-concepts alert-concept-tags"><i class="whitelist-concept-tag${conceptClass}">${escapeHtml(concept)}</i></span>` : "--";
+            return `<tr><td>${escapeHtml(item.time || "--")}</td><td><strong>${escapeHtml(item.name || item.code)}</strong>${bPlusTag}${mTag}${eTag}<br><span class="whitelist-code"><i class="market-badge ${marketBadgeTone}">${marketBadge}</i> ${escapeHtml(item.code || "--")}</span></td><td><span class="market-alert-history-macd" data-alert-history-macd="${escapeHtml(item.code || "")}">加载</span></td><td>${hasNumber(item.price) ? formatPrice(item.price) : "--"}</td><td class="${quoteClass(alertChangePct)}">${hasNumber(alertChangePct) ? formatPct(alertChangePct) : "--"}</td><td>${priceDirection}</td><td>${hasNumber(item.closePrice) ? formatPrice(item.closePrice) : "--"}</td><td class="${quoteClass(item.closeChangePct)}">${hasNumber(item.closeChangePct) ? formatPct(item.closeChangePct) : "--"}</td><td>${conceptMarkup}</td><td class="${quoteClass(alertChangeDelta)}">${hasNumber(alertChangeDelta) ? formatPct(alertChangeDelta) : "--"}</td><td><span class="market-alert-signal ${tone}">${formatAlertSignalTags(signals)}</span></td></tr>`;
           }).join(""));
           loadMarketAlertHistoryMacdCharts();
           view.page = payload.page;
           view.total = payload.total;
           view.hasMore = view.page < payload.pages;
-          const scopeLabel = macdReviewMode ? "MACD选股 · 当日全部历史告警" : scope.label;
+          const scopeLabel = macdReviewMode && state.macdMode !== "bear" ? "MACD选股 · 当日全部历史告警" : scope.label;
           const modes = [state.marketAlertHistoryDedupe ? "每股仅最早告警" : "全部告警记录", state.marketAlertHistoryShowDrawdowns ? "含回落记录" : "隐藏回落超 -1%"];
           el.marketAlertHistoryMeta.textContent = `${scopeLabel} · ${payload.tradeDate} · ${modes.join(" · ")} ${payload.total.toLocaleString("zh-CN")} 条 · 向下滚动加载更多`;
           if (footer) footer.textContent = view.hasMore ? "继续向下滚动加载更多" : `已加载全部 ${payload.total.toLocaleString("zh-CN")} 条`;
