@@ -4842,7 +4842,8 @@
         let pages = 1;
         do {
           const params = new URLSearchParams({date: tradeDate, page: String(page), pageSize: "100", dedupe: "earliest", includeDrawdowns: "1"});
-          const response = await fetch(`/api/market-alert-history?${params}`, {cache:"no-store"});
+          const historyEndpoint = state.macdMode === "bear" ? "/api/macd-bear/history" : "/api/market-alert-history";
+          const response = await fetch(`${historyEndpoint}?${params}`, {cache:"no-store"});
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || "盘中告警复盘数据读取失败");
           rows.push(...(payload.rows || []));
@@ -10145,6 +10146,8 @@
       state.macdMode = mode;
       state.whitelistStocks = [];
       state.whitelistShown = 0;
+      state.macdAlertReplayStocks = [];
+      state.macdAlertReplayTradeDate = "";
       state.macdConditionFilter = DEFAULT_MACD_CONDITION;
       updatePageMeta();
       openMacdScreener(true);
