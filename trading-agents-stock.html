@@ -1042,6 +1042,20 @@
       margin-bottom: 12px;
     }
     .section-head-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+    .macd-alert-concept-distribution { display:none; flex:1; min-width:0; max-width:900px; margin:0 12px; padding:5px 10px; border:1px solid #f3d3aa; border-radius:10px; background:#fffaf0; box-sizing:border-box; }
+    .macd-alert-concept-distribution.visible { display:block; }
+    .macd-alert-concept-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:4px; }
+    .macd-alert-concept-head strong { color:var(--text); font-size:12px; white-space:nowrap; }
+    .macd-alert-concept-head span { color:var(--muted); font-size:10px; white-space:nowrap; }
+    .macd-alert-concept-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px 12px; }
+    .macd-alert-concept-item { display:grid; grid-template-columns:minmax(0,1fr) 22px; align-items:center; gap:5px; min-width:0; }
+    .macd-alert-concept-item b { overflow:hidden; color:var(--text); font-size:11px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .macd-alert-concept-item strong { color:var(--muted); font-size:11px; text-align:right; }
+    .macd-alert-concept-track { grid-column:1 / -1; height:5px; overflow:hidden; border-radius:999px; background:color-mix(in srgb,var(--purple) 12%,transparent); }
+    .macd-alert-concept-track i { display:block; height:100%; min-width:3px; border-radius:inherit; background:linear-gradient(90deg,#b99afa,#7652c4); }
+    .macd-alert-concept-item.top b, .macd-alert-concept-item.second b { color:#000; }
+    @media(max-width:1200px) { .macd-alert-concept-distribution { max-width:680px; } .macd-alert-concept-grid { grid-template-columns:repeat(5,minmax(55px,1fr)); gap:3px 8px; } }
+    @media(max-width:900px) { .macd-alert-concept-distribution { order:3; flex-basis:100%; max-width:none; margin:8px 0 0; } }
 
     h2 {
       margin: 0;
@@ -3408,7 +3422,7 @@
       <div class="whitelist-table-wrap" id="blacklistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近10日MACD</th><th>行业</th><th><button class="whitelist-sort" data-blacklist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-blacklist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th>趋势</th><th><button class="whitelist-sort" data-blacklist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>换手率</th><th>关联概念</th><th>黑名单原因</th></tr></thead><tbody id="blacklistBody"><tr><td colspan="12">正在加载黑名单…</td></tr></tbody></table></div>
     </section>
     <section class="panel limit-up-view" id="whitelistView" aria-label="白名单" hidden>
-      <div class="section-head"><div><h2 id="whitelistTitle">盘中选股 · 白名单</h2><span class="sector-strength-note" id="whitelistNote">已扣除当前生效黑名单后的可参与扫描个股</span><div class="macd-screener-tabs" id="macdScreenerTabs" hidden><button type="button" class="macd-screener-tab active" data-macd-mode="normal">MACD选股</button><button type="button" class="macd-screener-tab" data-macd-mode="bear">MACD空头</button></div></div><div class="section-head-actions"><button class="macd-limit-up-toggle" id="macdLimitUpToggle" type="button" aria-label="显示涨停股" title="显示涨停股">◉</button><button class="macd-limit-up-toggle" id="macdAlertReplayToggle" type="button" aria-pressed="false" aria-label="显示盘中告警复盘股" title="显示盘中告警复盘股"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button><span class="tag" id="whitelistUpdated">正在读取…</span></div></div>
+      <div class="section-head"><div><h2 id="whitelistTitle">盘中选股 · 白名单</h2><span class="sector-strength-note" id="whitelistNote">已扣除当前生效黑名单后的可参与扫描个股</span><div class="macd-screener-tabs" id="macdScreenerTabs" hidden><button type="button" class="macd-screener-tab active" data-macd-mode="normal">MACD选股</button><button type="button" class="macd-screener-tab" data-macd-mode="bear">MACD空头</button></div></div><div class="macd-alert-concept-distribution" id="macdAlertConceptDistribution" aria-live="polite"></div><div class="section-head-actions"><button class="macd-limit-up-toggle" id="macdLimitUpToggle" type="button" aria-label="显示涨停股" title="显示涨停股">◉</button><button class="macd-limit-up-toggle" id="macdAlertReplayToggle" type="button" aria-pressed="false" aria-label="显示盘中告警复盘股" title="显示盘中告警复盘股"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5 6 9.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button><span class="tag" id="whitelistUpdated">正在读取…</span></div></div>
       <div class="whitelist-toolbar"><select id="whitelistMarket" multiple size="1" aria-label="多选筛选白名单市场"><option value="all" selected>全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select><input id="whitelistSearch" type="search" placeholder="搜索个股名称或代码" aria-label="搜索白名单个股"><select id="whitelistIndustryFilter" class="industry-filter" aria-label="按行业筛选白名单"><option value="all">全部行业</option></select><select id="whitelistTrendFilter" aria-label="筛选趋势"><option value="all">全部趋势</option><option value="多头排列">多头排列</option><option value="空头排列">空头排列</option><option value="均线上行">均线上行</option><option value="均线粘合">均线粘合</option><option value="短线转强">短线转强</option><option value="短线转弱">短线转弱</option></select><select id="volumePriceFilter" aria-label="筛选量价关系" hidden><option value="all">全部量价</option><option value="量增价升">量增价升</option><option value="量增价平">量增价平</option><option value="量增价跌">量增价跌</option><option value="量平价升">量平价升</option><option value="量平价跌">量平价跌</option><option value="量缩价升">量缩价升</option><option value="量缩价平">量缩价平</option><option value="量缩价跌">量缩价跌</option></select><select id="macdConditionFilter" aria-label="筛选 MACD 选股条件" hidden><option value="all">全部 MACD 条件</option></select><select id="semiconductorCategoryFilter" aria-label="筛选科创半导体设备或材料" hidden><option value="all">全部分类</option><option value="设备">设备</option><option value="材料">材料</option></select><button class="market-alert-history-open" id="marketAlertHistoryOpen" type="button">告警池</button><div class="blacklist-reason-help" tabindex="0"><strong>什么是趋势？</strong><span>鼠标悬浮查看各趋势的判定规则。</span><div class="blacklist-reason-tooltip"><h4>白名单趋势判定规则</h4><p>趋势分类基于最近 30 个交易日收盘价计算；历史数据不足时不纳入趋势分类。</p></div></div></div>
       <div class="whitelist-table-wrap" id="whitelistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近10日MACD</th><th>均线分布</th><th>量价</th><th>趋势</th><th>概念</th><th><button class="whitelist-sort" data-whitelist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort macd-alert-change-sort" data-whitelist-sort="macdAlertChangePct" data-label="告警涨幅">告警涨幅</button></th><th><button class="whitelist-sort" data-whitelist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><span class="non-macd-header">净流入</span><span class="macd-only-header">信号</span></th><th><button class="whitelist-sort" data-whitelist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>关联概念</th></tr></thead><tbody id="whitelistBody"><tr><td colspan="14">正在加载白名单…</td></tr></tbody></table></div>
     </section>
@@ -3805,6 +3819,8 @@
       minutePredictionSortDir: "desc",
       priceAlertHistory: [],
       macdAlertHistory: [],
+      macdBearAlertHistory: [],
+      macdBearAlertFetchAt: 0,
       macdAlertFetchAt: 0,
       macdAlertKeys: new Set(),
       macdAlertBaselineKeys: new Set(),
@@ -5224,6 +5240,7 @@
         document.querySelector("#whitelistView .market-distribution-panel")?.remove();
         renderMacdConceptDistribution("whitelistView", state.whitelistStocks, "M");
         renderMacdConceptDistribution("whitelistView", state.whitelistStocks, "E");
+        renderMacdAlertConceptDistribution();
       } else {
         document.querySelector("#whitelistView .macd-m-concept-panel:not(.macd-e-concept-panel)")?.remove();
         document.querySelector("#whitelistView .macd-e-concept-panel")?.remove();
@@ -5741,6 +5758,8 @@
         state.macdScreenerTradeDate = "";
       }
       el.whitelistTitle.textContent = "盘中选股 · MACD";
+      renderMacdAlertConceptDistribution();
+      if (state.macdMode === "bear") loadMacdBearAlertConcepts(true);
       document.getElementById("macdScreenerTabs")?.removeAttribute("hidden");
       document.querySelectorAll("[data-macd-mode]").forEach(button => button.classList.toggle("active", button.dataset.macdMode === state.macdMode));
         el.whitelistNote.textContent = "交易中每分钟更新，收盘后最终固化。";
@@ -8711,7 +8730,37 @@
       }
     }
 
+    function renderMacdAlertConceptDistribution() {
+      const panel = document.getElementById("macdAlertConceptDistribution");
+      if (!panel) return;
+      const isMacd = state.pageView === "macd-screener";
+      const uniqueStocks = new Map();
+      const addAlertConcept = item => {
+        const code = String(item.code || "");
+        if (!code || uniqueStocks.has(code)) return;
+        const concept = displayConceptName(item.industry || item.actualIndustry || item.concepts?.[0] || item.relatedConcepts?.[0] || "").trim();
+        if (concept) uniqueStocks.set(code, concept);
+      };
+      const alertHistory = state.macdMode === "bear" ? state.macdBearAlertHistory : state.macdAlertHistory;
+      (alertHistory || []).forEach(addAlertConcept);
+      (state.whitelistStocks || []).forEach(stock => {
+        if (hasNumber(stock.macdAlertChangePct)) addAlertConcept(stock);
+      });
+      const counts = new Map();
+      uniqueStocks.forEach(concept => counts.set(concept, (counts.get(concept) || 0) + 1));
+      const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN")).slice(0, 10);
+      if (!isMacd || !ranked.length) {
+        panel.classList.remove("visible");
+        panel.innerHTML = "";
+        return;
+      }
+      panel.classList.add("visible");
+      const maxCount = Math.max(ranked[0]?.[1] || 0, 1);
+      panel.innerHTML = `<div class="macd-alert-concept-head"><strong>告警概念分布</strong><span>前 ${ranked.length} · ${uniqueStocks.size} 只</span></div><div class="macd-alert-concept-grid">${ranked.map(([concept, count], index) => `<div class="macd-alert-concept-item${index === 0 ? " top" : index === 1 ? " second" : ""}" title="${escapeHtml(concept)}：${count} 只"><b>${escapeHtml(concept)}</b><strong>${count}</strong><span class="macd-alert-concept-track"><i style="width:${(count / maxCount * 100).toFixed(1)}%"></i></span></div>`).join("")}</div>`;
+    }
+
     function renderPriceAlertPanels() {
+      renderMacdAlertConceptDistribution();
       const preview = document.getElementById('previewPriceAlertsToggle')?.checked;
       const boards = [[el.mainScoreAlerts,'主板个股告警','main'],[el.reboundScoreAlerts,'创业板个股告警','growth'],[el.scoreAlerts,'科创 / 北交所个股告警','starBse']];
       if (!preview && !shouldShowIntradayAlertPanels()) {
@@ -8754,6 +8803,22 @@
         node.querySelector('[data-close-price-alert]')?.addEventListener('click',()=>{state.alertPanelDismissed[board]=true;renderPriceAlertPanels();});
       });
       syncFixedAlertLayout();
+    }
+
+    async function loadMacdBearAlertConcepts(force = false) {
+      if (!force && Date.now() - state.macdBearAlertFetchAt < 15000) return;
+      state.macdBearAlertFetchAt = Date.now();
+      try {
+        const response = await fetch('/api/macd-bear/history?page=1&pageSize=1000&includeDrawdowns=1', {cache:'no-store'});
+        const payload = await response.json();
+        if (!response.ok) return;
+        state.macdBearAlertHistory = Array.isArray(payload.rows) ? payload.rows : [];
+        if (state.macdMode === "bear") renderMacdAlertConceptDistribution();
+      } catch (error) {
+        console.warn("MACD空头告警概念分布读取失败", error);
+      } finally {
+        if (state.pageView === "macd-screener" && state.macdMode === "bear") window.setTimeout(() => loadMacdBearAlertConcepts(), 15000);
+      }
     }
 
     async function loadMacdAlerts(force = false) {
