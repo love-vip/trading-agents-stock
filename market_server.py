@@ -5684,7 +5684,7 @@ def top_sector_for_stock(code: Any, fallback: Any = "") -> str:
 
 
 def _resolve_top_concept_for_stock(code: Any, fallback: Any = "") -> str:
-    """Use the stock's own concept list and select the concept with the best gain."""
+    """Use concept board codes to select the highest-gaining matched concept."""
     normalized_code = str(code or "").strip()
     fallback_text = str(fallback or "").strip()
     try:
@@ -5695,29 +5695,23 @@ def _resolve_top_concept_for_stock(code: Any, fallback: Any = "") -> str:
             ).fetchone()
         sectors = json.loads(row[0] or "[]") if row else []
         concepts = [item for item in sectors if isinstance(item, dict) and item.get("type") == "concept" and item.get("name")]
+        ranking = fetch_concept_rank_data().get("concepts") or []
+        changes_by_code = {
+            str(board.get("code") or "").upper(): number(board.get("changePct"))
+            for board in ranking
+            if re.fullmatch(r"BK\d+", str(board.get("code") or "").upper())
+        }
+        names_by_code = {
+            str(board.get("code") or "").upper(): str(board.get("name") or "").strip()
+            for board in ranking
+            if str(board.get("name") or "").strip()
+        }
         ranked: List[Tuple[float, str]] = []
         for item in concepts:
             board_code = str(item.get("code") or "").upper()
-            if not re.fullmatch(r"BK\d+", board_code):
-                continue
-            cached = _concept_code_quote_cache.get(board_code)
-            if not cached or time.monotonic() - float(cached.get("created_at") or 0) >= 60:
-                quote = None
-                for source_url in (EASTMONEY_CONCEPT_QUOTE_URL, EASTMONEY_CONCEPT_QUOTE_FALLBACK_URL):
-                    try:
-                        payload = request_json(source_url, {"secid": f"90.{board_code}", "fields": "f43,f57,f58,f60,f124", "invt": 2})
-                        data = payload.get("data") or {}
-                        current, previous = number(data.get("f43")), number(data.get("f60"))
-                        if current is not None and previous not in (None, 0):
-                            quote = {"name": str(data.get("f58") or item.get("name")), "change": (current - previous) / previous * 100}
-                            break
-                    except (MarketDataError, OSError, TypeError, ValueError):
-                        continue
-                _concept_code_quote_cache[board_code] = {"created_at": time.monotonic(), "quote": quote}
-                cached = _concept_code_quote_cache[board_code]
-            quote = cached.get("quote")
-            if quote and quote.get("change") is not None:
-                ranked.append((float(quote["change"]), str(quote.get("name") or item["name"])))
+            change = changes_by_code.get(board_code)
+            if change is not None:
+                ranked.append((float(change), names_by_code.get(board_code) or str(item["name"])))
         if ranked:
             return max(ranked, key=lambda item: item[0])[1]
         if concepts:
@@ -5744,8 +5738,8 @@ def top_concept_for_stock(code: Any, fallback: Any = "", trade_date: Any = "") -
                 "SELECT concept FROM stock_entry_concept_cache WHERE trade_date=? AND code=?",
                 (normalized_date, normalized_code),
             ).fetchone()
-        if row and str(row[0] or "").strip():
-            return str(row[0]).strip()
+        # 不直接沿用旧的日缓存：概念板块涨幅会在交易中变化，必须用当前
+        # 排行快照重新比较，确保展示的是匹配概念中涨幅最高的板块。
     except (OSError, sqlite3.Error):
         pass
     selected = _resolve_top_concept_for_stock(code, fallback)
@@ -5753,7 +5747,7 @@ def top_concept_for_stock(code: Any, fallback: Any = "", trade_date: Any = "") -
         try:
             with open_backtest_db() as connection:
                 connection.execute(
-                    "INSERT OR IGNORE INTO stock_entry_concept_cache(trade_date,code,concept,selected_at) VALUES (?,?,?,?)",
+                    "INSERT OR REPLACE INTO stock_entry_concept_cache(trade_date,code,concept,selected_at) VALUES (?,?,?,?)",
                     (normalized_date, normalized_code, selected, datetime.now(CHINA_TZ).isoformat()),
                 )
                 connection.commit()

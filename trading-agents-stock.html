@@ -871,7 +871,7 @@
       text-align: center;
     }
 
-    .limit-up-view { padding: 16px; }
+    .limit-up-view { padding: 2px 15px; }
     #limitUpView {
       border-color: rgba(255, 194, 44, .48);
       background: radial-gradient(circle at 50% -10%, rgba(255, 184, 28, .10), transparent 36%), #080b12;
@@ -2844,8 +2844,11 @@
     /* MACD 选股筛选固定为两行：量价下拉占两格，MACD 条件收窄 10%。 */
     #whitelistView.macd-screener-sticky .whitelist-toolbar { display:grid; grid-template-columns:145px minmax(185px,1fr) minmax(165px,.8fr) minmax(260px,1.35fr) auto; grid-template-areas:"market search trend . ." "macd macd volume . ." "help help alert . ."; align-items:center; }
     /* 涨跌分布为右侧浮动卡片，MACD 筛选区只占左侧剩余列，禁止越界覆盖。 */
-    #whitelistView.macd-screener-sticky .whitelist-toolbar { float:left; clear:left; width:calc(46% - 20px); min-width:0; box-sizing:border-box; }
+    #whitelistView.macd-screener-sticky .whitelist-toolbar { float:left; clear:left; width:calc(40% - 50px); min-width:0; box-sizing:border-box; }
     #whitelistView.macd-screener-sticky .whitelist-toolbar > * { min-width:0; width:100%; }
+    .macd-screener-tabs { display:flex; gap:4px; margin-top:10px; }
+    .macd-screener-tab { border:1px solid var(--line); border-radius:7px; padding:5px 16px; color:var(--muted); background:var(--panel); cursor:pointer; font:inherit; }
+    .macd-screener-tab.active { border-color:#2f80ed; color:#fff; background:#2f80ed; }
     #whitelistView.macd-screener-sticky #whitelistMarket { grid-area:market; }
     #whitelistView.macd-screener-sticky #whitelistSearch { grid-area:search; }
     #whitelistView.macd-screener-sticky #whitelistIndustryFilter { display:none; }
@@ -2864,7 +2867,7 @@
     .market-multi-menu label { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:5px; color:var(--text); cursor:pointer; white-space:nowrap; }
     .market-multi-menu label:hover { background:color-mix(in srgb,var(--accent) 10%,transparent); }
     .market-multi-menu input { width:16px; height:16px; accent-color:var(--accent); }
-    .market-distribution-panel { float:right; width:min(54%,720px); min-width:390px; margin:0 0 14px 20px; padding:13px 15px 11px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); box-sizing:border-box; }
+    .market-distribution-panel { float:right; width:400px; min-width:400px; margin:0 0 14px 20px; padding:13px 15px 11px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); box-sizing:border-box; }
     .market-distribution-panel .market-distribution-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:9px; }
     .market-distribution-panel .market-distribution-head strong { color:var(--text); font-size:15px; }
     .market-distribution-panel .market-distribution-head span { color:var(--muted); font-size:10px; }
@@ -2881,19 +2884,31 @@
     .market-distribution-panel .market-distribution-summary b { margin-left:3px; color:var(--text); font-size:13px; font-variant-numeric:tabular-nums; }
     .market-distribution-panel .market-distribution-summary .up b { color:var(--red); }
     .market-distribution-panel .market-distribution-summary .down b { color:var(--green); }
+    .macd-m-concept-panel { float:right; width:400px; min-width:400px; margin:0 0 14px 20px; padding:13px 15px 11px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); box-sizing:border-box; }
+    .macd-m-concept-panel-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:9px; }
+    .macd-m-concept-panel-head strong { color:var(--text); font-size:15px; }
+    .macd-m-concept-panel-head span { color:var(--muted); font-size:10px; white-space:nowrap; }
+    .macd-m-concept-list { display:grid; gap:6px; }
+    .macd-m-concept-row { display:grid; grid-template-columns:minmax(0,1fr) 1fr 24px; align-items:center; gap:8px; min-height:17px; }
+    .macd-m-concept-name { overflow:hidden; color:var(--text); font-size:12px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .whitelist-concept-tag.macd-m-top-concept { border-color:#8b5cf6; color:#7c3aed; background:color-mix(in srgb,#8b5cf6 10%,transparent); }
+    .macd-m-concept-track { height:7px; overflow:hidden; border-radius:999px; background:color-mix(in srgb,var(--purple) 12%,transparent); }
+    .macd-m-concept-track i { display:block; height:100%; min-width:3px; border-radius:inherit; background:linear-gradient(90deg,#b99afa,#7652c4); }
+    .macd-m-concept-count { color:#7652c4; font-size:12px; font-weight:900; text-align:right; font-variant-numeric:tabular-nums; }
+    .macd-m-concept-empty { color:var(--muted); font-size:12px; line-height:66px; text-align:center; }
     .macd-limit-up-toggle { display:none; align-items:center; justify-content:center; width:30px; height:30px; padding:0; border:1px solid var(--line); border-radius:8px; color:var(--muted); background:var(--panel-2); cursor:pointer; font-size:17px; line-height:1; }
     #whitelistView.macd-screener-sticky .macd-limit-up-toggle { display:inline-flex; }
     .macd-limit-up-toggle.active { border-color:var(--red); color:var(--red); background:color-mix(in srgb,var(--red) 10%,transparent); }
     .macd-limit-up-toggle svg { width:19px; height:19px; }
     .macd-alert-replay-badge { display:inline-block; margin-left:3px; padding:2px 5px; border:1px solid color-mix(in srgb,var(--amber) 72%,var(--line)); border-radius:5px; color:var(--amber); background:color-mix(in srgb,var(--amber) 10%,transparent); font-size:9px; font-style:normal; font-weight:700; line-height:1.35; white-space:nowrap; vertical-align:.12em; box-sizing:border-box; }
-    .market-alert-badge-b { display:inline-flex; width:16px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #f3a6b7; border-radius:50%; color:#d94f70; background:#ffe7ee; font-size:10px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
+    .market-alert-badge-b { display:inline-flex; width:16px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #7dd3fc; border-radius:50%; color:#0284c7; background:#e0f2fe; font-size:10px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
     .market-alert-badge-bplus { display:inline-flex; width:22px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #f3a6b7; border-radius:8px; color:#d94f70; background:#ffe7ee; font-size:9px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
     .market-alert-badge-m { display:inline-flex; width:16px; height:16px; margin-left:4px; align-items:center; justify-content:center; border:1px solid #a98be8; border-radius:50%; color:#7652c4; background:#f0eaff; font-size:10px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; box-sizing:border-box; }
     .whitelist-name .market-alert-badge-m { margin-left:-4px; }
     .whitelist-name .market-alert-badge-b { margin-left:-4px; }
     .whitelist-name .macd-alert-replay-badge { margin-left:-4px; }
     .blacklist-view .whitelist-table-wrap, #whitelistView .whitelist-table-wrap { clear:both; }
-    @media(max-width:900px) { .market-distribution-panel { float:none; width:100%; min-width:0; margin:0 0 12px; } #whitelistView.macd-screener-sticky .whitelist-toolbar { float:none; clear:none; width:100%; grid-template-columns:130px minmax(160px,1fr) minmax(140px,.8fr) minmax(190px,1.2fr) auto; } .market-distribution-panel .market-distribution-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media(max-width:900px) { .market-distribution-panel,.macd-m-concept-panel { float:none; width:100%; min-width:0; margin:0 0 12px; } #whitelistView.macd-screener-sticky .whitelist-toolbar { float:none; clear:none; width:100%; grid-template-columns:130px minmax(160px,1fr) minmax(140px,.8fr) minmax(190px,1.2fr) auto; } .market-distribution-panel .market-distribution-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     .blacklist-reason-help { flex:1; min-width:360px; padding:8px 14px; border:1px solid rgba(245,158,11,.25); border-radius:8px; background:rgba(245,158,11,.07); color:var(--muted); font-size:12px; line-height:1.45; }
     .blacklist-reason-help { position:relative; cursor:help; }
     .blacklist-reason-help strong { color:var(--text); margin-right:8px; font-size:13px; }
@@ -3388,7 +3403,7 @@
       <div class="whitelist-table-wrap" id="blacklistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近10日MACD</th><th>行业</th><th><button class="whitelist-sort" data-blacklist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort" data-blacklist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th>趋势</th><th><button class="whitelist-sort" data-blacklist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>换手率</th><th>关联概念</th><th>黑名单原因</th></tr></thead><tbody id="blacklistBody"><tr><td colspan="12">正在加载黑名单…</td></tr></tbody></table></div>
     </section>
     <section class="panel limit-up-view" id="whitelistView" aria-label="白名单" hidden>
-      <div class="section-head"><div><h2 id="whitelistTitle">盘中选股 · 白名单</h2><span class="sector-strength-note" id="whitelistNote">已扣除当前生效黑名单后的可参与扫描个股</span></div><div class="section-head-actions"><button class="macd-limit-up-toggle" id="macdLimitUpToggle" type="button" aria-label="显示涨停股" title="显示涨停股">◉</button><button class="macd-limit-up-toggle" id="macdAlertReplayToggle" type="button" aria-pressed="false" aria-label="显示盘中告警复盘股" title="显示盘中告警复盘股"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button><span class="tag" id="whitelistUpdated">正在读取…</span></div></div>
+      <div class="section-head"><div><h2 id="whitelistTitle">盘中选股 · 白名单</h2><span class="sector-strength-note" id="whitelistNote">已扣除当前生效黑名单后的可参与扫描个股</span><div class="macd-screener-tabs" id="macdScreenerTabs" hidden><button type="button" class="macd-screener-tab active" data-macd-mode="normal">MACD选股</button><button type="button" class="macd-screener-tab" data-macd-mode="bear">MACD空头</button></div></div><div class="section-head-actions"><button class="macd-limit-up-toggle" id="macdLimitUpToggle" type="button" aria-label="显示涨停股" title="显示涨停股">◉</button><button class="macd-limit-up-toggle" id="macdAlertReplayToggle" type="button" aria-pressed="false" aria-label="显示盘中告警复盘股" title="显示盘中告警复盘股"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button><span class="tag" id="whitelistUpdated">正在读取…</span></div></div>
       <div class="whitelist-toolbar"><select id="whitelistMarket" multiple size="1" aria-label="多选筛选白名单市场"><option value="all" selected>全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select><input id="whitelistSearch" type="search" placeholder="搜索个股名称或代码" aria-label="搜索白名单个股"><select id="whitelistIndustryFilter" class="industry-filter" aria-label="按行业筛选白名单"><option value="all">全部行业</option></select><select id="whitelistTrendFilter" aria-label="筛选趋势"><option value="all">全部趋势</option><option value="多头排列">多头排列</option><option value="空头排列">空头排列</option><option value="均线上行">均线上行</option><option value="均线粘合">均线粘合</option><option value="短线转强">短线转强</option><option value="短线转弱">短线转弱</option></select><select id="volumePriceFilter" aria-label="筛选量价关系" hidden><option value="all">全部量价</option><option value="量增价升">量增价升</option><option value="量增价平">量增价平</option><option value="量增价跌">量增价跌</option><option value="量平价升">量平价升</option><option value="量平价跌">量平价跌</option><option value="量缩价升">量缩价升</option><option value="量缩价平">量缩价平</option><option value="量缩价跌">量缩价跌</option></select><select id="macdConditionFilter" aria-label="筛选 MACD 选股条件" hidden><option value="all">全部 MACD 条件</option></select><select id="semiconductorCategoryFilter" aria-label="筛选科创半导体设备或材料" hidden><option value="all">全部分类</option><option value="设备">设备</option><option value="材料">材料</option></select><button class="market-alert-history-open" id="marketAlertHistoryOpen" type="button">告警池</button><div class="blacklist-reason-help" tabindex="0"><strong>什么是趋势？</strong><span>鼠标悬浮查看各趋势的判定规则。</span><div class="blacklist-reason-tooltip"><h4>白名单趋势判定规则</h4><p>趋势分类基于最近 30 个交易日收盘价计算；历史数据不足时不纳入趋势分类。</p></div></div></div>
       <div class="whitelist-table-wrap" id="whitelistTableWrap"><table class="whitelist-table"><thead><tr><th>个股名称</th><th>今日分时</th><th>近30日K线</th><th>近10日MACD</th><th>均线分布</th><th>量价</th><th>趋势</th><th>概念</th><th><button class="whitelist-sort" data-whitelist-sort="price" data-label="价格">价格</button></th><th><button class="whitelist-sort macd-alert-change-sort" data-whitelist-sort="macdAlertChangePct" data-label="告警涨幅">告警涨幅</button></th><th><button class="whitelist-sort" data-whitelist-sort="changePct" data-label="涨跌幅">涨跌幅</button></th><th><span class="non-macd-header">净流入</span><span class="macd-only-header">信号</span></th><th><button class="whitelist-sort" data-whitelist-sort="floatMarketCap" data-label="流通值">总市值/流通值</button></th><th>关联概念</th></tr></thead><tbody id="whitelistBody"><tr><td colspan="14">正在加载白名单…</td></tr></tbody></table></div>
     </section>
@@ -3468,7 +3483,7 @@
       <div class="market-alert-history-controls">
         <input id="marketAlertHistorySearch" type="search" placeholder="搜索名称、代码或首字母" aria-label="搜索告警股票，支持首字母">
         <button class="market-alert-history-icon" id="marketAlertHistoryDrawdownToggle" type="button" aria-pressed="false" aria-label="显示最新涨跌幅低于 -1% 的记录" title="显示最新涨跌幅低于 -1% 的记录"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button>
-        <button class="market-alert-history-icon market-alert-history-fold" id="marketAlertHistoryDedupe" type="button" aria-pressed="false" aria-label="折叠同一股票的重复告警" title="折叠同一股票的重复告警"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M9 9l3 3 3-3M9 15l3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="market-alert-history-icon market-alert-history-fold" id="marketAlertHistoryDedupe" type="button" aria-pressed="true" aria-label="展开同一股票的重复告警" title="展开同一股票的重复告警"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M9 9l3 3 3-3M9 15l3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <select id="marketAlertHistoryMarket" aria-label="筛选告警市场"><option value="all">全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select>
         <select id="marketAlertHistoryDirection" aria-label="筛选告警方向"><option value="">全部方向</option></select>
         <select id="marketAlertHistorySignal" aria-label="筛选 MACD 指标"><option value="快线连红 ≥2 日 + 慢线翻红" selected>快线连红 ≥2 日 + 慢线翻红</option></select>
@@ -3794,7 +3809,7 @@
       conceptAlertFetchAt: 0,
       conceptAlertLoading: false,
       marketAlertHistory: { page: 0, total: 0, loading: false, hasMore: true },
-      marketAlertHistoryDedupe: false,
+      marketAlertHistoryDedupe: true,
       marketAlertHistoryShowDrawdowns: false,
       marketAlertHistorySortKey: "",
       marketAlertHistorySortDir: "desc",
@@ -3811,6 +3826,7 @@
       marketIndices: {},
       marketScope: "all",
       pageView: "macd-screener",
+      macdMode: "normal",
       blacklistStocks: [],
       blacklistShown: 500,
       blacklistPage: 0,
@@ -3829,7 +3845,7 @@
       whitelistSearch: "",
       whitelistTrendFilter: "all",
       volumePriceFilter: "all",
-      macdConditionFilter: "all",
+      macdConditionFilter: "快线连红≥2日+慢线翻红",
       semiconductorCategoryFilter: "all",
       whitelistRiskFilter: "all",
       whitelistFocusLabelOverrides: new Map(),
@@ -4297,11 +4313,11 @@
         return;
       }
       if (state.pageView === "macd-screener") {
-        el.pageTitle.textContent = "盘中选股 · MACD选股";
+        el.pageTitle.textContent = "盘中选股 · MACD";
         el.pageDescription.textContent = "";
         el.pageDescription.hidden = true;
-        el.sectorMode.textContent = "盘中选股：MACD选股";
-        document.title = "盘中选股 · MACD选股";
+        el.sectorMode.textContent = `盘中选股：${state.macdMode === "bear" ? "MACD空头" : "MACD选股"}`;
+        document.title = `盘中选股 · ${state.macdMode === "bear" ? "MACD空头" : "MACD选股"}`;
         return;
       }
       if (state.pageView === "etf-basket") {
@@ -4568,6 +4584,50 @@
       panel.innerHTML = `<div class="market-distribution-head"><strong>涨跌分布</strong><span>${escapeHtml(title)} · ${new Date().toLocaleTimeString("zh-CN", {hour12:false})}</span></div><div class="market-distribution-bars">${bars}</div><div class="market-distribution-summary"><span class="up">上涨<b>${up.toLocaleString("zh-CN")}</b></span><span class="down">下跌<b>${down.toLocaleString("zh-CN")}</b></span><span class="up">涨停<b>${limitUp.toLocaleString("zh-CN")}</b></span><span class="down">跌停<b>${limitDown.toLocaleString("zh-CN")}</b></span></div>`;
     }
 
+    function renderMacdMConceptDistribution(viewId, stocks) {
+      const view = document.getElementById(viewId);
+      if (!view) return;
+      let panel = view.querySelector('.macd-m-concept-panel');
+      if (!panel) {
+        panel = document.createElement('section');
+        panel.className = 'macd-m-concept-panel';
+        const distribution = view.querySelector('.market-distribution-panel');
+        if (distribution) distribution.insertAdjacentElement('afterend', panel);
+      }
+      const mRule = '快线连红≥2日+慢线翻红';
+      const groups = new Map();
+      (stocks || []).forEach(stock => {
+        const rules = Array.isArray(stock.macdSelectionRules) ? stock.macdSelectionRules : [];
+        if (!rules.includes(mRule)) return;
+        const concept = displayConceptName(stock.industry || stock.actualIndustry || '--') || '--';
+        if (!groups.has(concept)) groups.set(concept, []);
+        groups.get(concept).push(stock);
+      });
+      const ranked = [...groups.entries()]
+        .map(([concept, members]) => ({concept, members}))
+        .sort((left, right) => right.members.length - left.members.length || left.concept.localeCompare(right.concept, 'zh-CN'))
+        .slice(0, 4);
+      const total = [...groups.values()].reduce((sum, members) => sum + members.length, 0);
+      const max = Math.max(...ranked.map(item => item.members.length), 1);
+      const rows = ranked.map((item, index) => {
+        const names = item.members.map(stock => `${stock.name || stock.code}(${stock.code})`).join('、');
+        const width = (item.members.length / max * 100).toFixed(1);
+        return `<div class="macd-m-concept-row${index === 0 ? ' top-concept' : ''}" title="${escapeHtml(names)}"><span class="macd-m-concept-name">${escapeHtml(item.concept)}</span><span class="macd-m-concept-track"><i style="width:${width}%"></i></span><b class="macd-m-concept-count">${item.members.length}</b></div>`;
+      }).join('');
+      panel.innerHTML = `<div class="macd-m-concept-panel-head"><strong>M 信号概念分布</strong><span>前 4 · ${total} 只</span></div>${rows ? `<div class="macd-m-concept-list">${rows}</div>` : '<div class="macd-m-concept-empty">当前暂无 M 信号个股</div>'}`;
+      const topConcept = ranked[0]?.concept || "";
+      view.querySelectorAll(".whitelist-concept-tag.macd-m-top-concept").forEach(tag => tag.classList.remove("macd-m-top-concept"));
+      if (topConcept) {
+        const mCodes = new Set((stocks || []).filter(stock => Array.isArray(stock.macdSelectionRules) && stock.macdSelectionRules.includes(mRule)).map(stock => String(stock.code || "")));
+        view.querySelectorAll(".whitelist-table tbody tr").forEach(row => {
+          const code = row.cells[0]?.querySelector(".whitelist-code")?.textContent?.replace(/[^0-9]/g, "") || "";
+          if (!mCodes.has(code)) return;
+          const concept = row.querySelector(".whitelist-concept-tag");
+          if (concept && displayConceptName(concept.textContent.trim()) === topConcept) concept.classList.add("macd-m-top-concept");
+        });
+      }
+    }
+
     function blacklistReasonMatches(reason, reasonFilter) {
       return reasonFilter === "all"
         || (reasonFilter === "small_float_cap" && reason.includes("流通市值小于20亿"))
@@ -4722,6 +4782,7 @@
       ["双线连红4日+当日涨3%", "双线连红 4 日 + 当日涨幅 ≥3%"],
       ["双线连红≥5日+当日涨3%", "双线连红 ≥5 日 + 当日涨幅 ≥3%"],
     ];
+    const DEFAULT_MACD_CONDITION = "快线连红≥2日+慢线翻红";
     const MACD_ALERT_RULE_KEYS = new Map(MACD_SELECTION_RULES.map(([key, label]) => [label, key]));
 
     function macdDisplayStocks() {
@@ -5138,6 +5199,13 @@
       formatMacdConceptCells();
       bindWhitelistConceptRemoval();
       renderMarketDistribution("whitelistView", filtered, `白名单 · ${state.whitelistTrendFilter === "all" ? "全部趋势" : state.whitelistTrendFilter}`);
+      if (isMacdScreener) {
+        // Use the complete current pool rather than table filters: this is a
+        // real-time breadth view of the M signal, not a count of visible rows.
+        renderMacdMConceptDistribution("whitelistView", state.whitelistStocks);
+      } else {
+        document.querySelector("#whitelistView .macd-m-concept-panel")?.remove();
+      }
       syncMacdScreenerStickyLayout();
       syncFixedAlertLayout();
       loadWhitelistMiniCharts();
@@ -5152,11 +5220,11 @@
         const matched = Array.isArray(stock.macdSelectionRules) ? stock.macdSelectionRules : [];
         matched.forEach(rule => { if (Object.prototype.hasOwnProperty.call(counts, rule)) counts[rule] += 1; });
       });
-      const current = state.macdConditionFilter || "all";
+      const current = state.macdConditionFilter || DEFAULT_MACD_CONDITION;
       select.innerHTML = [`<option value="all">全部 MACD 条件（${macdDisplayedStockCount().toLocaleString("zh-CN")}）</option>`,
         ...rules.map(([rule, label]) => `<option value="${escapeHtml(rule)}">${escapeHtml(label)}（${counts[rule]}）</option>`),
       ].join("");
-      state.macdConditionFilter = rules.some(([rule]) => rule === current) ? current : "all";
+      state.macdConditionFilter = rules.some(([rule]) => rule === current) ? current : DEFAULT_MACD_CONDITION;
       select.value = state.macdConditionFilter;
     }
 
@@ -5641,7 +5709,7 @@
       state.pageView = "macd-screener"; state.etfBasketKey = null; state.techBasketKey = null;
       if (switchingView) {
         state.whitelistSearch = ""; state.whitelistTrendFilter = "all"; state.whitelistRiskFilter = "all"; state.volumePriceFilter = "all";
-        state.whitelistIndustryFilter = "all"; state.whitelistMarket = ["all"]; state.macdConditionFilter = "all";
+        state.whitelistIndustryFilter = "all"; state.whitelistMarket = ["all"]; state.macdConditionFilter = DEFAULT_MACD_CONDITION;
         // MACD 页面只接受自身接口结果，切换时不复用白名单/ETF 的旧表格行。
         state.whitelistStocks = [];
         state.whitelistShown = 0;
@@ -5650,7 +5718,9 @@
         state.macdAlertReplayTradeDate = "";
         state.macdScreenerTradeDate = "";
       }
-      el.whitelistTitle.textContent = "盘中选股 · MACD选股";
+      el.whitelistTitle.textContent = "盘中选股 · MACD";
+      document.getElementById("macdScreenerTabs")?.removeAttribute("hidden");
+      document.querySelectorAll("[data-macd-mode]").forEach(button => button.classList.toggle("active", button.dataset.macdMode === state.macdMode));
         el.whitelistNote.textContent = "交易中每分钟更新，收盘后最终固化。";
       el.whitelistSearch.placeholder = "搜索个股名称、代码或首字母";
       el.whitelistUpdated.textContent = "正在读取 MACD 动态选股池…";
@@ -5660,7 +5730,8 @@
         // 行情字段随后由菜单刷新流程按批次补齐。
         const params = new URLSearchParams();
         if (forceRefresh) params.set("refresh", "1");
-        const response = await fetch(`/api/macd-screener?${params}`, {cache:"no-store"});
+        const endpoint = state.macdMode === "bear" ? "/api/macd-bear/members" : "/api/macd-screener";
+        const response = await fetch(`${endpoint}${endpoint.includes("?") ? "&" : "?"}${params}`, {cache:"no-store"});
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "MACD选股加载失败");
         state.whitelistStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || stock.code || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock)}));
@@ -5675,7 +5746,7 @@
         state.whitelistStocks = state.whitelistStocks.map(stock => ({...stock, macdAlertChangePct: alertChangeByCode.has(String(stock.code || "")) ? alertChangeByCode.get(String(stock.code || "")) : null}));
         state.macdScreenerCount = state.whitelistStocks.length;
         state.whitelistShown = macdDisplayedStockCount();
-        applyListSource(payload, "MACD选股");
+        applyListSource(payload, state.macdMode === "bear" ? "MACD空头" : "MACD选股");
         refreshWhitelistIndustryFilterOptions();
         el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${payload.tradeDate || "等待交易日扫描"}`;
         el.whitelistUpdated.title = `${payload.source || ""}；最近选股扫描：${formatUpdatedAt(payload.membershipUpdatedAt || payload.updatedAt)}；报价刷新：${formatUpdatedAt(payload.quoteUpdatedAt || payload.updatedAt)}`;
@@ -5834,7 +5905,7 @@
       el.sectorNav.innerHTML = "";
       const macdCount = state.pageView === "macd-screener" ? state.whitelistStocks.length : state.macdScreenerCount;
       const macdCountMarkup = Number.isFinite(macdCount) ? `<span class="nav-count menu-quantity-badge whitelist-market-count">${macdCount.toLocaleString("zh-CN")}</span>` : "";
-      el.sectorNav.insertAdjacentHTML("beforeend", `<button class="nav-button${state.pageView === "macd-screener" ? " active" : ""}" type="button" id="macdScreenerNav"><span>MACD选股</span>${macdCountMarkup}</button>`);
+      el.sectorNav.insertAdjacentHTML("beforeend", `<button class="nav-button${state.pageView === "macd-screener" ? " active" : ""}" type="button" id="macdScreenerNav"><span>盘中选股 · MACD</span>${macdCountMarkup}</button>`);
       document.getElementById("macdScreenerNav")?.addEventListener("click", () => openMacdScreener());
       const activeEtf = state.pageView === "etf-basket";
       // ETF 与白名单、黑名单同级；三个固定科创组合才是其下一级菜单。
@@ -9960,6 +10031,16 @@
     el.whitelistTrendFilter.addEventListener("change", event => { state.whitelistTrendFilter = event.target.value; state.whitelistShown = macdDisplayedStockCount(); renderWhitelistRows(); });
     el.volumePriceFilter?.addEventListener("change", event => { state.volumePriceFilter = event.target.value; state.whitelistShown = macdDisplayedStockCount(); renderWhitelistRows(); });
     el.macdConditionFilter.addEventListener("change", event => { state.macdConditionFilter = event.target.value; state.whitelistShown = macdDisplayedStockCount(); renderWhitelistRows(); });
+    document.querySelectorAll("[data-macd-mode]").forEach(button => button.addEventListener("click", () => {
+      const mode = button.dataset.macdMode;
+      if (!mode || mode === state.macdMode) return;
+      state.macdMode = mode;
+      state.whitelistStocks = [];
+      state.whitelistShown = 0;
+      state.macdConditionFilter = DEFAULT_MACD_CONDITION;
+      updatePageMeta();
+      openMacdScreener(true);
+    }));
     el.semiconductorCategoryFilter.addEventListener("change", event => { state.semiconductorCategoryFilter = event.target.value; state.whitelistShown = macdDisplayedStockCount(); renderWhitelistRows(); });
     el.whitelistIndustryFilter.addEventListener("change", event => { state.whitelistIndustryFilter = event.target.value; state.whitelistShown = macdDisplayedStockCount(); renderWhitelistRows(); });
     el.whitelistMarket.addEventListener("change", event => { state.whitelistMarket = normalizeMarketSelection(event.target, state.whitelistMarket); state.whitelistShown = macdDisplayedStockCount(); renderWhitelistRows(); });
@@ -9993,6 +10074,5 @@
     // 默认主页直接进入 MACD 动态选股池。
     openMacdScreener();
   </script>
-<script src="/macd-bear-nav.js"></script>
 </body>
 </html>

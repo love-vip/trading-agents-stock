@@ -10,7 +10,14 @@ from datetime import datetime
 from types import SimpleNamespace
 
 
-RULES = ('双线同步翻红', '慢线连红≥3日+快线翻红', '快线连红≥2日+慢线翻红')
+# Keep the same complete signal vocabulary as the normal MACD screener.  This
+# pool differs only by requiring bearish MA alignment, never by weakening a
+# signal's own hidden momentum gate.
+RULES = (
+    '双线同步翻红', '慢线连红≥3日+快线翻红', '快线连红≥2日+慢线翻红',
+    '双线连红2日+涨5%', '双线连红3日+涨5%', '双线连红4日+涨5%', '双线连红≥5日+涨5%',
+    '双线连红2日+当日涨3%', '双线连红3日+当日涨3%', '双线连红4日+当日涨3%', '双线连红≥5日+当日涨3%',
+)
 # This is the only MACD空头 signal that is allowed into the shared alert frame.
 TOP_ALERT_RULE = RULES[2]
 
@@ -41,7 +48,7 @@ class MacdBearService:
 
     def rules(self, closes, price, change):
         a = self.api
-        if price is None or price < a.MACD_MIN_ENTRY_PRICE or change is None or change < 0 or len(closes) < 30:
+        if price is None or price < a.MACD_MIN_ENTRY_PRICE or len(closes) < 30:
             return [], 0, 0
         values = closes + [price]
         if not a.macd_is_bearish_arrangement(values):
@@ -57,7 +64,27 @@ class MacdBearService:
             return count
         sd, fd = red_days(slow), red_days(fast)
         sf, both, fs = a.macd_flip_strength_passes(slow, fast, sd, fd, change)
-        return [rule for rule, hit in zip(RULES, (both, sf, fs)) if hit], sd, fd
+        rules = []
+        if sf:
+            rules.append('慢线连红≥3日+快线翻红')
+        if both:
+            rules.append('双线同步翻红')
+        if fs:
+            rules.append('快线连红≥2日+慢线翻红')
+        three_days_ago_close = closes[-3]
+        three_day_gain = ((price / three_days_ago_close) - 1) * 100 if three_days_ago_close and three_days_ago_close > 0 else None
+        dual_red_rule = a.macd_dual_red_rule(
+            sd, fd, three_day_gain, change, three_days_ago_close, closes[-1],
+            a.macd_recent_red_bars_accelerating(slow, sd),
+            a.macd_recent_red_bars_accelerating(fast, fd),
+            a.macd_recent_two_day_height_strong(slow, sd),
+            a.macd_recent_two_day_height_strong(fast, fd),
+            a.macd_recent_three_day_sum_strong(slow, sd),
+            a.macd_recent_three_day_sum_strong(fast, fd),
+        )
+        if dual_red_rule:
+            rules.append(dual_red_rule)
+        return rules, sd, fd
 
     def scan(self, day, live=False):
         if not self.lock.acquire(blocking=False):
@@ -282,6 +309,14 @@ class MacdBearService:
 
 def handle(service, handler, path, query):
     if path == '/macd-bear':
+        # 空头池已合并到主页面 Tab；旧地址统一回到合并后的入口，避免
+        # 旧版 HTML 替换逻辑把两个 Tab 都显示成“MACD空头”。
+        handler.send_response(302)
+        handler.send_header('Location', '/')
+        handler.send_header('Cache-Control', 'no-store')
+        handler.end_headers()
+        return True
+        # Legacy standalone page kept below only as unreachable compatibility code.
         html = service.api.HTML_FILE.read_text(encoding='utf-8')
         html = html.replace('/api/macd-screener','/api/macd-bear/members').replace('/api/market-alert-history','/api/macd-bear/history')
         html = html.replace('MACD选股','MACD空头')

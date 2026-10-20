@@ -46,10 +46,17 @@ class BearTests(unittest.TestCase):
         with patch.object(self.service.api, 'macd_is_bearish_arrangement', return_value=False):
             self.assertEqual(self.service.rules([10]*40, 10, 3)[0], [])
         with patch.object(self.service.api, 'macd_is_bearish_arrangement', return_value=True), \
-             patch.object(self.service.api, 'macd_flip_strength_passes', return_value=(False,True,False)):
+             patch.object(self.service.api, 'macd_flip_strength_passes', side_effect=lambda _s, _f, _sd, _fd, change: (False, change >= 0, False)):
             self.assertEqual(self.service.rules([10]*40, 10, 3)[0], [RULES[0]])
             self.assertEqual(self.service.rules([10]*40, 4.99, 3)[0], [])
             self.assertEqual(self.service.rules([10]*40, 10, -.1)[0], [])
+
+    def test_rules_include_normal_dual_red_conditions_inside_bear_pool(self):
+        with patch.object(self.service.api, 'macd_is_bearish_arrangement', return_value=True), \
+             patch.object(self.service.api, 'macd_flip_strength_passes', return_value=(False,False,False)), \
+             patch.object(self.service.api, 'macd_dual_red_rule', return_value='双线连红3日+涨5%'):
+            rules, _, _ = self.service.rules([10] * 40, 10.5, 2)
+        self.assertEqual(rules, ['双线连红3日+涨5%'])
 
     def test_history_filter_count_dedupe(self):
         self.emit()
