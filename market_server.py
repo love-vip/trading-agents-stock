@@ -10898,6 +10898,9 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        from macd_bear import handle as handle_macd_bear
+        if hasattr(self.server, 'macd_bear') and handle_macd_bear(self.server.macd_bear, self, parsed.path, query):
+            return
         if parsed.path in ("/", "/tradingagents-stock-selector.html"):
             self.send_html()
             return
@@ -11536,6 +11539,9 @@ def main() -> None:
     with open_backtest_db() as connection:
         pass
     connection.close()
+    from macd_bear import MacdBearService
+    server.macd_bear = MacdBearService(globals())
+    server.macd_bear.start(capture_stop)
     holiday_cleanup = prune_known_holiday_macd_artifacts()
     if holiday_cleanup["members"] or holiday_cleanup["alerts"]:
         print(

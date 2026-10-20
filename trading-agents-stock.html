@@ -3471,7 +3471,7 @@
         <button class="market-alert-history-icon market-alert-history-fold" id="marketAlertHistoryDedupe" type="button" aria-pressed="false" aria-label="折叠同一股票的重复告警" title="折叠同一股票的重复告警"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M9 9l3 3 3-3M9 15l3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <select id="marketAlertHistoryMarket" aria-label="筛选告警市场"><option value="all">全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select>
         <select id="marketAlertHistoryDirection" aria-label="筛选告警方向"><option value="">全部方向</option></select>
-        <select id="marketAlertHistorySignal" aria-label="筛选 MACD 指标"><option value="">全部 MACD指标</option></select>
+        <select id="marketAlertHistorySignal" aria-label="筛选 MACD 指标"><option value="快线连红 ≥2 日 + 慢线翻红" selected>快线连红 ≥2 日 + 慢线翻红</option></select>
       </div>
       <div class="alert-pool-body market-alert-history-body" id="marketAlertHistoryBody"><div class="alert-pool-empty">正在读取当日告警…</div></div>
     </section>
@@ -8688,6 +8688,7 @@
         if (unseen.length && state.macdAlertReady) {
           state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, starBse:false};
           playScoreAlertSound();
+          speakMTagAlerts(unseen);
         }
         renderPriceAlertPanels();
       } catch {
@@ -8810,6 +8811,39 @@
         oscillator.addEventListener("ended", () => context.close().catch(() => {}));
       } catch {
         // 浏览器未授权音频时，不影响行情和提醒文字。
+      }
+    }
+
+    function isMTagMacdAlert(item) {
+      const pattern = /快线连红\s*≥?\s*2\s*日\s*\+\s*慢线翻红/;
+      return pattern.test(String(item?.signal || '')) || (Array.isArray(item?.signals) && item.signals.some(line => pattern.test(String(line?.text || ''))));
+    }
+
+    function formatVoicePercent(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return '';
+      const text = Math.abs(number).toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1').replace('.', '点');
+      return `${number < 0 ? '负' : ''}${text}`;
+    }
+
+    function speakMTagAlerts(alerts) {
+      if (!('speechSynthesis' in window) || !Array.isArray(alerts)) return;
+      const messages = alerts.filter(isMTagMacdAlert).map(item => {
+        const name = String(item.name || item.code || '该个股').replace(/-U$/, '');
+        const percent = formatVoicePercent(item.changePct);
+        return percent ? `${name}，涨幅百分之${percent}，需要关注` : `${name}，需要关注`;
+      });
+      if (!messages.length) return;
+      try {
+        messages.forEach(message => {
+          const utterance = new SpeechSynthesisUtterance(message);
+          utterance.lang = 'zh-CN';
+          utterance.rate = 1;
+          utterance.pitch = 1;
+          window.speechSynthesis.speak(utterance);
+        });
+      } catch {
+        // 个别浏览器限制自动播放语音时，保留告警框与提示音，不阻断行情页。
       }
     }
 
@@ -9959,5 +9993,6 @@
     // 默认主页直接进入 MACD 动态选股池。
     openMacdScreener();
   </script>
+<script src="/macd-bear-nav.js"></script>
 </body>
 </html>
