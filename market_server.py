@@ -796,7 +796,6 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
     last_ai_rebound_scan = 0.0
     last_macd_alert_scan = 0.0
     last_macd_screener_scan = 0.0
-    last_concept_alert_scan = 0.0
     while not stop_event.wait(30):
         now = datetime.now(CHINA_TZ)
         if not is_a_share_trading_day(now.date()):
@@ -809,11 +808,6 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
             if alert_session and time.monotonic() - last_macd_alert_scan >= 60:
                 start_macd_alert_scan(force=True)
                 last_macd_alert_scan = time.monotonic()
-            # 概念异动独立于个股 MACD：按一分钟快照比较涨幅和主力净流入的
-            # 增量，未达到异动门槛时不会产生告警记录。
-            if alert_session and time.monotonic() - last_concept_alert_scan >= 60:
-                threading.Thread(target=scan_concept_alerts, name="concept-alert-scan", daemon=True).start()
-                last_concept_alert_scan = time.monotonic()
             # MACD 选股独立于页面生命周期：交易中每分钟更新一次。收盘最终
             # 结果由 15:05 后的本地收盘快照独立重算，不依赖循环恰好命中 15:00:00。
             if is_macd_screener_session(now) and time.monotonic() - last_macd_screener_scan >= 60:

@@ -300,7 +300,6 @@
       margin: 0;
       padding: 24px 24px 36px 18px;
     }
-    .shell:has(.concept-alert-region #conceptAlerts:not([hidden])) { padding-top:12px; }
 
     .topbar {
       display: grid;
@@ -327,31 +326,6 @@
     .score-alerts-main { order:1; }
     .score-alerts-rebound { order:2; }
     #scoreAlerts { order:3; }
-    .concept-alert-region { position:sticky; top:4px; z-index:8; display:grid; width:min(1120px, 100%); margin:0 auto 6px; }
-    .concept-alert-region:not(:has(#conceptAlerts:not([hidden]))) { display:none; }
-    .concept-alert-region .score-alerts { width:100%; }
-    .concept-alert-region .score-alert-head { grid-template-columns:minmax(0,1fr) auto; }
-    .concept-alert-region .score-alert-panel { padding:6px 9px; }
-    .concept-alert-region .score-alert-list { max-height:176px; margin-top:4px; gap:2px; overflow:hidden; }
-    .concept-alert-item { display:grid; grid-template-columns:52px 88px 62px 58px 96px minmax(0,1fr); gap:6px; align-items:center; color:var(--text); font-size:11px; }
-    .concept-alert-item.concept-alert-columns { position:sticky; top:0; z-index:1; padding-bottom:3px; color:var(--muted); background:var(--panel-strong); font-size:9px; }
-    .concept-alert-item > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .concept-alert-entry { display:grid; grid-template-columns:52px 88px 62px 58px 96px minmax(0,1fr); gap:6px; align-items:center; padding:2px 0 3px; border-bottom:1px dashed var(--line); font-size:11px; }
-    .concept-alert-entry:last-child { border-bottom:0; }
-    .concept-alert-name { color:var(--text); font-weight:800; }
-    .concept-alert-time { color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .concept-alert-change { color:var(--red); font-weight:900; }
-    .concept-alert-breadth { color:var(--muted); font-variant-numeric:tabular-nums; }
-    .concept-alert-kind { color:var(--amber); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .concept-alert-leaders { display:grid; min-width:0; grid-template-rows:auto auto; gap:1px; color:var(--muted); font-size:12px; line-height:1.25; overflow:hidden; }
-    .concept-alert-leader-line { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); min-width:0; gap:5px; overflow:hidden; }
-    .concept-alert-leader { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .concept-alert-leaders b { color:var(--red); font-weight:800; }
-    .concept-alert-leaders .market-badge { display:inline-flex; min-width:14px; height:14px; margin-right:2px; align-items:center; justify-content:center; border:1px solid transparent; border-radius:3px; color:#fff; font-size:8px; font-style:normal; font-weight:900; line-height:1; vertical-align:1px; }
-    .concept-alert-leaders .market-board-main { background:#3579bc; border-color:#28649d; }
-    .concept-alert-leaders .market-board-growth { background:#e57917; border-color:#bd5d0b; }
-    .concept-alert-leaders .market-board-star { background:#875bc7; border-color:#69449e; }
-    .concept-alert-leaders .market-board-bse { background:#149477; border-color:#0e765f; }
     .score-alert-item { display: grid; width: 100%; grid-template-columns: 110px 145px 18px 45px 28px 45px 52px 65px; align-items: center; column-gap: 2px; row-gap: 4.4px; color: var(--text); font-size: 12px; }
     .score-alert-item.rebound-alert-item { grid-template-columns: 120px 120px 18px 45px 45px 28px 45px 52px 65px; }
     .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3170,9 +3144,6 @@
     </aside>
 
     <main class="shell">
-    <section class="concept-alert-region" aria-label="概念异动告警">
-      <div class="score-alerts" id="conceptAlerts" hidden aria-live="polite"></div>
-    </section>
     <header class="topbar">
       <div class="brand">
         <div class="eyebrow">
@@ -3805,7 +3776,7 @@
       scoreAlertAbove: {},
       scoreAlertFetchAt: 0,
       scoreAlertReady: false,
-      alertPanelDismissed: { main: false, growth: false, starBse: false, concept: false },
+      alertPanelDismissed: { main: false, growth: false, starBse: false },
       priceAlertTracker: {},
       minutePredictions: {},
       minutePredictionPayload: null,
@@ -3820,10 +3791,6 @@
       macdAlertKeys: new Set(),
       macdAlertBaselineKeys: new Set(),
       macdAlertReady: false,
-      conceptAlertHistory: [],
-      conceptAlertKeys: new Set(),
-      conceptAlertFetchAt: 0,
-      conceptAlertLoading: false,
       marketAlertHistory: { page: 0, total: 0, loading: false, hasMore: true },
       marketAlertHistoryDedupe: true,
       marketAlertHistoryShowDrawdowns: false,
@@ -8768,53 +8735,6 @@
       });
     }
 
-    function renderConceptAlertPanel() {
-      const node = document.getElementById('conceptAlerts');
-      if (!node) return;
-      // 顶部只保留最新四条，新异动自然覆盖最旧一条；完整历史仍保存在后端。
-      const items = state.conceptAlertHistory.slice(0, 4);
-      node.hidden = state.alertPanelDismissed.concept || !items.length;
-      node.innerHTML = items.length ? `<div class="score-alert-panel"><div class="score-alert-head"><span>概念异动告警</span><button class="score-alert-close" type="button" data-close-concept-alert>关闭</button></div><div class="score-alert-list"><div class="concept-alert-item concept-alert-columns"><span>时间</span><span>概念</span><span>涨跌幅</span><span>涨/跌</span><span>异动类型</span><span>领涨个股（前10）</span></div>${items.map(item => {
-        const leaders = Array.isArray(item.leaders) ? item.leaders : [];
-        const leaderBadge = code => /^(300|301)/.test(String(code || '')) ? ['创', 'market-board-growth'] : /^(688|689)/.test(String(code || '')) ? ['科', 'market-board-star'] : /^(4|8|92)/.test(String(code || '')) ? ['北', 'market-board-bse'] : ['主', 'market-board-main'];
-        const leaderMarkup = leader => { const [label, tone] = leaderBadge(leader.code); return `<span class="concept-alert-leader"><i class="market-badge ${tone}">${label}</i>${escapeHtml(leader.name || leader.code || '--')} <b>${hasNumber(leader.changePct) ? formatPct(leader.changePct) : '--'}</b></span>`; };
-        const leaderLines = leaders.length
-          ? [`<span class="concept-alert-leader-line">${leaders.slice(0, 5).map(leaderMarkup).join('')}</span>`, `<span class="concept-alert-leader-line">${leaders.slice(5, 10).map(leaderMarkup).join('')}</span>`]
-          : ['<span class="concept-alert-leader-line">领涨股数据待补</span>', '<span class="concept-alert-leader-line"></span>'];
-        return `<div class="concept-alert-entry" title="${escapeHtml(item.kind || '')} · ${escapeHtml(item.time || '')}"><span class="concept-alert-time">${escapeHtml(item.time || '--')}</span><span class="concept-alert-name">${escapeHtml(item.name || item.code || '--')}</span><span class="concept-alert-change">${hasNumber(item.changePct) ? formatPct(item.changePct) : '--'}</span><span class="concept-alert-breadth">${Number(item.risingCount) || 0}/${Number(item.fallingCount) || 0}</span><span class="concept-alert-kind">${escapeHtml(item.kind || '--')}</span><span class="concept-alert-leaders">${leaderLines.join('')}</span></div>`;
-      }).join('')}</div></div>` : '';
-      node.querySelector('[data-close-concept-alert]')?.addEventListener('click', () => {
-        state.alertPanelDismissed.concept = true;
-        renderConceptAlertPanel();
-      });
-      syncFixedAlertLayout();
-    }
-
-    async function loadConceptAlerts(force = false) {
-      if (state.conceptAlertLoading || (!force && Date.now() - state.conceptAlertFetchAt < 15000)) return;
-      state.conceptAlertLoading = true;
-      state.conceptAlertFetchAt = Date.now();
-      try {
-        const response = await fetch('/api/concept-alerts', {cache:'no-store'});
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || '概念异动告警读取失败');
-        const alerts = payload.active === false ? [] : (payload.alerts || []);
-        const unseen = alerts.filter(item => item.id && !state.conceptAlertKeys.has(item.id));
-        alerts.forEach(item => { if (item.id) state.conceptAlertKeys.add(item.id); });
-        state.conceptAlertHistory = alerts;
-        if (unseen.length && state.conceptAlertKeys.size > unseen.length) {
-          state.alertPanelDismissed.concept = false;
-          playScoreAlertSound();
-        }
-        renderConceptAlertPanel();
-      } catch {
-        // 概念排行临时不可用时静默保留上一轮可见告警。
-      } finally {
-        state.conceptAlertLoading = false;
-        window.setTimeout(() => loadConceptAlerts(), 15000);
-      }
-    }
-
     function renderMacdAlertConceptDistribution() {
       const container = document.getElementById("macdAlertConceptDistribution");
       if (!container) return;
@@ -9212,7 +9132,6 @@
       renderWeights();
       const list = filteredStocks();
       loadMacdAlerts();
-      loadConceptAlerts();
       renderStats(list);
       if (state.pageView === "sector-strength") {
         renderSectorStrength();
