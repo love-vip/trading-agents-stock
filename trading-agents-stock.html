@@ -309,7 +309,7 @@
       margin-bottom: 18px;
     }
 
-    /* 告警框固定归入左侧栏：主板、创业板、科创/北交自上而下排列。 */
+    /* 告警框固定归入左侧栏：主板、创业板、科创板、北交所自上而下排列。 */
     .score-alert-region { position:static; display:grid; grid-template-columns:1fr; gap:12px; min-width:0; margin:14px 0 16px; padding:0; background:transparent; }
     body.market-open-alert-layout .app-layout { grid-template-columns:482px minmax(0, 1fr); }
     body.market-open-alert-layout .score-alert-region { min-width:453px; }
@@ -326,6 +326,7 @@
     .score-alerts-main { order:1; }
     .score-alerts-rebound { order:2; }
     #scoreAlerts { order:3; }
+    #bseScoreAlerts { order:4; }
     .score-alert-item { display: grid; width: 100%; grid-template-columns: 110px 145px 18px 45px 28px 45px 52px 65px; align-items: center; column-gap: 2px; row-gap: 4.4px; color: var(--text); font-size: 12px; }
     .score-alert-item.rebound-alert-item { grid-template-columns: 120px 120px 18px 45px 45px 28px 45px 52px 65px; }
     .score-alert-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -356,7 +357,7 @@
     .price-alert-item > b,.price-alert-item > em { white-space:nowrap; }
     .price-alert-item > b.price-alert-price { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:1px; line-height:1.05; }
     .price-alert-price > span { white-space:nowrap; }
-    .price-alert-price > small { max-width:100%; overflow:hidden; color:var(--muted); font-size:9px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+    .price-alert-price > small { max-width:100%; overflow:hidden; color:#7652c4; font-size:9px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
     .price-alert-item > span,.price-alert-item > b,.price-alert-item > em,.price-alert-item > small { text-align:left; justify-self:stretch; }
     .price-alert-item .price-alert-time { color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; text-align:left; }
     .price-alert-item .alert-prediction { min-width:0; padding:0 0 0 6px; white-space:pre-line; overflow-wrap:anywhere; color:var(--muted); border-left:1px dashed var(--line); font-size:10px; line-height:1.35; }
@@ -3147,9 +3148,9 @@
       <div class="nav-foot">每次仅扫描所选市场的实时快照。入选候选在打开图表时按需加载历史 K 线。<input id="previewPriceAlertsToggle" type="checkbox" hidden><label class="btn" id="previewPriceAlertsBtn" for="previewPriceAlertsToggle" aria-label="预览告警样式">预览告警样式</label></div>
       <script>
         window.previewPriceAlertsFallback = function () {
-          const rows = { main: ['示例主板', '↑', '10.60', '+2.31%', '10.42', '示例行业'], growth: ['捷成股份', '↑', '5.56', '+10.98%', '5.56', '文化传媒'], starBse: ['示例科创 / 北交所', '↑', '30.72', '+4.08%', '30.25', '半导体'] };
-          const render = (id, title, key) => { const item = rows[key]; const node = document.getElementById(id); if (!node) return; const code = key === 'growth' ? '300182' : key === 'starBse' ? '688001' : '600000'; const badge = key === 'growth' ? '创' : key === 'starBse' ? '科' : ''; const bTag = key === 'growth' ? '<i class="market-alert-badge-b" title="双线连红 + 当日涨幅 ≥3%">B</i>' : ''; node.hidden = false; node.innerHTML = '<div class="score-alert-panel"><div class="score-alert-head"><span>' + title + '</span><button class="score-alert-close" type="button" onclick="this.closest(\'.score-alerts\').hidden=true">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item"><span class="price-alert-stock"><strong class="price-alert-stock-name">' + item[0] + bTag + '</strong><small class="price-alert-stock-meta">' + (badge ? '<i class="market-badge">' + badge + '</i>' : '') + code + '</small></span><span class="price-alert-direction ' + (item[1] === '↑' ? 'up' : 'down') + '">' + item[1] + '</span><b>' + item[2] + '</b><em class="' + (item[1] === '↓' ? 'down' : '') + '">' + item[3] + '</em><small>' + item[4] + '</small><small>' + item[5] + '</small><div class="alert-prediction">量价预测待更新</div></div></div></div>'; };
-          render('mainScoreAlerts', '主板个股告警', 'main'); render('reboundScoreAlerts', '创业板个股告警', 'growth'); render('scoreAlerts', '科创 / 北交所个股告警', 'starBse');
+          const rows = { main: ['示例主板', '↑', '10.60', '+2.31%', '10.42', '示例行业'], growth: ['捷成股份', '↑', '5.56', '+10.98%', '5.56', '文化传媒'], star: ['示例科创板', '↑', '30.72', '+4.08%', '30.25', '半导体'], bse: ['示例北交所', '↑', '18.72', '+4.08%', '18.25', '专用机械'] };
+          const render = (id, title, key) => { const item = rows[key]; const node = document.getElementById(id); if (!node) return; const code = key === 'growth' ? '300182' : key === 'star' ? '688001' : key === 'bse' ? '920001' : '600000'; const badge = key === 'growth' ? '创' : key === 'star' ? '科' : key === 'bse' ? '北' : ''; const bTag = key === 'growth' ? '<i class="market-alert-badge-b" title="双线连红 + 当日涨幅 ≥3%">B</i>' : ''; node.hidden = false; node.innerHTML = '<div class="score-alert-panel"><div class="score-alert-head"><span>' + title + '</span><button class="score-alert-close" type="button" onclick="this.closest(\'.score-alerts\').hidden=true">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item"><span class="price-alert-stock"><strong class="price-alert-stock-name">' + item[0] + bTag + '</strong><small class="price-alert-stock-meta">' + (badge ? '<i class="market-badge">' + badge + '</i>' : '') + code + '</small></span><span class="price-alert-direction ' + (item[1] === '↑' ? 'up' : 'down') + '">' + item[1] + '</span><b>' + item[2] + '</b><em class="' + (item[1] === '↓' ? 'down' : '') + '">' + item[3] + '</em><small>' + item[4] + '</small><small>' + item[5] + '</small><div class="alert-prediction">量价预测待更新</div></div></div></div>'; };
+          render('mainScoreAlerts', '主板个股告警', 'main'); render('reboundScoreAlerts', '创业板个股告警', 'growth'); render('scoreAlerts', '科创板个股告警', 'star'); render('bseScoreAlerts', '北交所个股告警', 'bse');
         };
       </script>
     </aside>
@@ -3176,9 +3177,10 @@
       </div>
     </header>
     <section class="score-alert-region" aria-label="行情告警">
-    <div class="score-alerts" id="scoreAlerts" hidden aria-live="polite"></div>
+    <div class="score-alerts score-alerts-star" id="scoreAlerts" hidden aria-live="polite"></div>
     <div class="score-alerts score-alerts-main" id="mainScoreAlerts" hidden aria-live="polite"></div>
     <div class="score-alerts score-alerts-rebound" id="reboundScoreAlerts" hidden aria-live="polite"></div>
+    <div class="score-alerts score-alerts-bse" id="bseScoreAlerts" hidden aria-live="polite"></div>
     </section>
 
     <div id="screenerView">
@@ -3787,7 +3789,7 @@
       scoreAlertAbove: {},
       scoreAlertFetchAt: 0,
       scoreAlertReady: false,
-      alertPanelDismissed: { main: false, growth: false, starBse: false },
+      alertPanelDismissed: { main: false, growth: false, star: false, bse: false },
       priceAlertTracker: {},
       minutePredictions: {},
       minutePredictionPayload: null,
@@ -3944,6 +3946,7 @@
       scoreAlerts: document.getElementById("scoreAlerts"),
       mainScoreAlerts: document.getElementById("mainScoreAlerts"),
       reboundScoreAlerts: document.getElementById("reboundScoreAlerts"),
+      bseScoreAlerts: document.getElementById("bseScoreAlerts"),
       quoteStateText: document.getElementById("quoteStateText"),
       quoteSource: document.getElementById("quoteSource"),
       marketDate: document.getElementById("marketDate"),
@@ -8834,7 +8837,7 @@
     function renderPriceAlertPanels() {
       renderMacdAlertConceptDistribution();
       const preview = state.previewingPriceAlerts;
-      const boards = [[el.mainScoreAlerts,'主板个股告警','main'],[el.reboundScoreAlerts,'创业板个股告警','growth'],[el.scoreAlerts,'科创 / 北交所个股告警','starBse']];
+      const boards = [[el.mainScoreAlerts,'主板个股告警','main'],[el.reboundScoreAlerts,'创业板个股告警','growth'],[el.scoreAlerts,'科创板个股告警','star'],[el.bseScoreAlerts,'北交所个股告警','bse']];
       if (!preview && !shouldShowIntradayAlertPanels()) {
         boards.forEach(([node]) => {
           node.hidden = true;
@@ -8860,7 +8863,7 @@
           if (preview || meta.confirmed) visibleItems.push(item);
         });
         // 每个顶部框最多呈现最新五行；完整历史仍可从“告警池”查看。
-        const items = visibleItems.filter(p=>p.board===board).slice(-5);
+        const items = visibleItems.filter(p=>macdAlertBoardOf(p.code)===board).slice(-5);
         node.hidden = state.alertPanelDismissed[board] || !items.length;
         node.innerHTML = items.length ? `<div class="score-alert-panel"><div class="score-alert-head"><span>${title}</span><button class="score-alert-close" type="button" data-close-price-alert="${board}">关闭</button></div><div class="score-alert-list"><div class="score-alert-item price-alert-item price-alert-columns"><span>个股名称</span><span>时间</span><span>价格</span><span>涨跌幅</span><span>行业</span><span>信号</span></div>${items.map(item=>{
           const badge = /^(300|301)/.test(item.code) ? '创' : /^(688|689)/.test(item.code) ? '科' : /^(4|8|92)/.test(item.code) ? '北' : '';
@@ -8890,6 +8893,14 @@
         node.querySelector('[data-close-price-alert]')?.addEventListener('click',()=>{state.alertPanelDismissed[board]=true;renderPriceAlertPanels();});
       });
       syncFixedAlertLayout();
+    }
+
+    function macdAlertBoardOf(code) {
+      const normalized = String(code || "").trim();
+      if (/^(688|689)/.test(normalized)) return "star";
+      if (/^(4|8|92)/.test(normalized)) return "bse";
+      if (/^(300|301)/.test(normalized)) return "growth";
+      return "main";
     }
 
     async function loadMacdBearAlertConcepts(force = false) {
@@ -8929,7 +8940,7 @@
           alerts.forEach(item => { if (item.id) state.macdAlertKeys.add(item.id); });
           state.macdAlertHistory = alerts;
           state.macdAlertReady = true;
-          state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, starBse:false};
+          state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, star:false, bse:false};
           renderPriceAlertPanels();
           return;
         }
@@ -8937,7 +8948,7 @@
         alerts.forEach(item => { if (item.id) state.macdAlertKeys.add(item.id); });
         state.macdAlertHistory = alerts.filter(item => item.id && !state.macdAlertBaselineKeys.has(item.id));
         if (unseen.length && state.macdAlertReady) {
-          state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, starBse:false};
+          state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, star:false, bse:false};
           playScoreAlertSound();
           // 第 3 次起必须高于首次告警涨幅；语音继续只播报 M 标签。
           const {itemMeta} = buildMacdAlertConfirmationMeta(alerts);
@@ -8973,7 +8984,7 @@
       const tracker = state.priceAlertTracker || (state.priceAlertTracker = {});
       const alerts = [];
       const conceptsOf = stock => Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts.filter(Boolean) : stock.relatedConcept ? [stock.relatedConcept] : [];
-      const boardOf = code => /^(300|301)/.test(code) ? "growth" : /^(688|689|8|4|92)/.test(code) ? "starBse" : "main";
+      const boardOf = code => macdAlertBoardOf(code);
       list.forEach(stock => {
         const code = String(stock.code || "");
         const tradeDate = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai'}).format(new Date());
@@ -9043,28 +9054,30 @@
       }
       let source = (state.whitelistStocks || []).filter(stock => String(stock.code || ""));
       const previewGrowth = { code: "300182", name: "捷成股份", industry: "文化传媒", relatedConcepts: ["示例概念"] };
+      const previewStar = { code: "688001", name: "白名单科创示例", industry: "半导体", relatedConcepts: ["示例概念"] };
+      const previewBse = { code: "920001", name: "白名单北交示例", industry: "专用机械", relatedConcepts: ["示例概念"] };
       if (!source.length) {
         source = [
           { code: "600000", name: "白名单主板示例", industry: "银行", relatedConcepts: ["示例概念"] },
           previewGrowth,
-          { code: "688001", name: "白名单科创示例", industry: "半导体", relatedConcepts: ["示例概念"] }
+          previewStar,
+          previewBse
         ];
         state.whitelistStocks = source;
-      } else if (!source.some(stock => String(stock.code || "") === "300182")) {
-        source = [...source, previewGrowth];
+      } else {
+        if (!source.some(stock => String(stock.code || "") === "300182")) source = [...source, previewGrowth];
+        if (!source.some(stock => macdAlertBoardOf(stock.code) === "star")) source = [...source, previewStar];
+        if (!source.some(stock => macdAlertBoardOf(stock.code) === "bse")) source = [...source, previewBse];
       }
-      const samples = ["main", "growth", "starBse"].map(board => source.find(stock => {
-        const code = String(stock.code || "");
-        return board === "growth" ? /^(300|301)/.test(code) : board === "starBse" ? /^(688|689|8|4|92)/.test(code) : /^(000|001|002|003|600|601|603|605)/.test(code);
-      })).filter(Boolean).map(stock => {
+      const samples = ["main", "growth", "star", "bse"].map(board => source.find(stock => macdAlertBoardOf(stock.code) === board)).filter(Boolean).map(stock => {
         const price = Number(stock.price) || 10;
         return {...stock, price, previousClose: price / 1.03, open: price / 1.02, dayAverage: price * 1.01};
       });
       state.previewAlertPanelDismissedSnapshot = { ...state.alertPanelDismissed };
-      state.alertPanelDismissed = { ...state.alertPanelDismissed, main: false, growth: false, starBse: false };
+      state.alertPanelDismissed = { ...state.alertPanelDismissed, main: false, growth: false, star: false, bse: false };
       state.previewMacdAlertHistory = samples.map((stock, index) => ({
         id: `preview-macd-${index}`,
-        board: /^(300|301)/.test(String(stock.code || "")) ? "growth" : /^(688|689|8|4|92)/.test(String(stock.code || "")) ? "starBse" : "main",
+        board: macdAlertBoardOf(stock.code),
         code: String(stock.code || ""),
         name: String(stock.name || stock.code || "").replace(/-U$/, ""),
         price: Number(stock.price) || 10,
@@ -9181,7 +9194,7 @@
         });
         state.scoreAlertReady = true;
         if (remoteAdded) {
-          state.alertPanelDismissed = { ...state.alertPanelDismissed, growth: false, main: false, rebound: false };
+          state.alertPanelDismissed = { ...state.alertPanelDismissed, growth: false, main: false, star: false, bse: false, rebound: false };
           playScoreAlertSound();
         }
         render();
@@ -9279,7 +9292,7 @@
     }
 
     function alertHistoryBoardName(board) {
-      return board === "growth" ? "创业板" : board === "starBse" ? "科创 / 北交" : "主板";
+      return board === "growth" ? "创业板" : board === "star" || board === "starBse" ? "科创板" : board === "bse" ? "北交所" : "主板";
     }
 
     function alertHistoryMarketBadge(code) {
@@ -10301,7 +10314,7 @@
     el.blacklistIndustryFilter.addEventListener("change", event => { state.blacklistIndustryFilter = event.target.value; state.blacklistShown = state.blacklistStocks.length; renderBlacklistTable(); });
     el.blacklistMarket.addEventListener("change", event => { state.blacklistMarket = normalizeMarketSelection(event.target, state.blacklistMarket); state.blacklistShown = state.blacklistStocks.length; renderBlacklistTable(); });
 
-    // 将告警区安置在左侧栏品牌信息下方，保持主板、创业板、科创/北交的垂直顺序。
+    // 将告警区安置在左侧栏品牌信息下方，保持主板、创业板、科创板、北交所的垂直顺序。
     const sidebarAlertRegion = document.querySelector('.score-alert-region');
     const sidebarBrand = document.querySelector('.nav-rail .nav-brand');
     if (sidebarAlertRegion && sidebarBrand) sidebarBrand.insertAdjacentElement('afterend', sidebarAlertRegion);
