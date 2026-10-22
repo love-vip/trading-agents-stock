@@ -1620,7 +1620,10 @@ def get_menu_quote_batch(menu: str, codes: List[str]) -> Dict[str, Any]:
                 f"SELECT code,concepts_json FROM stock_concept_cache WHERE code IN ({placeholders})",
                 tuple(requested),
             ).fetchall() if requested else []
-        concept_map = {str(code): json.loads(raw or "[]") for code, raw in concept_rows}
+        concept_map = {
+            str(code): filter_excluded_stock_concepts(json.loads(raw or "[]"))
+            for code, raw in concept_rows
+        }
         for quote in payload.get("stocks") or []:
             code = str(quote.get("code") or "")
             items = concept_map.get(code)
@@ -2626,7 +2629,7 @@ def load_local_post_close_stock(code: str) -> Optional[Dict[str, Any]]:
             try:
                 concepts = [
                     item.get("name") if isinstance(item, dict) else str(item)
-                    for item in json.loads(concept_row[0] or "[]")
+                    for item in filter_excluded_stock_concepts(json.loads(concept_row[0] or "[]"))
                 ]
                 concepts = [item for item in concepts if item and "报预增" not in item]
             except (TypeError, ValueError, json.JSONDecodeError):
@@ -2939,7 +2942,7 @@ def add_related_sectors(quotes: List[Dict[str, Any]]) -> None:
             ).fetchall() if codes else []
         for code, concepts_json in cached_rows:
             try:
-                concepts = json.loads(concepts_json)
+                concepts = filter_excluded_stock_concepts(json.loads(concepts_json))
                 if isinstance(concepts, list):
                     results[str(code)] = [str(item.get("name")) for item in concepts[:5] if isinstance(item, dict) and item.get("name")]
             except (TypeError, json.JSONDecodeError):
@@ -5595,7 +5598,7 @@ def fetch_stock_concepts(code: str) -> List[Dict[str, Any]]:
                 "heat": max(0, 1000 - int(number(row.get("BOARD_RANK")) or rank)),
                 "source": "东方财富 HSF10 所属板块",
             })
-        return concepts
+        return filter_excluded_stock_concepts(concepts)
     except (OSError, urllib.error.URLError, TimeoutError, MarketDataError, ValueError, TypeError):
         # 不使用缺少 IS_PRECISE 字段的备用源，避免行业/地域/风格板块混入概念。
         return []
@@ -5616,6 +5619,8 @@ def sync_stock_sector_snapshot(code: str, concepts: List[Dict[str, Any]]) -> Non
             for item in concepts or []:
                 name = str(item.get("name") if isinstance(item, dict) else item or "").strip()
                 board_code = str(item.get("code") if isinstance(item, dict) else "").strip().upper()
+                if is_excluded_stock_concept(name):
+                    continue
                 if name and re.fullmatch(r"BK\d+", board_code) and not any(existing.get("name") == name for existing in sectors):
                     sectors.append({
                         "code": board_code,
@@ -5665,6 +5670,8 @@ def top_sector_for_stock(code: Any, fallback: Any = "") -> str:
     """Choose the highest-gaining cached sector for one stock."""
     normalized_code = str(code or "").strip()
     fallback_text = str(fallback or "").strip()
+    if is_excluded_stock_concept(fallback_text):
+        fallback_text = ""
     try:
         with open_backtest_db() as connection:
             row = connection.execute(
@@ -5673,7 +5680,8 @@ def top_sector_for_stock(code: Any, fallback: Any = "") -> str:
             ).fetchone()
         sectors = json.loads(row[0] or "[]") if row else []
         names = [str(item.get("name") if isinstance(item, dict) else item).strip() for item in sectors
-                 if str(item.get("name") if isinstance(item, dict) else item).strip()]
+                 if str(item.get("name") if isinstance(item, dict) else item).strip()
+                 and not is_excluded_stock_concept(item.get("name") if isinstance(item, dict) else item)]
         if fallback_text and fallback_text not in names:
             names.insert(0, fallback_text)
         changes = fetch_sector_change_map()
@@ -5689,6 +5697,8 @@ def _resolve_top_concept_for_stock(code: Any, fallback: Any = "") -> str:
     """Use concept board codes to select the highest-gaining matched concept."""
     normalized_code = str(code or "").strip()
     fallback_text = str(fallback or "").strip()
+    if is_excluded_stock_concept(fallback_text):
+        fallback_text = ""
     try:
         with open_backtest_db() as connection:
             row = connection.execute(
@@ -5696,7 +5706,8 @@ def _resolve_top_concept_for_stock(code: Any, fallback: Any = "") -> str:
                 (normalized_code,),
             ).fetchone()
         sectors = json.loads(row[0] or "[]") if row else []
-        concepts = [item for item in sectors if isinstance(item, dict) and item.get("type") == "concept" and item.get("name")]
+        concepts = [item for item in sectors if isinstance(item, dict) and item.get("type") == "concept" and item.get("name")
+                    and not is_excluded_stock_concept(item.get("name"))]
         ranking = fetch_concept_rank_data().get("concepts") or []
         changes_by_code = {
             str(board.get("code") or "").upper(): number(board.get("changePct"))
@@ -5762,7 +5773,7 @@ def concept_board_code_for_stock(code: Any, concept_name: Any) -> str:
     """Return the BK code for a previously selected precise concept."""
     normalized_code = str(code or "").strip()
     normalized_name = str(concept_name or "").strip()
-    if not normalized_code or not normalized_name:
+    if not normalized_code or not normalized_name or is_excluded_stock_concept(normalized_name):
         return ""
     try:
         with open_backtest_db() as connection:
@@ -5794,8 +5805,15 @@ def get_stock_concepts(code: str) -> List[Dict[str, Any]]:
                 (code,),
             ).fetchone()
         if row and time.time() - float(row[1]) < CONCEPT_DB_REFRESH_SECONDS:
-            concepts = json.loads(row[0])
+            concepts = filter_excluded_stock_concepts(json.loads(row[0]))
             if isinstance(concepts, list):
+                if len(concepts) != len(json.loads(row[0] or "[]")):
+                    with open_backtest_db() as connection:
+                        connection.execute(
+                            "UPDATE stock_concept_cache SET concepts_json=? WHERE code=?",
+                            (json.dumps(concepts, ensure_ascii=False), code),
+                        )
+                        connection.commit()
                 sync_stock_sector_snapshot(code, concepts)
                 with _cache_lock:
                     _concept_cache[code] = {"created_at": now, "payload": concepts}
@@ -5803,7 +5821,7 @@ def get_stock_concepts(code: str) -> List[Dict[str, Any]]:
     except (OSError, sqlite3.Error, TypeError, ValueError, json.JSONDecodeError):
         pass
 
-    concepts = fetch_stock_concepts(code)
+    concepts = filter_excluded_stock_concepts(fetch_stock_concepts(code))
     try:
         with open_backtest_db() as connection:
             connection.execute(
@@ -6507,7 +6525,7 @@ def hydrate_list_quotes(payload: Dict[str, Any], *, fetch_if_cache_missing: bool
                         stock["dataUnavailable"] = False
                         stock["nameInitials"] = stock_name_initials(stock.get("name"))
                     if code in concepts:
-                        items = json.loads(concepts[code])
+                        items = filter_excluded_stock_concepts(json.loads(concepts[code]))
                         stock["relatedConcepts"] = [c.get("name") if isinstance(c, dict) else str(c) for c in items]
                         stock["relatedConcepts"] = [c for c in stock["relatedConcepts"] if c and "报预增" not in c]
                 dates = [str(s.get("quoteTradeDate")) for s in stocks if s.get("quoteTradeDate")]
@@ -6717,7 +6735,7 @@ def hydrate_list_quotes(payload: Dict[str, Any], *, fetch_if_cache_missing: bool
                 stock["dataUnavailable"] = False
                 stock["nameInitials"] = stock_name_initials(stock["name"])
             if code in concepts:
-                items = json.loads(concepts[code])
+                items = filter_excluded_stock_concepts(json.loads(concepts[code]))
                 stock["relatedConcepts"] = [c.get("name") if isinstance(c, dict) else str(c) for c in items]
                 stock["relatedConcepts"] = [c for c in stock["relatedConcepts"] if c and "报预增" not in c]
         # 市值与换手率属于日终元数据，实时批量源可能不带这几个字段。最后以
@@ -6970,6 +6988,27 @@ def normalize_concept_name(name: str) -> str:
     for suffix in ("概念板块", "概念", "板块", "行业"):
         normalized = normalized.replace(suffix, "")
     return normalized.replace(" ", "")
+
+
+# 用户明确要求从所有个股的关联概念和主展示概念中移除该板块。
+# 使用规范化名称比较，兼容“电池技术概念”等带后缀的返回值。
+EXCLUDED_STOCK_CONCEPT_NAMES = frozenset({"电池技术"})
+
+
+def is_excluded_stock_concept(name: Any) -> bool:
+    return normalize_concept_name(str(name or "")) in EXCLUDED_STOCK_CONCEPT_NAMES
+
+
+def filter_excluded_stock_concepts(concepts: Any) -> List[Any]:
+    """Remove user-excluded concepts while preserving source order and shape."""
+    if not isinstance(concepts, list):
+        return []
+    filtered: List[Any] = []
+    for item in concepts:
+        name = item.get("name") if isinstance(item, dict) else item
+        if name and not is_excluded_stock_concept(name):
+            filtered.append(item)
+    return filtered
 
 
 def resolve_hot_concept(concept_name: str) -> Tuple[Dict[str, Any], str]:
@@ -7757,7 +7796,7 @@ def promote_cap_only_blacklist_entries(payload: Dict[str, Any]) -> Dict[str, Any
             "price": quote.get("price"), "changePct": quote.get("changePct"),
             "netInflow": None, "marketCap": quote.get("marketCap"), "floatMarketCap": quote.get("floatMarketCap"),
             "turnover": quote.get("turnover"), "industry": industry or "--", "actualIndustry": industry or "--",
-            "relatedConcepts": [item for item in concepts if "报预增" not in item],
+            "relatedConcepts": [item for item in filter_excluded_stock_concepts(concepts) if "报预增" not in item],
             "promotedFromBlacklist": True,
         })
         existing.add(code)
@@ -7960,7 +7999,7 @@ def get_whitelist_stocks(trade_date: Optional[str] = None, rebuild_membership: b
                         stock["quoteSource"] = "本地 SQLite 最新交易日收盘快照"
                         stock["dataUnavailable"] = False
                         if code in local_concepts:
-                            items = json.loads(local_concepts[code])
+                            items = filter_excluded_stock_concepts(json.loads(local_concepts[code]))
                             stock["relatedConcepts"] = [c.get("name") if isinstance(c, dict) else str(c) for c in items]
                             stock["relatedConcepts"] = [c for c in stock["relatedConcepts"] if c and "报预增" not in c]
                     dates = [str(stock.get("quoteTradeDate")) for stock in payload.get("stocks", []) if stock.get("quoteTradeDate")]
