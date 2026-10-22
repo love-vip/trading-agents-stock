@@ -354,6 +354,9 @@
     .price-alert-stock-meta .market-badge { min-width:16px; height:15px; padding:0 3px; border-radius:4px; font-size:9px; }
     .price-alert-count { display:inline-flex; box-sizing:border-box; flex:0 0 12px; width:12px; height:12px; align-items:center; justify-content:center; border:1px solid #ef4444; border-radius:50%; color:#ef4444; background:rgba(239,68,68,.12); font-size:8px; font-style:normal; font-weight:900; line-height:1; }
     .price-alert-item > b,.price-alert-item > em { white-space:nowrap; }
+    .price-alert-item > b.price-alert-price { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:1px; line-height:1.05; }
+    .price-alert-price > span { white-space:nowrap; }
+    .price-alert-price > small { max-width:100%; overflow:hidden; color:var(--muted); font-size:9px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
     .price-alert-item > span,.price-alert-item > b,.price-alert-item > em,.price-alert-item > small { text-align:left; justify-self:stretch; }
     .price-alert-item .price-alert-time { color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; text-align:left; }
     .price-alert-item .alert-prediction { min-width:0; padding:0 0 0 6px; white-space:pre-line; overflow-wrap:anywhere; color:var(--muted); border-left:1px dashed var(--line); font-size:10px; line-height:1.35; }
@@ -3799,6 +3802,8 @@
       macdAlertKeys: new Set(),
       macdAlertBaselineKeys: new Set(),
       macdAlertReady: false,
+      previewMacdAlertHistory: [],
+      previewAlertPanelDismissedSnapshot: null,
       marketAlertHistory: { page: 0, total: 0, loading: false, hasMore: true },
       marketAlertHistoryDedupe: true,
       marketAlertHistoryShowDrawdowns: false,
@@ -6349,7 +6354,7 @@
     }
 
     function syncAlertSidebarWidth() {
-      document.body.classList.toggle("market-open-alert-layout", marketSessionState().active);
+      document.body.classList.toggle("market-open-alert-layout", state.previewingPriceAlerts || marketSessionState().active);
     }
 
     async function refreshDataPolicy() {
@@ -8828,7 +8833,7 @@
 
     function renderPriceAlertPanels() {
       renderMacdAlertConceptDistribution();
-      const preview = document.getElementById('previewPriceAlertsToggle')?.checked;
+      const preview = state.previewingPriceAlerts;
       const boards = [[el.mainScoreAlerts,'主板个股告警','main'],[el.reboundScoreAlerts,'创业板个股告警','growth'],[el.scoreAlerts,'科创 / 北交所个股告警','starBse']];
       if (!preview && !shouldShowIntradayAlertPanels()) {
         boards.forEach(([node]) => {
@@ -8843,14 +8848,16 @@
         const keepBottom = !priorList || priorList.scrollHeight - priorList.scrollTop - priorList.clientHeight < 18;
         // 顶部告警框只呈现同一股票当日第 3 次及以后告警；
         // 第 1、2 次仍保留在告警历史中，用于后续确认和复盘。
-        const alertHistory = state.macdMode === "bear" ? state.macdBearAlertHistory : state.macdAlertHistory;
+        const alertHistory = preview
+          ? state.previewMacdAlertHistory
+          : state.macdMode === "bear" ? state.macdBearAlertHistory : state.macdAlertHistory;
         const {itemMeta} = buildMacdAlertConfirmationMeta(alertHistory);
         const visibleItems = [];
         alertHistory.forEach(item => {
           const meta = itemMeta.get(item);
           if (!meta) return;
           item.alertCount = meta.count;
-          if (meta.confirmed) visibleItems.push(item);
+          if (preview || meta.confirmed) visibleItems.push(item);
         });
         // 每个顶部框最多呈现最新五行；完整历史仍可从“告警池”查看。
         const items = visibleItems.filter(p=>p.board===board).slice(-5);
@@ -8876,7 +8883,7 @@
             return `<span class="${tone}">${formatAlertSignal(displaySignal)}</span>`;
           }).join('<br>');
           const alertTime = String(item.time || '--').slice(0, 8);
-          return `<div class="score-alert-item price-alert-item">${identity}<time class="price-alert-time">${escapeHtml(alertTime)}</time><b>${hasNumber(item.price) ? formatPrice(item.price) : '--'}</b><em class="${Number(item.changePct)<0?'down':''}">${hasNumber(item.changePct) ? formatPct(item.changePct) : '--'}</em><small>${escapeHtml(item.industry || '--')}</small><div class="alert-prediction" title="${escapeHtml(item.pool || '')}">${signalMarkup}</div></div>`;
+          return `<div class="score-alert-item price-alert-item">${identity}<time class="price-alert-time">${escapeHtml(alertTime)}</time><b class="price-alert-price"><span>${hasNumber(item.price) ? formatPrice(item.price) : '--'}</span><small title="昨日成交额">${formatPreviousDayAmount(item.previousDayAmount)}</small></b><em class="${Number(item.changePct)<0?'down':''}">${hasNumber(item.changePct) ? formatPct(item.changePct) : '--'}</em><small>${escapeHtml(item.industry || '--')}</small><div class="alert-prediction" title="${escapeHtml(item.pool || '')}">${signalMarkup}</div></div>`;
         }).join('')}</div></div>` : '';
         const list = node.querySelector('.score-alert-list');
         if (list && keepBottom) requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
@@ -9005,7 +9012,35 @@
       /* eslint-enable no-unreachable */
     }
 
+    function syncPreviewPriceAlertsButton() {
+      const button = el.previewPriceAlertsBtn;
+      if (!button) return;
+      const active = state.previewingPriceAlerts;
+      button.textContent = active ? "关闭预览告警样式" : "预览告警样式";
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("preview-active", active);
+    }
+
+    function closePreviewPriceAlerts() {
+      if (!state.previewingPriceAlerts) return;
+      state.previewingPriceAlerts = false;
+      state.previewMacdAlertHistory = [];
+      if (state.previewAlertPanelDismissedSnapshot) {
+        state.alertPanelDismissed = state.previewAlertPanelDismissedSnapshot;
+        state.previewAlertPanelDismissedSnapshot = null;
+      }
+      const toggle = document.getElementById("previewPriceAlertsToggle");
+      if (toggle) toggle.checked = false;
+      syncPreviewPriceAlertsButton();
+      syncAlertSidebarWidth();
+      renderPriceAlertPanels();
+    }
+
     function previewPriceAlerts() {
+      if (state.previewingPriceAlerts) {
+        closePreviewPriceAlerts();
+        return;
+      }
       let source = (state.whitelistStocks || []).filter(stock => String(stock.code || ""));
       const previewGrowth = { code: "300182", name: "捷成股份", industry: "文化传媒", relatedConcepts: ["示例概念"] };
       if (!source.length) {
@@ -9025,13 +9060,15 @@
         const price = Number(stock.price) || 10;
         return {...stock, price, previousClose: price / 1.03, open: price / 1.02, dayAverage: price * 1.01};
       });
+      state.previewAlertPanelDismissedSnapshot = { ...state.alertPanelDismissed };
       state.alertPanelDismissed = { ...state.alertPanelDismissed, main: false, growth: false, starBse: false };
-      state.macdAlertHistory = samples.map((stock, index) => ({
+      state.previewMacdAlertHistory = samples.map((stock, index) => ({
         id: `preview-macd-${index}`,
         board: /^(300|301)/.test(String(stock.code || "")) ? "growth" : /^(688|689|8|4|92)/.test(String(stock.code || "")) ? "starBse" : "main",
         code: String(stock.code || ""),
         name: String(stock.name || stock.code || "").replace(/-U$/, ""),
         price: Number(stock.price) || 10,
+        previousDayAmount: 80_000_000 - index * 10_000_000,
         changePct: 3,
         average: null,
         industry: stock.industry || "--",
@@ -9039,7 +9076,11 @@
         tone: index % 2 ? "green" : "red",
         pool: "白名单 · 预览"
       }));
-      state.macdAlertReady = true;
+      state.previewingPriceAlerts = true;
+      const toggle = document.getElementById("previewPriceAlertsToggle");
+      if (toggle) toggle.checked = true;
+      syncPreviewPriceAlertsButton();
+      syncAlertSidebarWidth();
       renderPriceAlertPanels();
     }
     window.previewPriceAlerts = previewPriceAlerts;
@@ -9584,8 +9625,12 @@
 
     const previewPriceAlertsToggle = document.getElementById("previewPriceAlertsToggle");
     if (previewPriceAlertsToggle) previewPriceAlertsToggle.checked = false;
+    syncPreviewPriceAlertsButton();
     el.agentBtn.addEventListener("click", openAlertPool);
-    el.previewPriceAlertsBtn.addEventListener("click", previewPriceAlerts);
+    el.previewPriceAlertsBtn.addEventListener("click", event => {
+      event.preventDefault();
+      previewPriceAlerts();
+    });
     el.alertPoolClose.addEventListener("click", closeAlertPool);
     el.alertPoolModal.addEventListener("click", (event) => { if (event.target.closest("[data-close-alert-pool]")) closeAlertPool(); });
     el.marketAlertHistoryOpen.addEventListener("click", openMarketAlertHistory);
