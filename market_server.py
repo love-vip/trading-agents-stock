@@ -4219,6 +4219,23 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
             scanned_at = max(scanned_at, str(saved_at or ""))
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
+    # 兼容旧的本地选股快照：早期记录可能没有保存昨日成交额，
+    # 但只要上一交易日快照仍在，就按代码回查补齐，不改变选股结果。
+    missing_amount_codes = [
+        str(stock.get("code") or "") for stock in stocks
+        if number(stock.get("macdPreviousDayAmount")) is None
+    ]
+    if trade_date and missing_amount_codes:
+        try:
+            previous_amount_date, previous_amounts = macd_previous_day_amounts(trade_date, missing_amount_codes)
+            for stock in stocks:
+                code = str(stock.get("code") or "")
+                amount = previous_amounts.get(code)
+                if number(stock.get("macdPreviousDayAmount")) is None and amount is not None:
+                    stock["macdPreviousDayAmount"] = amount
+                    stock["macdPreviousDayTradeDate"] = previous_amount_date
+        except (OSError, ValueError, sqlite3.Error, TypeError):
+            pass
     payload: Dict[str, Any] = {
         "stocks": stocks,
         "tradeDate": trade_date or None,
@@ -4625,7 +4642,7 @@ def get_market_alert_history(
         raise ValueError("信号筛选参数不正确")
     if direction_filter and direction_filter not in {"up", "down", "flat"}:
         raise ValueError("方向筛选参数不正确")
-    if sort_key not in {"", "alertTime", "changePct", "closePrice", "closeChangePct", "changeDelta"}:
+    if sort_key not in {"", "alertTime", "previousDayAmount", "changePct", "closePrice", "closeChangePct", "changeDelta"}:
         raise ValueError("告警历史排序字段不正确")
     if sort_dir not in {"asc", "desc"}:
         raise ValueError("告警历史排序方向不正确")
@@ -4698,7 +4715,14 @@ def get_market_alert_history(
             pass
     latest_change_by_code: Dict[str, Optional[float]] = {}
     latest_price_by_code: Dict[str, Optional[float]] = {}
+    previous_day_amount_by_code: Dict[str, Optional[float]] = {}
     if all_codes_before_drawdown_filter:
+        try:
+            _previous_amount_date, previous_day_amount_by_code = macd_previous_day_amounts(
+                trade_date, all_codes_before_drawdown_filter
+            )
+        except (OSError, ValueError, sqlite3.Error, TypeError):
+            previous_day_amount_by_code = {}
         placeholders = ",".join("?" for _ in all_codes_before_drawdown_filter)
         with open_backtest_db() as connection:
             daily_rows = connection.execute(
@@ -4812,6 +4836,8 @@ def get_market_alert_history(
             def market_alert_sort_value(row: Any) -> Tuple[bool, float]:
                 if sort_key == "changePct":
                     value = number(row[8])
+                elif sort_key == "previousDayAmount":
+                    value = previous_day_amount_by_code.get(str(row[3] or ""))
                 elif sort_key == "closePrice":
                     value = latest_price_by_code.get(str(row[3] or ""))
                 elif sort_key == "changeDelta":
@@ -4902,6 +4928,7 @@ def get_market_alert_history(
         items.append({
             "id": row[0], "tradeDate": row[1], "time": row[2], "code": row[3], "name": row[4],
             "board": row[5], "pool": row[6], "price": price, "changePct": change_pct, "closePrice": close_price, "closeChangePct": close_change_pct, "industry": top_concept_for_stock(code, alert_pool_display_industry(code, row[9]), trade_date), "sector": top_concept_for_stock(code, alert_pool_display_industry(code, row[9]), trade_date),
+            "previousDayAmount": previous_day_amount_by_code.get(code),
             "alertType": row[10], "config": row[11], "signal": canonical_macd_alert_signal(row[12]), "tone": row[13], "signals": signals,
         })
     return {"tradeDate": trade_date, "rows": items, "total": total, "page": page, "pageSize": page_size, "pages": max(1, math.ceil(total / page_size)), "signalCounts": signal_counts, "directionCounts": direction_counts}
@@ -5243,6 +5270,17 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
             current["signal"] = "\n".join(event.get("signal") or "--" for event in same_round)
         visible.append(current)
     visible.sort(key=lambda item: item.get("time") or "")
+    alert_codes = list(dict.fromkeys(
+        str(item.get("code") or "") for item in visible if re.fullmatch(r"\d{6}", str(item.get("code") or ""))
+    ))
+    previous_day_amount_by_code: Dict[str, Optional[float]] = {}
+    if alert_codes:
+        try:
+            _previous_amount_date, previous_day_amount_by_code = macd_previous_day_amounts(trade_date, alert_codes)
+        except (OSError, ValueError, sqlite3.Error, TypeError):
+            previous_day_amount_by_code = {}
+    for item in visible:
+        item["previousDayAmount"] = previous_day_amount_by_code.get(str(item.get("code") or ""))
     # 同一股票、同一轮扫描（同一告警秒）算一次。必须从当天完整持久化历史
     # 编号，不能依赖只保留最近 360 条的内存窗口。
     occurrence_by_key: Dict[Tuple[str, str], int] = {}

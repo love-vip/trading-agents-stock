@@ -244,10 +244,28 @@ class MacdBearService:
         threading.Thread(target=loop, name='macd-bear-scan', daemon=True).start()
 
     def members(self):
+        a = self.api
         with self.connect() as db:
             day = db.execute('SELECT MAX(trade_date) FROM macd_bear_scans').fetchone()[0]
             rows = db.execute('SELECT stock_json,scanned_at FROM macd_bear_members WHERE trade_date=?',(day,)).fetchall()
         stocks = [json.loads(r[0]) for r in rows]
+        # 兼容旧的空头选股快照：如果历史记录没有保存昨日成交额，
+        # 但本地上一交易日快照存在，则按代码补齐展示字段。
+        missing_amount_codes = [
+            str(stock.get('code') or '') for stock in stocks
+            if a.number(stock.get('macdPreviousDayAmount')) is None
+        ]
+        if day and missing_amount_codes:
+            try:
+                previous_amount_date, previous_amounts = a.macd_previous_day_amounts(day, missing_amount_codes)
+                for stock in stocks:
+                    code = str(stock.get('code') or '')
+                    amount = previous_amounts.get(code)
+                    if a.number(stock.get('macdPreviousDayAmount')) is None and amount is not None:
+                        stock['macdPreviousDayAmount'] = amount
+                        stock['macdPreviousDayTradeDate'] = previous_amount_date
+            except (OSError, ValueError, sqlite3.Error, TypeError):
+                pass
         concept_changes = {}
         try:
             # Display reads must not start a network ranking refresh or delay
@@ -276,6 +294,15 @@ class MacdBearService:
             latest.update({c:json.loads(raw) for c,raw in db.execute('SELECT code,quote_json FROM macd_bear_quotes WHERE trade_date=?',(day,))})
             if not a.is_intraday_alert_session(datetime.now(a.CHINA_TZ)):
                 latest.update({c:json.loads(raw) for c,raw in db.execute('SELECT code,quote_json FROM daily_close_quotes WHERE trade_date=?',(day,))})
+        event_codes = list(dict.fromkeys(str(event.get('code') or '') for event in events if re.fullmatch(r'\d{6}', str(event.get('code') or ''))))
+        previous_day_amounts = {}
+        if event_codes:
+            try:
+                _previous_amount_date, previous_day_amounts = a.macd_previous_day_amounts(day, event_codes)
+            except (OSError, ValueError, sqlite3.Error, TypeError):
+                previous_day_amounts = {}
+        for event in events:
+            event['previousDayAmount'] = previous_day_amounts.get(str(event.get('code') or ''))
         needle=get('q').lower().strip(); codes=set(filter(None,get('codes').split(','))); market=get('market','all')
         filtered=[]
         for e in events:
@@ -299,7 +326,7 @@ class MacdBearService:
         if get('direction') not in ('','all'):filtered=[e for e in filtered if e['_direction']==get('direction')]
         key=get('sort');desc=get('sortDir','desc')=='desc'
         if key=='alertTime':filtered.sort(key=lambda e:e['time'],reverse=desc)
-        elif key in ('changePct','closePrice','closeChangePct','changeDelta'):
+        elif key in ('previousDayAmount','changePct','closePrice','closeChangePct','changeDelta'):
             def sortval(e):
                 v=(e['closeChangePct']-e['changePct'] if e['closeChangePct'] is not None else None) if key=='changeDelta' else e.get(key)
                 return (v is None,(-v if desc else v) if v is not None else 0)
