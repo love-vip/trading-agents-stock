@@ -3384,7 +3384,7 @@ def _macd_screener_trade_date(now: Optional[datetime] = None) -> str:
     return str(row[0] or "") if row else ""
 
 
-MACD_PREVIOUS_DAY_MIN_AMOUNT = 80_000_000
+MACD_PREVIOUS_DAY_MIN_AMOUNT = 20_000_000
 
 
 def macd_previous_day_amounts(reference_trade_date: str, codes: Optional[List[str]] = None) -> Tuple[str, Dict[str, Optional[float]]]:
@@ -3707,7 +3707,7 @@ def scan_macd_screener(scan_id: int, final_close_trade_date: str = "") -> None:
             if code in retired_codes:
                 evaluated_codes.add(code)
                 continue
-            # 选股流动性以昨天完整收盘额为准；仅明确低于 8,000 万才不入选。
+            # 选股流动性以昨天完整收盘额为准；仅明确低于 2,000 万才不入选。
             # 缺失或 0 不作否决，避免因本地快照不完整误删成员。
             if not macd_passes_previous_day_liquidity(previous_amounts.get(code)):
                 evaluated_codes.add(code)
