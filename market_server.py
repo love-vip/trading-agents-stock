@@ -98,6 +98,8 @@ MACD_FAST_LEADS_MIN_SLOW_HISTOGRAM = 0.05
 CONCEPT_CACHE_TTL_SECONDS = 600
 CONCEPT_DB_REFRESH_SECONDS = 7 * 24 * 60 * 60
 CONCEPT_RANK_CACHE_TTL_SECONDS = 60
+CONCEPT_RANK_LIMIT = 500
+CONCEPT_HYDRATION_RETRY_SECONDS = 30 * 60
 PUSH2_MIN_REQUEST_INTERVAL_SECONDS = 0.20
 PUSH2_CIRCUIT_BREAKER_SECONDS = 10 * 60
 PUSH2_FAILURES_BEFORE_OPEN = 2
@@ -355,6 +357,7 @@ _concept_code_quote_cache: Dict[str, Dict[str, Any]] = {}
 _concept_scoring_context_cache: Dict[str, Any] = {}
 _concept_rank_cache: Dict[str, Any] = {"created_at": 0.0, "payload": None}
 _concept_rank_fetch_lock = threading.Lock()
+_concept_hydration_attempts: Dict[str, float] = {}
 _push2_request_lock = threading.Lock()
 _push2_last_request_at: Dict[str, float] = {}
 _push2_failure_count: Dict[str, int] = {}
@@ -489,7 +492,10 @@ def stock_symbol(code: str) -> str:
 
 
 def stock_rank_symbol(code: str) -> str:
-    exchange = "SH" if code.startswith(("5", "6", "9")) else "SZ"
+    if code.startswith(("4", "8", "92")):
+        exchange = "BJ"
+    else:
+        exchange = "SH" if code.startswith(("5", "6", "9")) else "SZ"
     return f"{exchange}{code}"
 
 
@@ -1980,6 +1986,96 @@ def hydrate_macd_industries_for_trade_date(trade_date: str) -> Dict[str, int]:
             ).rowcount
         connection.commit()
     return {"resolved": len(industries), "members": len(member_updates), "alerts": alerts}
+
+
+def hydrate_macd_concepts_for_trade_date(trade_date: str) -> Dict[str, int]:
+    """Fill missing Eastmoney concept lists for the current MACD pool only.
+
+    Concept lists are durable SQLite data.  Existing non-empty rows are never
+    requested again; failed or empty requests are throttled so opening or
+    refreshing the MACD page cannot create a burst of third-party calls.
+    """
+    with open_backtest_db() as connection:
+        member_codes = [str(row[0]) for row in connection.execute(
+            "SELECT code FROM macd_screener_members WHERE trade_date=?", (trade_date,)
+        ).fetchall()]
+        alert_codes = [str(row[0]) for row in connection.execute(
+            "SELECT DISTINCT code FROM market_alert_history "
+            "WHERE trade_date=? AND alert_type='macdScreenerEnter'", (trade_date,)
+        ).fetchall()]
+        codes = sorted(set(member_codes) | set(alert_codes))
+        cached_rows = {
+            str(row[0]): str(row[1] or "")
+            for row in connection.execute(
+                "SELECT code,concepts_json FROM stock_concept_cache "
+                f"WHERE code IN ({','.join('?' for _ in codes)})", codes
+            ).fetchall()
+        } if codes else {}
+
+    def has_valid_concepts(raw: str) -> bool:
+        try:
+            items = json.loads(raw or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return any(
+            isinstance(item, dict)
+            and str(item.get("name") or "").strip()
+            and re.fullmatch(r"BK\d+", str(item.get("code") or "").strip().upper())
+            for item in items
+        ) if isinstance(items, list) else False
+
+    now = time.monotonic()
+    with _cache_lock:
+        pending = [
+            code for code in codes
+            if not has_valid_concepts(cached_rows.get(code, ""))
+            and (
+                code not in _concept_hydration_attempts
+                or now - _concept_hydration_attempts[code] >= CONCEPT_HYDRATION_RETRY_SECONDS
+            )
+        ]
+        for code in pending:
+            _concept_hydration_attempts[code] = now
+
+    if not pending:
+        return {"requested": 0, "resolved": 0}
+
+    def fetch_one(code: str) -> Tuple[str, List[Dict[str, Any]]]:
+        try:
+            return code, fetch_stock_concepts(code)
+        except (MarketDataError, OSError, urllib.error.URLError, TimeoutError, ValueError, TypeError):
+            return code, []
+
+    resolved: Dict[str, List[Dict[str, Any]]] = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(pending))) as executor:
+        for code, concepts in executor.map(fetch_one, pending):
+            valid = [
+                item for item in concepts
+                if isinstance(item, dict)
+                and str(item.get("name") or "").strip()
+                and re.fullmatch(r"BK\d+", str(item.get("code") or "").strip().upper())
+            ]
+            if valid:
+                resolved[code] = valid
+
+    if resolved:
+        fetched_at = time.time()
+        with open_backtest_db() as connection:
+            connection.executemany(
+                "INSERT OR REPLACE INTO stock_concept_cache "
+                "(code,concepts_json,fetched_at,source) VALUES (?,?,?,?)",
+                [
+                    (code, json.dumps(concepts, ensure_ascii=False), fetched_at, "东方财富 HSF10 所属板块优先")
+                    for code, concepts in resolved.items()
+                ],
+            )
+            connection.commit()
+        for code, concepts in resolved.items():
+            sync_stock_sector_snapshot(code, concepts)
+            with _cache_lock:
+                _concept_cache[code] = {"created_at": time.monotonic(), "payload": concepts}
+
+    return {"requested": len(pending), "resolved": len(resolved)}
 
 
 def get_retired_security_codes() -> Set[str]:
@@ -4201,6 +4297,10 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
             hydrate_macd_industries_for_trade_date(trade_date)
         except (MarketDataError, OSError, ValueError, sqlite3.Error):
             pass
+        try:
+            hydrate_macd_concepts_for_trade_date(trade_date)
+        except (MarketDataError, OSError, ValueError, sqlite3.Error, TypeError):
+            pass
     with open_backtest_db() as connection:
         rows = connection.execute(
             "SELECT stock_json,rule,scanned_at FROM macd_screener_members WHERE trade_date=? ORDER BY code", (trade_date,)
@@ -4241,7 +4341,7 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
         "tradeDate": trade_date or None,
         "updatedAt": scanned_at or None,
         "membershipUpdatedAt": scanned_at or None,
-        "source": "本地 SQLite MACD 动态选股池（全市场日线 MACD）",
+        "source": "本地 SQLite MACD 动态选股池",
     }
     with _cache_lock:
         payload["scanStatus"] = dict(_macd_screener_status)
@@ -4252,12 +4352,24 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
         payload["quoteUpdatedAt"] = datetime.now(CHINA_TZ).isoformat()
         payload["source"] = f'{payload.get("source") or "MACD选股"}；当前菜单报价已批量刷新'
     concept_changes: Dict[str, float] = {}
+    concept_changes_by_name: Dict[str, float] = {}
+    sector_changes_by_name: Dict[str, float] = {}
     try:
+        ranked_concepts = fetch_concept_rank_data().get("concepts") or []
         concept_changes = {
             str(item.get("code") or "").upper(): float(item["changePct"])
-            for item in fetch_concept_rank_data().get("concepts") or []
+            for item in ranked_concepts
             if item.get("code") and number(item.get("changePct")) is not None
         }
+        concept_changes_by_name = {
+            normalize_concept_name(str(item.get("name") or "")): float(item["changePct"])
+            for item in ranked_concepts
+            if str(item.get("name") or "").strip() and number(item.get("changePct")) is not None
+        }
+    except (MarketDataError, OSError, TypeError, ValueError):
+        pass
+    try:
+        sector_changes_by_name = fetch_sector_change_map()
     except (MarketDataError, OSError, TypeError, ValueError):
         pass
     for stock in payload.get("stocks") or []:
@@ -4265,7 +4377,12 @@ def get_macd_screener_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
         stock["industry"] = selected_concept
         stock["sector"] = selected_concept
         board_code = concept_board_code_for_stock(stock.get("code"), selected_concept)
+        selected_name = normalize_concept_name(selected_concept)
         stock["sectorChangePct"] = concept_changes.get(board_code) if board_code else None
+        if stock["sectorChangePct"] is None and selected_name:
+            stock["sectorChangePct"] = concept_changes_by_name.get(selected_name)
+        if stock["sectorChangePct"] is None and selected_name:
+            stock["sectorChangePct"] = sector_changes_by_name.get(selected_name)
     return payload
 
 
@@ -8543,6 +8660,11 @@ def _load_persisted_concept_rank() -> Optional[Dict[str, Any]]:
         payload = json.loads(row[0] or "{}")
         if not isinstance(payload.get("concepts"), list) or not payload["concepts"]:
             return None
+        payload["concepts"] = payload["concepts"][:CONCEPT_RANK_LIMIT]
+        payload["count"] = len(payload["concepts"])
+        for rank, item in enumerate(payload["concepts"], 1):
+            if isinstance(item, dict):
+                item["rank"] = rank
         payload["source"] = "本地完整概念排行快照（东方财富实时集群暂不可用）"
         payload["updatedAt"] = str(payload.get("updatedAt") or row[1] or "")
         return payload
@@ -8575,7 +8697,7 @@ def _fetch_concept_rank_data_inner(force_refresh: bool = False) -> Dict[str, Any
         if cached_payload and not force_refresh and now_monotonic - cached_at < CONCEPT_RANK_CACHE_TTL_SECONDS:
             return cached_payload
     params = {
-        "pn": 1, "pz": 2000, "po": 1, "np": 1,
+        "pn": 1, "pz": CONCEPT_RANK_LIMIT, "po": 1, "np": 1,
         "ut": "bd1d9ddb04089700cf9c27f6f7426281", "fltt": 2, "invt": 2,
         "fid": "f3", "fs": "m:90+t:3+f:!50",
         "fields": "f12,f14,f2,f3,f4,f6,f62,f104,f105,f106,f107,f108,f128,f140,f141",
@@ -8634,7 +8756,7 @@ def _fetch_concept_rank_data_inner(force_refresh: bool = False) -> Dict[str, Any
                         "leaderChangePct": None,
                         "rank": rank,
                     }
-                    for rank, row in enumerate(cached_rows, 1)
+                    for rank, row in enumerate(cached_rows[:CONCEPT_RANK_LIMIT], 1)
                 ]
                 fallback_payload = {
                     "updatedAt": f"{latest[0]}T{latest[1]}:00+08:00",
@@ -8694,6 +8816,7 @@ def _fetch_concept_rank_data_inner(force_refresh: bool = False) -> Dict[str, Any
             if leader_names[code]["changePct"] is not None:
                 item["leaderChangePct"] = leader_names[code]["changePct"]
     rows.sort(key=lambda item: item.get("changePct") if item.get("changePct") is not None else -999, reverse=True)
+    rows = rows[:CONCEPT_RANK_LIMIT]
     for index, item in enumerate(rows, 1):
         item["rank"] = index
     result = {
