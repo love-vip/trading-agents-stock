@@ -5303,9 +5303,6 @@ def start_macd_alert_scan(force: bool = False) -> None:
 
 def restore_top_alert_events(trade_date: str) -> None:
     """Rehydrate top-alert memory from today's durable history after a restart."""
-    with _cache_lock:
-        if any(event.get("tradeDate") == trade_date for event in _macd_alert_events):
-            return
     try:
         with open_backtest_db() as connection:
             rows = connection.execute(
@@ -5334,9 +5331,20 @@ def restore_top_alert_events(trade_date: str) -> None:
     if not restored:
         return
     with _cache_lock:
-        if not any(event.get("tradeDate") == trade_date for event in _macd_alert_events):
-            _macd_alert_events.extend(restored)
-            del _macd_alert_events[:-360]
+        # 服务重启后，扫描线程可能已经先写入了当天最新几条记录；不能因为
+        # 内存中“已有当天记录”就跳过恢复，否则告警框的次数会从 1 重新编号。
+        # 按事件 id 合并数据库中的完整当天历史，保留内存中新写入的记录。
+        existing_ids = {
+            str(event.get("id") or "")
+            for event in _macd_alert_events
+            if event.get("tradeDate") == trade_date
+        }
+        _macd_alert_events.extend(
+            event for event in restored
+            if str(event.get("id") or "") not in existing_ids
+        )
+        _macd_alert_events.sort(key=lambda event: (str(event.get("tradeDate") or ""), str(event.get("time") or ""), str(event.get("id") or "")))
+        del _macd_alert_events[:-360]
 
 
 def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
@@ -5401,27 +5409,50 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
     # 同一股票、同一轮扫描（同一告警秒）算一次。必须从当天完整持久化历史
     # 编号，不能依赖只保留最近 360 条的内存窗口。
     occurrence_by_key: Dict[Tuple[str, str], int] = {}
+    confirmed_by_key: Dict[Tuple[str, str], bool] = {}
     try:
         with open_backtest_db() as connection:
             occurrence_rows = connection.execute(
-                "SELECT code,alert_time FROM market_alert_history "
+                "SELECT code,alert_time,change_pct,signal FROM market_alert_history "
                 "WHERE trade_date=? AND alert_type='macdScreenerEnter' "
-                "GROUP BY code,alert_time ORDER BY code ASC,alert_time ASC",
+                "ORDER BY code ASC,alert_time ASC,id ASC",
                 (trade_date,),
             ).fetchall()
         full_counts: Dict[str, int] = {}
-        for code_value, alert_time_value in occurrence_rows:
+        first_changes: Dict[str, Optional[float]] = {}
+        seen_rounds: Set[Tuple[str, str]] = set()
+        for code_value, alert_time_value, change_value, signal_value in occurrence_rows:
             code_value = str(code_value or "")
+            alert_time_value = str(alert_time_value or "")
+            if is_disabled_generic_macd_alert_signal(signal_value):
+                continue
+            round_key = (code_value, alert_time_value)
+            if round_key in seen_rounds:
+                continue
+            seen_rounds.add(round_key)
             full_counts[code_value] = full_counts.get(code_value, 0) + 1
-            occurrence_by_key[(code_value, str(alert_time_value or ""))] = full_counts[code_value]
+            current_change = number(change_value)
+            if full_counts[code_value] == 1:
+                first_changes[code_value] = current_change
+            first_change = first_changes.get(code_value)
+            occurrence_by_key[round_key] = full_counts[code_value]
+            confirmed_by_key[round_key] = (
+                full_counts[code_value] >= 3
+                and first_change is not None
+                and current_change is not None
+                and current_change > first_change
+            )
     except sqlite3.Error:
         occurrence_by_key = {}
+        confirmed_by_key = {}
     fallback_counts: Dict[str, int] = {}
     for item in visible:
         code = str(item.get("code") or "")
         alert_time = str(item.get("time") or "")
         fallback_counts[code] = fallback_counts.get(code, 0) + 1
-        item["alertCount"] = occurrence_by_key.get((code, alert_time), fallback_counts[code])
+        round_key = (code, alert_time)
+        item["alertCount"] = occurrence_by_key.get(round_key, fallback_counts[code])
+        item["alertConfirmed"] = confirmed_by_key.get(round_key, False)
     return {"tradeDate": trade_date, "alerts": visible, "running": status.get("running", False), "updatedAt": datetime.now(CHINA_TZ).isoformat()}
 
 

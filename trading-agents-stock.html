@@ -2803,9 +2803,12 @@
     #whitelistView.macd-screener-sticky .whitelist-toolbar {
       position:relative;
       z-index:4;
-      margin:0 -1px 10px;
+      margin:0 -1px 5px;
       padding:6px 1px 8px;
       background:var(--panel-strong);
+    }
+    body.has-fixed-alerts #whitelistView.macd-screener-sticky .whitelist-toolbar {
+      margin-bottom:5px;
     }
     #whitelistView.macd-screener-sticky .whitelist-table-wrap {
       height:var(--macd-screener-table-height, calc(100vh - 350px));
@@ -8873,8 +8876,13 @@
         alertHistory.forEach(item => {
           const meta = itemMeta.get(item);
           if (!meta) return;
-          item.alertCount = meta.count;
-          if (preview || meta.confirmed) visibleItems.push(item);
+          // 服务端会按当天完整历史计算次数和确认状态；前端本地 meta
+          // 只作为旧记录/空头复盘数据的兜底，不能用当前分页结果覆盖完整次数。
+          const serverCount = Number(item.alertCount);
+          const alertCount = Number.isFinite(serverCount) && serverCount > 0 ? serverCount : meta.count;
+          const alertConfirmed = typeof item.alertConfirmed === "boolean" ? item.alertConfirmed : meta.confirmed;
+          item.alertCount = alertCount;
+          if (preview || alertConfirmed) visibleItems.push(item);
         });
         // 每个顶部框最多呈现最新五行；完整历史仍可从“告警池”查看。
         const boardHistoryItems = alertHistory.filter(p => macdAlertBoardOf(p.code) === board).slice(-5);
@@ -8985,7 +8993,10 @@
         }
         const unseen = alerts.filter(item => item.id && !state.macdAlertKeys.has(item.id));
         alerts.forEach(item => { if (item.id) state.macdAlertKeys.add(item.id); });
-        state.macdAlertHistory = alerts.filter(item => item.id && !state.macdAlertBaselineKeys.has(item.id));
+        // 告警框和次数计算必须始终基于当天完整历史；baseline 只用于
+        // 判断本轮新增记录，不能把旧记录从展示历史中删掉，否则每次刷新
+        // 都会让同一股票的告警次数重新从 1 开始计算。
+        state.macdAlertHistory = alerts;
         if (unseen.length && state.macdAlertReady) {
           state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, star:false, bse:false};
           playScoreAlertSound();
@@ -10392,7 +10403,13 @@
     // 侧栏的 MACD 选股数量独立从本地结果池读取，无需用户先打开菜单。
     loadMacdScreenerCount();
     // 默认主页直接进入 MACD 动态选股池。
-    openMacdScreener();
+    // 首轮加载也纳入列表刷新锁，避免页面启动后的 1 秒刷新检查再次并发
+    // 调用 openMacdScreener，后返回的空状态会覆盖正在加载的个股列表。
+    listRefreshInFlight = true;
+    Promise.resolve(openMacdScreener()).finally(() => {
+      listRefreshInFlight = false;
+      listRefreshNextAt = Date.now() + 30_000;
+    });
   </script>
 </body>
 </html>
