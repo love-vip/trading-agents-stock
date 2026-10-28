@@ -198,6 +198,24 @@ class MacdBearService:
                              board=a.alert_board_for_code(code),pool='MACD空头',price=stock['price'],changePct=change,
                              industry=stock.get('industry','--'),signal=signal,signals=[],tone='red',
                              alertType='macdScreenerEnter',config='macd-bear:'+rule)
+                existing_events = []
+                for event_id, raw_event in db.execute(
+                    'SELECT id,event_json FROM macd_bear_alert_history WHERE trade_date=? AND code=? ORDER BY id',
+                    (day, code),
+                ):
+                    try:
+                        previous_event = json.loads(raw_event or '{}')
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        continue
+                    previous_event['id'] = str(event_id)
+                    previous_event['pool'] = 'MACD空头'
+                    existing_events.append(previous_event)
+                confirmation_round = (
+                    'MACD空头', str(code), str(event.get('time') or '')
+                )
+                confirmation = a.macd_confirmation_metadata(existing_events + [event]).get(confirmation_round, {})
+                event['alertCount'] = int(confirmation.get('count') or 1)
+                event['alertConfirmed'] = bool(confirmation.get('confirmed'))
                 db.execute('INSERT INTO macd_bear_alert_history(trade_date,code,signal,event_json) VALUES (?,?,?,?)',(day,code,signal,json.dumps(event,ensure_ascii=False)))
 
     def mirror_pending_m_alerts(self, day):
@@ -215,12 +233,32 @@ class MacdBearService:
                 'WHERE trade_date=? AND signal=? AND global_mirrored=0 ORDER BY id',
                 (day, signal),
             ))
+            all_events = []
+            for event_id, raw_event in db.execute(
+                'SELECT id,event_json FROM macd_bear_alert_history WHERE trade_date=? ORDER BY id',
+                (day,),
+            ):
+                try:
+                    event = json.loads(raw_event or '{}')
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                event['id'] = str(event_id)
+                event['pool'] = 'MACD空头'
+                all_events.append(event)
+        confirmation_by_round = a.macd_confirmation_metadata(all_events)
         for event_id, raw in pending:
             event = json.loads(raw)
+            round_key = ('MACD空头', str(event.get('code') or ''), str(event.get('time') or ''))
+            confirmation = confirmation_by_round.get(round_key, {})
+            event['alertCount'] = int(confirmation.get('count') or 1)
+            event['alertConfirmed'] = bool(confirmation.get('confirmed'))
             # The shared history endpoint and in-memory alert queue expect a
             # durable event id; make it distinct from normal-pool records.
             event['id'] = 'macd-bear-%s' % event_id
-            a.record_market_alert(event)
+            # 只有正式确认记录进入共享顶部告警框；未确认记录仍保留在
+            # MACD空头自己的历史表中，供打开眼睛后复盘。
+            if event['alertConfirmed']:
+                a.record_market_alert(event)
             with self.connect() as db:
                 db.execute('UPDATE macd_bear_alert_history SET global_mirrored=1 WHERE id=?', (event_id,))
 
@@ -303,6 +341,38 @@ class MacdBearService:
                 previous_day_amounts = {}
         for event in events:
             event['previousDayAmount'] = previous_day_amounts.get(str(event.get('code') or ''))
+        # 先用当天完整历史为每条记录补齐次数和确认状态；分页只影响
+        # 返回行数，不能影响“第几次告警”的计算。第 3 次以后首次达到
+        # 3%时锁定基准，后续只有不低于该基准的记录才是正式告警。
+        for event in events:
+            event['pool'] = 'MACD空头'
+        confirmation_by_round = a.macd_confirmation_metadata(events)
+        occurrence_by_round = {}
+        confirmed_rounds = set()
+        confirmed_by_round = {}
+        for event in events:
+            round_key = (
+                'MACD空头', str(event.get('code') or ''), str(event.get('time') or '')
+            )
+            metadata = confirmation_by_round.get(round_key, {})
+            occurrence_by_round[round_key] = int(metadata.get('count') or 1)
+            confirmed_by_round[round_key] = bool(metadata.get('confirmed'))
+            if confirmed_by_round[round_key]:
+                confirmed_rounds.add(round_key)
+        for event in events:
+            round_key = (
+                'MACD空头', str(event.get('code') or ''), str(event.get('time') or '')
+            )
+            event['alertCount'] = occurrence_by_round.get(round_key, 1)
+            event['alertConfirmed'] = bool(confirmed_by_round.get(round_key, False))
+        if get('confirmedOnly') == '1':
+            # 眼睛关闭时按股票筛选：曾经有一条正式告警的股票，其当天全部
+            # 历史记录都保留；不能只保留满足确认条件的那一条记录。
+            confirmed_codes = {code for _pool, code, _alert_time in confirmed_rounds}
+            events = [
+                event for event in events
+                if str(event.get('code') or '') in confirmed_codes
+            ]
         needle=get('q').lower().strip(); codes=set(filter(None,get('codes').split(','))); market=get('market','all')
         filtered=[]
         for e in events:

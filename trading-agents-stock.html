@@ -2878,6 +2878,11 @@
     .market-distribution-panel .market-distribution-summary b { margin-left:3px; color:var(--text); font-size:13px; font-variant-numeric:tabular-nums; }
     .market-distribution-panel .market-distribution-summary .up b { color:var(--red); }
     .market-distribution-panel .market-distribution-summary .down b { color:var(--green); }
+    /* ETF/科技固定池只展示成分股与行情；不复用 MACD 页面筛选、告警池和分布模块。 */
+    #whitelistView.fixed-basket-view .whitelist-toolbar,
+    #whitelistView.fixed-basket-view .macd-screener-tabs,
+    #whitelistView.fixed-basket-view .macd-alert-concept-distribution,
+    #whitelistView.fixed-basket-view .market-distribution-panel { display:none !important; }
     .macd-m-concept-panel { float:none; width:auto; min-width:0; margin:0; padding:13px 15px 11px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); box-sizing:border-box; }
     .macd-m-concept-panel-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:9px; }
     .macd-m-concept-panel-head strong { color:var(--text); font-size:15px; }
@@ -2926,7 +2931,8 @@
     .whitelist-name { display:flex; align-items:center; gap:7px; font-weight:700; }
     .whitelist-name.high-price-name { color:#D34947; }
     .whitelist-name.mid-price-name { color:#F486A4; }
-    #whitelistTableWrap.macd-screener-view .whitelist-name.macd-alert-replay-name { color:#166534 !important; }
+    #whitelistTableWrap.macd-screener-view .whitelist-name.macd-alert-replay-name,
+    #whitelistTableWrap.macd-screener-view .whitelist-name.macd-alert-unconfirmed-name { color:#166534 !important; }
     .whitelist-etf-badge { display:inline-block; padding:0 4px; margin-left:2px; border:1px solid #ef4444; border-radius:4px; color:#ef4444; background:transparent; font-size:9px; font-style:normal; font-weight:800; line-height:12px; vertical-align:0; white-space:nowrap; box-sizing:border-box; }
     .whitelist-etf-badge.yellow-etf-badge { border-color:#F1C500; color:#6b5600; background:transparent; }
     .whitelist-etf-badge.material-etf-badge { border-color:#0ea5e9; color:#0369a1; background:transparent; }
@@ -3131,6 +3137,17 @@
     #blacklistTableWrap .whitelist-table th:nth-child(10),#blacklistTableWrap .whitelist-table td:nth-child(10) { width:8%; }
     #blacklistTableWrap .whitelist-table th:nth-child(11),#blacklistTableWrap .whitelist-table td:nth-child(11) { width:13%; }
     #blacklistTableWrap .whitelist-table th:nth-child(12),#blacklistTableWrap .whitelist-table td:nth-child(12) { width:11.2%; white-space:normal; }
+    /* ETF/科技固定池：均线分布、量价不展示；第 5 列改为昨日成交额。 */
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table th:nth-child(5),
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table td:nth-child(5) { width:110px; min-width:110px; max-width:110px; }
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table th:nth-child(6),
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table td:nth-child(6) { display:none; }
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table th:nth-child(12),
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table td:nth-child(12) { width:15.84%; }
+    /* 固定池已将“净流入”列替换为第 12 列“概念”；第 14 列旧的
+       “关联概念”不再重复展示，避免 ETF/科技菜单出现错位或重复概念。 */
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table th:nth-child(14),
+    #whitelistView.fixed-basket-view #whitelistTableWrap .whitelist-table td:nth-child(14) { display:none; }
     @keyframes star-float { to { transform:translate3d(var(--dx),var(--dy),0) scale(var(--scale)); } }
     @keyframes star-pulse { 50% { box-shadow:0 0 18px rgba(70,177,255,.65), inset 0 0 16px rgba(70,135,255,.2); } }
     @keyframes blacklist-sphere-spin { 0% { transform:rotateY(-8deg) rotateZ(-1deg); } 50% { transform:rotateY(8deg) rotateZ(1deg); } 100% { transform:rotateY(-8deg) rotateZ(-1deg); } }
@@ -3486,11 +3503,11 @@
       </header>
       <div class="market-alert-history-controls">
         <input id="marketAlertHistorySearch" type="search" placeholder="搜索名称、代码或首字母" aria-label="搜索告警股票，支持首字母">
-        <button class="market-alert-history-icon" id="marketAlertHistoryDrawdownToggle" type="button" aria-pressed="false" aria-label="显示最新涨跌幅低于 -1% 的记录" title="显示最新涨跌幅低于 -1% 的记录"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button>
+        <button class="market-alert-history-icon" id="marketAlertHistoryDrawdownToggle" type="button" aria-pressed="false" aria-label="当前仅显示曾进入告警框的个股及其全部记录；点击显示所有个股记录" title="当前仅显示曾进入告警框的个股及其全部记录；点击显示所有个股记录"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.8"/></svg></button>
         <button class="market-alert-history-icon market-alert-history-fold" id="marketAlertHistoryDedupe" type="button" aria-pressed="true" aria-label="展开同一股票的重复告警" title="展开同一股票的重复告警"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M9 9l3 3 3-3M9 15l3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <select id="marketAlertHistoryMarket" aria-label="筛选告警市场"><option value="all">全部市场</option><option value="main">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="bse">北交所</option></select>
         <select id="marketAlertHistoryDirection" aria-label="筛选告警方向"><option value="">全部方向</option></select>
-        <select id="marketAlertHistorySignal" aria-label="筛选 MACD 指标"><option value="快线连红 ≥2 日 + 慢线翻红" selected>快线连红 ≥2 日 + 慢线翻红</option></select>
+        <select id="marketAlertHistorySignal" aria-label="筛选 MACD 指标"><option value="" selected>全部 MACD 指标</option></select>
       </div>
       <div class="alert-pool-body market-alert-history-body" id="marketAlertHistoryBody"><div class="alert-pool-empty">正在读取当日告警…</div></div>
     </section>
@@ -3803,11 +3820,16 @@
       minutePredictionSortKey: null,
       minutePredictionSortDir: "desc",
       priceAlertHistory: [],
+      fixedThresholdAlertHistory: [],
+      fixedPoolStocks: [],
+      macdFixedPoolConfirmedCodes: new Set(),
       macdAlertHistory: [],
       macdBearAlertHistory: [],
       macdAlertPanelStocks: { normal: [], bear: [] },
       macdConfirmedAlertCodes: new Set(),
       macdBearAlertFetchAt: 0,
+      macdBearAlertKeys: new Set(),
+      macdBearAlertReady: false,
       macdAlertFetchAt: 0,
       macdAlertKeys: new Set(),
       macdAlertBaselineKeys: new Set(),
@@ -3816,7 +3838,10 @@
       previewAlertPanelDismissedSnapshot: null,
       marketAlertHistory: { page: 0, total: 0, loading: false, hasMore: true },
       marketAlertHistoryDedupe: true,
-      marketAlertHistoryShowDrawdowns: false,
+      // 当日告警池眼睛：关闭=仅显示曾进入告警框的个股，但展示这些个股的全部记录；
+      // 打开=显示所有有记录的个股及其全部记录。
+      marketAlertHistoryShowAll: false,
+      marketAlertHistoryReloadPending: false,
       marketAlertHistorySortKey: "",
       marketAlertHistorySortDir: "desc",
       previewingPriceAlerts: false,
@@ -4835,7 +4860,10 @@
       const activeUniqueStocks = uniqueStocks(activeStocks);
       const replayStocks = uniqueStocks(state.macdAlertReplayStocks);
       if (!state.macdShowAlertReplay) {
-        const confirmedCodes = state.macdConfirmedAlertCodes || new Set();
+        const confirmedCodes = new Set([
+          ...(state.macdConfirmedAlertCodes || []),
+          ...(state.macdFixedPoolConfirmedCodes || []),
+        ]);
         const confirmedCurrent = activeUniqueStocks.filter(stock => confirmedCodes.has(String(stock.code || "")));
         const confirmedReplay = replayStocks
           .filter(stock => confirmedCodes.has(String(stock.code || "")) && !activeUniqueStocks.some(current => String(current.code || "") === String(stock.code || "")))
@@ -4867,7 +4895,7 @@
     function buildMacdAlertConfirmationMeta(alerts) {
       const itemMeta = new Map();
       const counts = new Map();
-      const firstChanges = new Map();
+      const baselines = new Map();
       const seenRounds = new Set();
       const ordered = (alerts || []).map((item, index) => ({item, index})).sort((a, b) => {
         const timeDiff = macdAlertTime(a.item).localeCompare(macdAlertTime(b.item));
@@ -4883,15 +4911,18 @@
         if (!seenRounds.has(roundKey)) {
           count += 1;
           counts.set(stockKey, count);
-          if (count === 1) firstChanges.set(stockKey, Number(item.changePct));
           seenRounds.add(roundKey);
         }
-        const firstChange = firstChanges.get(stockKey);
         const currentChange = Number(item.changePct);
+        let baseline = baselines.get(stockKey);
+        if (baseline == null && count >= 3 && Number.isFinite(currentChange) && currentChange >= 3) {
+          baseline = currentChange;
+          baselines.set(stockKey, baseline);
+        }
         itemMeta.set(item, {
           count,
-          firstChangePct: firstChange,
-          confirmed: count >= 3 && Number.isFinite(firstChange) && Number.isFinite(currentChange) && currentChange > firstChange,
+          baselinePct: baseline,
+          confirmed: baseline != null && Number.isFinite(currentChange) && currentChange >= baseline,
         });
       });
       const confirmedCodes = new Set();
@@ -4920,11 +4951,26 @@
           pages = Number(payload.pages) || 1;
           page += 1;
         } while (page <= pages && page <= 100);
-        const {confirmedCodes} = buildMacdAlertConfirmationMeta(rows);
-        state.macdConfirmedAlertCodes = confirmedCodes;
+        // 普通 Tab 只统计 MACD选股自己的记录；共享历史接口还会返回
+        // MACD空头和固定观察池记录，不能混入同一股票的确认次数。
+        const scopedRows = state.macdMode === "bear"
+          ? rows.map(item => ({...item, alertSource: "bear"}))
+          : [
+              ...rows
+                .filter(item => item.alertType === "macdScreenerEnter" && item.pool === "MACD选股")
+                .map(item => ({...item, alertSource: "normal"})),
+              ...rows
+                .filter(item => item.alertType === "fixedThresholdEnter")
+                .map(item => ({...item, alertSource: "fixed-threshold"})),
+            ];
+        const {confirmedCodes} = buildMacdAlertConfirmationMeta(scopedRows);
+        state.macdConfirmedAlertCodes = new Set([
+          ...confirmedCodes,
+          ...(state.macdFixedPoolConfirmedCodes || []),
+        ]);
         // 复盘缓存保留全部历史告警记录；默认视图只按 confirmedCodes 展示
         // 已实际进入告警框的个股，高亮视图则展示当前池、全部告警记录和回落记录的并集。
-        state.macdAlertReplayStocks = rows.map(item => {
+        state.macdAlertReplayStocks = scopedRows.map(item => {
           const alertSignals = Array.isArray(item.signals) ? item.signals.map(signal => String(signal?.text || "")).filter(Boolean) : [];
           const ruleLabels = [...new Set([String(item.signal || ""), ...alertSignals].filter(Boolean))];
           const rules = ruleLabels.map(label => MACD_ALERT_RULE_KEYS.get(label)).filter(Boolean);
@@ -4945,6 +4991,8 @@
             macdSelectionRules: rules,
             macdAlertSignal: ruleLabels.join(" / "),
             macdAlertTime: item.time || "",
+            fixedPool: item.alertType === "fixedThresholdEnter",
+            fixedAlertConfirmed: item.alertType === "fixedThresholdEnter" ? true : undefined,
           };
         }).filter(stock => /^\d{6}$/.test(stock.code));
         state.macdAlertReplayTradeDate = tradeDate;
@@ -5187,10 +5235,13 @@
       const isMacdScreener = state.pageView === "macd-screener";
       const isCoreProductEtf = isSemiconductorEtf || isChipEtf || isAiEtf;
       const isCoreProductView = isCoreProductEtf || isTechBasket;
+      const isFixedBasketView = state.pageView === "etf-basket" || state.pageView === "tech-basket";
       el.whitelistView.classList.toggle("macd-screener-sticky", isMacdScreener);
+      el.whitelistView.classList.toggle("fixed-basket-view", isFixedBasketView);
       el.whitelistTableWrap.classList.toggle("semiconductor-core-product-view", isCoreProductView);
       el.whitelistTableWrap.classList.toggle("etf-three-menu-view", isCoreProductEtf);
       el.whitelistTableWrap.classList.toggle("macd-screener-view", isMacdScreener);
+      if (el.macdScreenerTabs) el.macdScreenerTabs.hidden = !isMacdScreener;
       const categoryOptions = isSemiconductorEtf
         ? [["all", "全部分类"], ["设备", "设备"], ["材料", "材料"]]
         : isChipEtf
@@ -5212,13 +5263,16 @@
       el.whitelistIndustryFilter.hidden = isCoreProductView || isMacdScreener;
       const classificationHeader = document.querySelector("#whitelistTableWrap .whitelist-table thead th:nth-child(8)");
       if (classificationHeader) classificationHeader.textContent = isCoreProductView ? "核心产品" : (isMacdScreener ? "概念" : "行业");
+      const nonMacdFlowHeader = document.querySelector("#whitelistTableWrap .whitelist-table thead .non-macd-header");
+      if (nonMacdFlowHeader) nonMacdFlowHeader.textContent = isFixedBasketView ? "概念" : "净流入";
       const distributionHeader = document.querySelector("#whitelistTableWrap .whitelist-table thead th:nth-child(5)");
       if (distributionHeader) {
-        if (isMacdScreener) {
-          let amountSortButton = distributionHeader.querySelector("[data-whitelist-sort='macdPreviousDayAmount']");
+        if (isMacdScreener || isFixedBasketView) {
+          const amountSortKey = isMacdScreener ? "macdPreviousDayAmount" : "previousDayAmount";
+          let amountSortButton = distributionHeader.querySelector(`[data-whitelist-sort='${amountSortKey}']`);
           if (!amountSortButton) {
-            distributionHeader.innerHTML = '<button class="whitelist-sort" data-whitelist-sort="macdPreviousDayAmount" data-label="昨日成交额">昨日成交额</button>';
-            amountSortButton = distributionHeader.querySelector("[data-whitelist-sort='macdPreviousDayAmount']");
+            distributionHeader.innerHTML = `<button class="whitelist-sort" data-whitelist-sort="${amountSortKey}" data-label="昨日成交额">昨日成交额</button>`;
+            amountSortButton = distributionHeader.querySelector(`[data-whitelist-sort='${amountSortKey}']`);
             amountSortButton?.addEventListener("click", () => updateWhitelistSort(amountSortButton.dataset.whitelistSort));
           }
         } else {
@@ -5269,12 +5323,16 @@
       document.querySelectorAll("[data-whitelist-sort]").forEach(button => {
         button.textContent = `${button.dataset.label}${button.dataset.whitelistSort === state.whitelistSortKey ? (state.whitelistSortDir === "asc" ? " ↑" : " ↓") : ""}`;
       });
-      el.whitelistBody.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") || code.startsWith("92") ? "北" : ""; const etfCategory = isChipEtf ? STAR_CHIP_PRIMARY_CATEGORIES.get(code) : isAiEtf ? STAR_AI_PRIMARY_CATEGORIES.get(code) : ""; const etfBadgeLabel = (isChipEtf || isAiEtf) ? (etfCategory || "ETF") : (WHITELIST_ETF_LABEL_OVERRIDES.get(code) || "ETF"); const etfBadgeTone = (isChipEtf || isAiEtf) ? " chip-category-badge" : etfBadgeLabel === "材料" ? " material-etf-badge" : etfBadgeLabel === "设备" ? "" : (["688809","688120","688012","688530"].includes(code) ? " yellow-etf-badge" : ""); const etfBadge = (isChipEtf || isAiEtf || WHITELIST_ETF_CODES.has(code) || WHITELIST_ETF_LABEL_OVERRIDES.has(code)) ? `<i class="whitelist-etf-badge${etfBadgeTone}" title="${escapeHtml(etfBadgeLabel)}关联标的">${etfBadgeLabel}</i>` : ""; const volumeTag = String(stock.volumePriceTag || ""); const volumeTone = volumeTag.startsWith("量增") ? "volume-price-up" : volumeTag.startsWith("量缩") ? "volume-price-shrink" : volumeTag.endsWith("价跌") ? "volume-price-down" : "volume-price-flat"; const volumeBadge = volumeTag ? `<i class="volume-price-tag ${volumeTone}" title="基于本地 Tushare 日线同口径成交量计算">${escapeHtml(volumeTag)}</i>` : "--"; const price = Number(stock.price); const nameClass = Number.isFinite(price) && price >= 400 ? "whitelist-name high-price-name" : Number.isFinite(price) && price >= 300 ? "whitelist-name mid-price-name" : "whitelist-name"; const displayNameClass = `${nameClass}${isMacdScreener && state.macdShowAlertReplay && stock.macdAlertReplayOnly && !state.macdConfirmedAlertCodes?.has(code) ? " macd-alert-replay-name" : ""}`; const coreProductCatalog = isChipEtf ? STAR_CHIP_CORE_PRODUCTS : isAiEtf ? STAR_AI_CORE_PRODUCTS : STAR_SEMICONDUCTOR_CORE_PRODUCTS; const coreProduct = isTechBasket ? techCoreProductFor(code) : (coreProductCatalog.get(code) || "--"); const coreProductItems = coreProduct === "--" ? [] : coreProduct.split(/[、+＋及与]/).map(item => item.trim()).filter(Boolean); const coreProductMarkup = coreProductItems.length ? `<span class="whitelist-concepts">${coreProductItems.map(item => `<i class="whitelist-core-product-tag">${escapeHtml(item)}</i>`).join("")}</span>` : "--"; const classificationCell = isCoreProductView ? coreProductMarkup : escapeHtml(stock.industry || "--"); const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const conceptCell = `<span class="whitelist-concept-cell">${conceptMarkup}<button class="whitelist-concept-remove" type="button" data-whitelist-remove-code="${escapeHtml(code)}" data-whitelist-remove-name="${escapeHtml(stock.name || code)}" aria-label="将 ${escapeHtml(stock.name || code)} 移入自定义黑名单" title="移入自定义黑名单">×</button></span>`; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatFloatMarketCap(stock.floatMarketCap)}` : "--"; const alertChangePct = hasNumber(stock.macdAlertChangePct) ? stock.macdAlertChangePct : null; return `<tr data-volume-price-badge="${escapeHtml(volumeBadge)}"><td><span class="${displayNameClass}">${escapeHtml(stock.name || code)}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}${etfBadge}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${classificationCell}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${isMacdScreener ? quoteClass(alertChangePct) : ""}">${isMacdScreener && hasNumber(alertChangePct) ? formatPct(alertChangePct) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td>${isMacdScreener ? "" : `<td>${conceptCell}</td>`}</tr>`; }).join("") : `<tr><td colspan="${isMacdScreener ? 14 : 13}">暂无匹配个股</td></tr>`;
+      el.whitelistBody.innerHTML = rows.length ? rows.map(stock => { const code = String(stock.code || ""); const badge = code.startsWith("300") || code.startsWith("301") ? "创" : code.startsWith("688") || code.startsWith("689") ? "科" : code.startsWith("8") || code.startsWith("4") || code.startsWith("92") ? "北" : ""; const etfCategory = isChipEtf ? STAR_CHIP_PRIMARY_CATEGORIES.get(code) : isAiEtf ? STAR_AI_PRIMARY_CATEGORIES.get(code) : ""; const etfBadgeLabel = (isChipEtf || isAiEtf) ? (etfCategory || "ETF") : (WHITELIST_ETF_LABEL_OVERRIDES.get(code) || "ETF"); const etfBadgeTone = (isChipEtf || isAiEtf) ? " chip-category-badge" : etfBadgeLabel === "材料" ? " material-etf-badge" : etfBadgeLabel === "设备" ? "" : (["688809","688120","688012","688530"].includes(code) ? " yellow-etf-badge" : ""); const etfBadge = (isChipEtf || isAiEtf || WHITELIST_ETF_CODES.has(code) || WHITELIST_ETF_LABEL_OVERRIDES.has(code)) ? `<i class="whitelist-etf-badge${etfBadgeTone}" title="${escapeHtml(etfBadgeLabel)}关联标的">${etfBadgeLabel}</i>` : ""; const volumeTag = String(stock.volumePriceTag || ""); const volumeTone = volumeTag.startsWith("量增") ? "volume-price-up" : volumeTag.startsWith("量缩") ? "volume-price-shrink" : volumeTag.endsWith("价跌") ? "volume-price-down" : "volume-price-flat"; const volumeBadge = volumeTag ? `<i class="volume-price-tag ${volumeTone}" title="基于本地 Tushare 日线同口径成交量计算">${escapeHtml(volumeTag)}</i>` : "--"; const price = Number(stock.price); const nameClass = Number.isFinite(price) && price >= 400 ? "whitelist-name high-price-name" : Number.isFinite(price) && price >= 300 ? "whitelist-name mid-price-name" : "whitelist-name"; const confirmedCodes = new Set([...(state.macdConfirmedAlertCodes || []), ...(state.macdFixedPoolConfirmedCodes || [])]); const macdUnconfirmed = isMacdScreener && state.macdShowAlertReplay && !confirmedCodes.has(code); const displayNameClass = `${nameClass}${macdUnconfirmed ? " macd-alert-unconfirmed-name" : ""}`; const coreProductCatalog = isChipEtf ? STAR_CHIP_CORE_PRODUCTS : isAiEtf ? STAR_AI_CORE_PRODUCTS : STAR_SEMICONDUCTOR_CORE_PRODUCTS; const coreProduct = isTechBasket ? techCoreProductFor(code) : (coreProductCatalog.get(code) || "--"); const coreProductItems = coreProduct === "--" ? [] : coreProduct.split(/[、+＋及与]/).map(item => item.trim()).filter(Boolean); const coreProductMarkup = coreProductItems.length ? `<span class="whitelist-concepts">${coreProductItems.map(item => `<i class="whitelist-core-product-tag">${escapeHtml(item)}</i>`).join("")}</span>` : "--"; const classificationCell = isCoreProductView ? coreProductMarkup : escapeHtml(stock.industry || "--"); const concepts = Array.isArray(stock.relatedConcepts) ? stock.relatedConcepts : (stock.relatedConcept ? [stock.relatedConcept] : []); const conceptMarkup = concepts.length ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>` : "--"; const conceptCell = `<span class="whitelist-concept-cell">${conceptMarkup}<button class="whitelist-concept-remove" type="button" data-whitelist-remove-code="${escapeHtml(code)}" data-whitelist-remove-name="${escapeHtml(stock.name || code)}" aria-label="将 ${escapeHtml(stock.name || code)} 移入自定义黑名单" title="移入自定义黑名单">×</button></span>`; const marketValue = hasNumber(stock.marketCap) && hasNumber(stock.floatMarketCap) ? `${formatAmount(stock.marketCap)} / ${formatFloatMarketCap(stock.floatMarketCap)}` : "--"; const alertChangePct = hasNumber(stock.macdAlertChangePct) ? stock.macdAlertChangePct : null; return `<tr data-volume-price-badge="${escapeHtml(volumeBadge)}"><td><span class="${displayNameClass}">${escapeHtml(stock.name || code)}</span><span class="whitelist-code">${badge ? `<i class="market-badge">${badge}</i> ` : ""}${escapeHtml(code)}${etfBadge}</span></td><td><span class="whitelist-mini" data-whitelist-intraday="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-kline="${escapeHtml(code)}">加载</span></td><td><span class="whitelist-mini" data-whitelist-macd="${escapeHtml(code)}">加载</span></td><td>${classificationCell}</td><td>${hasNumber(stock.price) ? Number(stock.price).toFixed(2) : "--"}</td><td class="${isMacdScreener ? quoteClass(alertChangePct) : ""}">${isMacdScreener && hasNumber(alertChangePct) ? formatPct(alertChangePct) : "--"}</td><td class="${quoteClass(stock.changePct)}">${hasNumber(stock.changePct) ? formatPct(stock.changePct) : "--"}</td><td class="${quoteClass(stock.netInflow)}">${hasNumber(stock.netInflow) ? formatAmount(stock.netInflow) : "--"}</td><td>${marketValue}</td>${isMacdScreener ? "" : `<td>${conceptCell}</td>`}</tr>`; }).join("") : `<tr><td colspan="${isMacdScreener ? 14 : 13}">暂无匹配个股</td></tr>`;
       const stockByCode = new Map(rows.map(stock => [String(stock.code || ""), stock]));
       el.whitelistBody.querySelectorAll("tr").forEach(row => {
         const nameCell = row.cells[0];
         const code = nameCell?.querySelector(".whitelist-code")?.textContent?.replace(/[^0-9]/g, "");
         const rowStock = stockByCode.get(code || "");
+        // 初次加载或筛选无结果时，tbody 会保留一行“暂无匹配个股”占位行。
+        // 占位行没有完整的个股单元格，不能继续执行成交额/趋势/概念列回填，
+        // 否则固定 ETF/科技菜单会在这里抛异常，后续批量行情请求也会被中断。
+        if (!rowStock || !/^\d{6}$/.test(code || "")) return;
         if (isMacdScreener && /^\d{6}$/.test(code || "")) {
           const codeLine = nameCell.querySelector(".whitelist-code");
           const marketBadge = codeLine?.querySelector(".market-badge");
@@ -5296,6 +5354,14 @@
           distributionCell.textContent = hasNumber(previousDayAmount)
             ? formatPreviousDayAmount(previousDayAmount)
             : "--";
+        } else if (isFixedBasketView) {
+          distributionCell.className = "fixed-previous-day-amount";
+          const previousDayAmount = rowStock && hasNumber(rowStock.previousDayAmount)
+            ? rowStock.previousDayAmount
+            : rowStock && hasNumber(rowStock.macdPreviousDayAmount) ? rowStock.macdPreviousDayAmount : null;
+          distributionCell.textContent = hasNumber(previousDayAmount)
+            ? formatPreviousDayAmount(previousDayAmount)
+            : "--";
         } else {
           distributionCell.innerHTML = `<span class="whitelist-mini" data-whitelist-ma="${escapeHtml(code || "")}">--</span>`;
         }
@@ -5303,9 +5369,19 @@
         trendCell.innerHTML = `<span class="whitelist-trend" data-whitelist-trend="${escapeHtml(code || "")}">--</span>`;
         row.insertBefore(distributionCell, row.cells[4]);
         const volumePriceCell = document.createElement("td");
-        volumePriceCell.innerHTML = row.dataset.volumePriceBadge || "--";
+        volumePriceCell.innerHTML = isFixedBasketView ? "" : (row.dataset.volumePriceBadge || "--");
         row.insertBefore(volumePriceCell, row.cells[5]);
         row.insertBefore(trendCell, row.cells[6]);
+        if (isFixedBasketView) {
+          const conceptCell = row.cells[11];
+          const concepts = Array.isArray(rowStock?.relatedConcepts)
+            ? rowStock.relatedConcepts
+            : (rowStock?.relatedConcept ? [rowStock.relatedConcept] : []);
+          conceptCell.innerHTML = concepts.length
+            ? `<span class="whitelist-concepts">${concepts.map(concept => `<i class="whitelist-concept-tag">${escapeHtml(concept)}</i>`).join("")}</span>`
+            : "--";
+          conceptCell.className = "fixed-concept-cell";
+        }
       });
       if (isMacdScreener) {
         const rowByCode = new Map(rows.map(stock => [String(stock.code || ""), stock]));
@@ -5351,8 +5427,13 @@
         renderMacdConceptDistribution("whitelistView", state.whitelistStocks, "E");
         renderMacdAlertConceptDistribution();
       } else {
+        document.querySelector("#whitelistView .market-distribution-panel")?.remove();
         document.querySelector("#whitelistView .macd-m-concept-panel:not(.macd-e-concept-panel)")?.remove();
         document.querySelector("#whitelistView .macd-e-concept-panel")?.remove();
+        if (el.macdAlertConceptDistribution) {
+          el.macdAlertConceptDistribution.classList.remove("visible");
+          el.macdAlertConceptDistribution.replaceChildren();
+        }
       }
       syncMacdScreenerStickyLayout();
       syncFixedAlertLayout();
@@ -5843,11 +5924,40 @@
         refreshWhitelistIndustryFilterOptions();
         // 白名单规模可控，直接完整渲染；缩略图在后台按小批次轮动补齐。
         state.whitelistShown = state.whitelistStocks.length;
-        el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${payload.tradeDate || "日期待确认"}`;
+        el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · ${payload.tradeDate || "日期待确认"}`;
         el.whitelistUpdated.title = `${payload.source || ""}；名单扫描日期：${payload.membershipDate || payload.tradeDate || "未知"}`;
         renderWhitelistRows();
         loadAllWhitelistTrends();
       } catch (error) { el.whitelistBody.innerHTML = `<tr><td colspan="8">${escapeHtml(error.message || "白名单加载失败")}</td></tr>`; }
+    }
+
+    async function loadFixedPoolMembersForMacd() {
+      if (state.macdMode !== "normal") {
+        state.fixedPoolStocks = [];
+        state.macdFixedPoolConfirmedCodes = new Set();
+        return [];
+      }
+      try {
+        const response = await fetch("/api/fixed-pool-members?quotes=1", {cache:"no-store"});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "固定观察池读取失败");
+        const stocks = (payload.stocks || []).map(stock => ({
+          ...stock,
+          fixedPool: true,
+          name: String(stock.name || stock.code || "").replace(/-U$/, ""),
+          industry: normalizeWhitelistIndustry(stock),
+        }));
+        state.fixedPoolStocks = stocks;
+        state.macdFixedPoolConfirmedCodes = new Set(
+          stocks.filter(stock => stock.fixedAlertConfirmed === true).map(stock => String(stock.code || "")),
+        );
+        return stocks;
+      } catch (error) {
+        state.fixedPoolStocks = [];
+        state.macdFixedPoolConfirmedCodes = new Set();
+        console.warn("ETF/科技固定观察池读取失败", error);
+        return [];
+      }
     }
 
     async function openMacdScreener(forceRefresh = false) {
@@ -5864,6 +5974,8 @@
         state.macdShowAlertReplay = false;
         state.macdAlertReplayStocks = [];
         state.macdConfirmedAlertCodes = new Set();
+        state.fixedPoolStocks = [];
+        state.macdFixedPoolConfirmedCodes = new Set();
         state.macdAlertReplayTradeDate = "";
         state.macdScreenerTradeDate = "";
       }
@@ -5886,7 +5998,15 @@
         const response = await fetch(`${endpoint}${endpoint.includes("?") ? "&" : "?"}${params}`, {cache:"no-store"});
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "MACD选股加载失败");
-        state.whitelistStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || stock.code || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock)}));
+        const macdStocks = (payload.stocks || []).map(stock => ({...stock, name: String(stock.name || stock.code || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock)}));
+        const fixedPoolStocks = state.macdMode === "normal" ? await loadFixedPoolMembersForMacd() : [];
+        const macdCodes = new Set(macdStocks.map(stock => String(stock.code || "")));
+        // 固定池作为独立扫描来源并入页面展示，但不写入 MACD 选股数据库，
+        // 也不携带 MACD 条件；默认眼睛关闭时只会显示曾正式告警的固定池个股。
+        state.whitelistStocks = [
+          ...macdStocks,
+          ...fixedPoolStocks.filter(stock => !macdCodes.has(String(stock.code || ""))),
+        ];
         await hydrateVolumePriceTags(state.whitelistStocks);
         state.macdScreenerTradeDate = String(payload.tradeDate || "");
         if (state.macdAlertReplayTradeDate && state.macdAlertReplayTradeDate !== state.macdScreenerTradeDate) {
@@ -5903,7 +6023,7 @@
         state.whitelistShown = displayedCount;
         applyListSource(payload, state.macdMode === "bear" ? "MACD空头" : "MACD选股");
         refreshWhitelistIndustryFilterOptions();
-        el.whitelistUpdated.textContent = `共 ${displayedCount.toLocaleString("zh-CN")} 只 · 行情 ${payload.tradeDate || "等待交易日扫描"}`;
+        el.whitelistUpdated.textContent = `共 ${displayedCount.toLocaleString("zh-CN")} 只 · ${payload.tradeDate || "等待交易日扫描"}`;
         el.whitelistUpdated.title = `${payload.source || ""}；最近选股扫描：${formatUpdatedAt(payload.membershipUpdatedAt || payload.updatedAt)}；报价刷新：${formatUpdatedAt(payload.quoteUpdatedAt || payload.updatedAt)}`;
         renderSectorNavigation();
         renderWhitelistRows();
@@ -5932,7 +6052,12 @@
           // 默认页会同时启动页面加载和侧栏计数读取；页面首轮尚未完成时，
           // 不要因为暂时的空数组再次调用 openMacdScreener，避免互相清空表格。
           if (!(state.whitelistStocks || []).length) return;
-          const renderedCodes = (state.whitelistStocks || []).map(stock => String(stock.code || "")).filter(Boolean).sort().join(",");
+          const renderedCodes = (state.whitelistStocks || [])
+            .filter(stock => !stock.fixedPool)
+            .map(stock => String(stock.code || ""))
+            .filter(Boolean)
+            .sort()
+            .join(",");
           // 选股池重算恰好发生在两个请求之间时，绝不让表格继续展示旧快照。
           if (incomingCodes !== renderedCodes) {
             await openMacdScreener();
@@ -6036,7 +6161,7 @@
       const staleCount = state.whitelistStocks.filter(stock => stock.quoteStale).length;
       el.whitelistUpdated.textContent = staleCount
         ? `共 ${state.whitelistStocks.length} 只 · ${staleCount} 只实时待补齐`
-        : `共 ${state.whitelistStocks.length} 只 · 行情 ${dates.at(-1) || "日期待确认"}`;
+        : `共 ${state.whitelistStocks.length} 只 · ${dates.at(-1) || "日期待确认"}`;
       el.whitelistUpdated.title = `${poolLabel} 固定成分；${source}`;
       renderWhitelistRows();
       loadAllWhitelistTrends();
@@ -8830,9 +8955,30 @@
         if (concept) uniqueStocks.set(code, concept);
       };
       const alertHistory = state.macdMode === "bear" ? state.macdBearAlertHistory : state.macdAlertHistory;
-      (alertHistory || []).forEach(addAlertConcept);
+      const scopedHistory = (alertHistory || []).map(item => ({
+        ...item,
+        alertSource: state.macdMode === "bear" ? "bear" : "normal",
+      }));
+      const {itemMeta, confirmedCodes} = buildMacdAlertConfirmationMeta(scopedHistory);
+      const showAllMacdHistory = Boolean(state.macdShowAlertReplay);
+      const visibleConfirmedCodes = state.macdConfirmedAlertCodes || confirmedCodes;
+      const replayStocks = state.macdAlertReplayStocks || [];
+      if (replayStocks.length) {
+        // 复盘列表已按页合并完整当天历史；分布不能只使用空头接口当前
+        // 返回的第一页，否则会出现“共253只、分布却只有8只”的不一致。
+        replayStocks.forEach(stock => {
+          const code = String(stock.code || "");
+          if (showAllMacdHistory || visibleConfirmedCodes.has(code)) addAlertConcept(stock);
+        });
+      } else {
+        scopedHistory.forEach(item => {
+          const meta = itemMeta.get(item);
+          if (showAllMacdHistory || meta?.confirmed || item.alertConfirmed === true) addAlertConcept(item);
+        });
+      }
       (state.whitelistStocks || []).forEach(stock => {
-        if (hasNumber(stock.macdAlertChangePct)) addAlertConcept(stock);
+        const code = String(stock.code || "");
+        if (hasNumber(stock.macdAlertChangePct) && (showAllMacdHistory || confirmedCodes.has(code))) addAlertConcept(stock);
       });
       const counts = new Map();
       uniqueStocks.forEach(concept => counts.set(concept, (counts.get(concept) || 0) + 1));
@@ -8871,6 +9017,11 @@
               ...(state.macdAlertHistory || []).map(item => ({...item, alertSource: "normal"})),
               ...(state.macdBearAlertHistory || []).map(item => ({...item, alertSource: "bear"}))
             ].sort((a, b) => macdAlertTime(a).localeCompare(macdAlertTime(b)));
+        // 固定观察池的确认告警不参与 MACD 的“第 3 次且达到涨幅门槛”判定；
+        // 它们在服务端已经完成“第三次仍达到 3%”确认，直接作为正式记录展示。
+        const fixedThresholdItems = preview ? [] : (state.fixedThresholdAlertHistory || [])
+          .map(item => ({...item, alertSource: "fixed-threshold", alertConfirmed: true, alertCount: Math.max(3, Number(item.alertCount) || 3)}))
+          .sort((a, b) => macdAlertTime(a).localeCompare(macdAlertTime(b)));
         const {itemMeta} = buildMacdAlertConfirmationMeta(alertHistory);
         const visibleItems = [];
         alertHistory.forEach(item => {
@@ -8884,30 +9035,17 @@
           item.alertCount = alertCount;
           if (preview || alertConfirmed) visibleItems.push(item);
         });
-        // 每个顶部框最多呈现最新五行；完整历史仍可从“告警池”查看。
-        const boardHistoryItems = alertHistory.filter(p => macdAlertBoardOf(p.code) === board).slice(-5);
-        const confirmedItems = visibleItems.filter(p=>macdAlertBoardOf(p.code)===board).slice(-5);
-        // 没有满足确认规则的告警时，仍展示该板块当前个股信息，避免面板只剩空提示。
-        // 若连当前列表也尚未加载，再回退到该板块最近的告警记录。
-        const cachedPanelStocks = Object.values(state.macdAlertPanelStocks || {}).flat();
-        const currentBoardStocks = [...new Map(cachedPanelStocks
-          .filter(stock => macdAlertBoardOf(stock.code) === board)
-          .map(stock => [String(stock.code || ""), stock])).values()]
-          .slice(-5)
-          .map(stock => ({
-            __panelSource: "stock",
-            code: String(stock.code || ""),
-            name: String(stock.name || stock.code || "").replace(/-U$/, ""),
-            time: String(stock.macdAlertTime || stock.quoteTime || stock.minute || "实时").match(/\d{2}:\d{2}:\d{2}/)?.[0] || "实时",
-            price: stock.price,
-            previousDayAmount: stock.macdPreviousDayAmount ?? stock.previousDayAmount,
-            changePct: stock.changePct ?? stock.change,
-            industry: stock.industry || stock.actualIndustry || "--",
-            signal: stock.macdAlertSignal || (Array.isArray(stock.macdSelectionRules) && stock.macdSelectionRules.length ? stock.macdSelectionRules.join(" / ") : "当前个股信息"),
-            pool: "当前板块个股信息"
-          }));
-        const items = confirmedItems.length ? confirmedItems : (boardHistoryItems.length ? boardHistoryItems : currentBoardStocks);
-        // 交易时间内保留四个板块框，即使当前没有满足“第 3 次且高于首次涨幅”的记录；
+        // 每个顶部框最多呈现最新四行；完整历史仍可从“告警池”查看。
+        const confirmedItems = [...visibleItems, ...fixedThresholdItems]
+          .filter(p=>macdAlertBoardOf(p.code)===board)
+          .sort((a, b) => macdAlertTime(a).localeCompare(macdAlertTime(b)))
+          .slice(-4);
+        // 正式告警框只展示真正通过确认规则的记录；未达到第 3 次确认、
+        // 或第 3 次后涨幅回落的个股，不能再用当前选股池/历史记录兜底展示。
+        // 这些记录仅在告警池打开眼睛后作为完整历史查看。
+        const items = confirmedItems;
+        // 交易时间内保留四个板块框，即使当前没有满足“第 3 次以后首次达到3%，
+        // 并且后续不低于已锁定基准”的记录；
         // 只有用户主动关闭，或进入非交易时段，才隐藏整个告警框。
         node.hidden = Boolean(state.alertPanelDismissed[board]);
         const content = items.length ? `<div class="score-alert-item price-alert-item price-alert-columns"><span>个股名称</span><span>时间</span><span>价格</span><span>涨跌幅</span><span>行业</span><span>信号</span></div>${items.map(item=>{
@@ -8928,7 +9066,7 @@
           const signalMarkup = signalLines.map(signalLine => {
             const tone = signalLine.tone === 'red' ? 'macd-alert-signal-red' : 'macd-alert-signal-green';
             const rawSignal = String(signalLine.text || '--');
-            const displaySignal = rawSignal === '--' || rawSignal.startsWith('MACD') || signalLine.alertType === 'openMove' || signalLine.alertType === 'maCross' || signalLine.alertType === 'macdScreenerEnter' || signalLine.alertType === 'macdScreenerRemove' ? rawSignal : `MACD ${rawSignal}`;
+            const displaySignal = rawSignal === '--' || rawSignal.startsWith('MACD') || signalLine.alertType === 'openMove' || signalLine.alertType === 'maCross' || signalLine.alertType === 'macdScreenerEnter' || signalLine.alertType === 'macdScreenerRemove' || signalLine.alertType === 'fixedThresholdEnter' ? rawSignal : `MACD ${rawSignal}`;
             return `<span class="${tone}">${formatAlertSignal(displaySignal)}</span>`;
           }).join('<br>');
           const alertTime = String(item.time || '--').slice(0, 8);
@@ -8957,7 +9095,36 @@
         const response = await fetch('/api/macd-bear/history?page=1&pageSize=1000&includeDrawdowns=1', {cache:'no-store'});
         const payload = await response.json();
         if (!response.ok) return;
-        state.macdBearAlertHistory = Array.isArray(payload.rows) ? payload.rows : [];
+        const alerts = Array.isArray(payload.rows) ? payload.rows : [];
+        if (!state.macdBearAlertReady) {
+          alerts.forEach(item => { if (item.id) state.macdBearAlertKeys.add(item.id); });
+          state.macdBearAlertReady = true;
+        } else {
+          const unseen = alerts.filter(item => item.id && !state.macdBearAlertKeys.has(item.id));
+          alerts.forEach(item => { if (item.id) state.macdBearAlertKeys.add(item.id); });
+          if (unseen.length && !state.previewingPriceAlerts) {
+            const scopedAlerts = alerts.map(item => ({...item, alertSource: "bear"}));
+            const scopedUnseen = scopedAlerts.filter(item => unseen.some(unseenItem => unseenItem.id === item.id));
+            const {itemMeta} = buildMacdAlertConfirmationMeta(scopedAlerts);
+            const speechAlerts = scopedUnseen.filter(item => {
+              const meta = itemMeta.get(item);
+              return Boolean(meta?.confirmed) && Number(item.changePct) > 5;
+            });
+            speakHighChangeAlerts(speechAlerts);
+          }
+        }
+        state.macdBearAlertHistory = alerts;
+        if (state.macdMode === "bear") {
+          // 空头接口已按完整当天历史补齐 alertConfirmed；这里只合并本次
+          // 分页返回的正式确认记录，不能用局部页面覆盖完整集合。
+          const newlyConfirmed = new Set(alerts.filter(item => item.alertConfirmed === true).map(item => String(item.code || "")));
+          state.macdConfirmedAlertCodes = new Set([...(state.macdConfirmedAlertCodes || []), ...newlyConfirmed]);
+          if (!state.macdShowAlertReplay) {
+            state.whitelistShown = syncMacdScreenerDisplayedCount() ?? 0;
+            renderWhitelistRows();
+            renderSectorNavigation();
+          }
+        }
         if (state.macdMode === "bear") {
           renderMacdAlertConceptDistribution();
           renderPriceAlertPanels();
@@ -8979,13 +9146,32 @@
         const response = await fetch(`/api/macd-alerts${shouldRefresh ? '?refresh=1' : ''}`, {cache:'no-store'});
         const payload = await response.json();
         if (!response.ok) return;
-        const alerts = payload.alerts || [];
+        const alerts = (payload.alerts || []).map(item => ({
+          ...item,
+          alertSource: item.alertType === "fixedThresholdEnter" ? "fixed-threshold" : "normal"
+        }));
+        const fixedThresholdAlerts = alerts.filter(item => item.alertType === "fixedThresholdEnter");
+        // 共享告警流里也有 MACD空头 的 M 信号；空头记录由独立接口加载，
+        // 这里仅保留普通 MACD选股，避免两个 Tab 合并计数或重复展示。
+        const macdAlerts = alerts.filter(item => item.alertType !== "fixedThresholdEnter" && item.pool !== "MACD空头");
+        if (state.macdMode === "normal") {
+          // 普通接口的 alertConfirmed 来自当天完整持久化历史；只合并
+          // 当前轮返回的确认记录，不能让最近分页覆盖完整集合。
+          const newlyConfirmed = new Set(macdAlerts.filter(item => item.alertConfirmed === true).map(item => String(item.code || "")));
+          state.macdConfirmedAlertCodes = new Set([...(state.macdConfirmedAlertCodes || []), ...newlyConfirmed]);
+          if (state.pageView === "macd-screener" && !state.macdShowAlertReplay) {
+            state.whitelistShown = syncMacdScreenerDisplayedCount() ?? 0;
+            renderWhitelistRows();
+            renderSectorNavigation();
+          }
+        }
         // 首次进入页面直接恢复当天已有告警的最新记录，避免服务重启或
         // 刷新页面后顶部告警框为空；首次恢复不播放告警声音。
         if (!state.macdAlertReady) {
           state.macdAlertBaselineKeys = new Set();
           alerts.forEach(item => { if (item.id) state.macdAlertKeys.add(item.id); });
-          state.macdAlertHistory = alerts;
+          state.macdAlertHistory = macdAlerts;
+          state.fixedThresholdAlertHistory = fixedThresholdAlerts;
           state.macdAlertReady = true;
           state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, star:false, bse:false};
           renderPriceAlertPanels();
@@ -8996,18 +9182,25 @@
         // 告警框和次数计算必须始终基于当天完整历史；baseline 只用于
         // 判断本轮新增记录，不能把旧记录从展示历史中删掉，否则每次刷新
         // 都会让同一股票的告警次数重新从 1 开始计算。
-        state.macdAlertHistory = alerts;
+        state.macdAlertHistory = macdAlerts;
+        state.fixedThresholdAlertHistory = fixedThresholdAlerts;
         if (unseen.length && state.macdAlertReady) {
           state.alertPanelDismissed = {...state.alertPanelDismissed, main:false, growth:false, star:false, bse:false};
           playScoreAlertSound();
-          // 第 3 次起必须高于首次告警涨幅；语音继续只播报 M 标签。
-          const {itemMeta} = buildMacdAlertConfirmationMeta(alerts);
+          // 第 3 次以后首次达到3%锁定基准；语音播报所有正式告警框中涨幅超过5%的新增记录。
+          const {itemMeta} = buildMacdAlertConfirmationMeta(macdAlerts);
           const speechAlerts = unseen.filter(item => {
+            if (item.alertType === "fixedThresholdEnter") return false;
             const meta = itemMeta.get(item);
             if (meta) item.alertCount = meta.count;
-            return Boolean(meta?.confirmed) && isMTagMacdAlert(item);
+            return Boolean(meta?.confirmed) && Number(item.changePct) > 5;
           });
-          speakMTagAlerts(speechAlerts);
+          const fixedSpeechAlerts = unseen.filter(item =>
+            item.alertType === "fixedThresholdEnter"
+            && item.alertConfirmed === true
+            && Number(item.changePct) > 5
+          );
+          if (!state.previewingPriceAlerts) speakHighChangeAlerts([...speechAlerts, ...fixedSpeechAlerts]);
         }
         renderPriceAlertPanels();
       } catch {
@@ -9125,10 +9318,10 @@
         star: previewStar,
         bse: previewBse
       };
-      // 每个板块固定生成 5 条预览记录，便于观察告警框的行高效果。
+      // 每个板块固定生成 4 条预览记录，便于观察告警框的行高效果。
       const samples = ["main", "growth", "star", "bse"].flatMap(board => {
-        const candidates = source.filter(stock => macdAlertBoardOf(stock.code) === board).slice(0, 5);
-        return Array.from({length: 5}, (_, index) => {
+        const candidates = source.filter(stock => macdAlertBoardOf(stock.code) === board).slice(0, 4);
+        return Array.from({length: 4}, (_, index) => {
           const stock = candidates[index] || candidates[0] || previewFallbacks[board];
           const baseName = String(stock.name || stock.code || "示例个股").replace(/-U$/, "");
           const name = candidates[index] ? baseName : `${baseName} · 预览${index + 1}`;
@@ -9186,11 +9379,6 @@
       }
     }
 
-    function isMTagMacdAlert(item) {
-      const pattern = /快线连红\s*≥?\s*2\s*日\s*\+\s*慢线翻红/;
-      return pattern.test(String(item?.signal || '')) || (Array.isArray(item?.signals) && item.signals.some(line => pattern.test(String(line?.text || ''))));
-    }
-
     function formatVoicePercent(value) {
       const number = Number(value);
       if (!Number.isFinite(number)) return '';
@@ -9198,9 +9386,9 @@
       return `${number < 0 ? '负' : ''}${text}`;
     }
 
-    function speakMTagAlerts(alerts) {
+    function speakHighChangeAlerts(alerts) {
       if (!('speechSynthesis' in window) || !Array.isArray(alerts)) return;
-      const messages = alerts.filter(isMTagMacdAlert).map(item => {
+      const messages = alerts.filter(item => Number(item?.changePct) > 5).map(item => {
         const name = String(item.name || item.code || '该个股').replace(/-U$/, '');
         const percent = formatVoicePercent(item.changePct);
         return percent ? `${name}，涨幅百分之${percent}，需要关注` : `${name}，需要关注`;
@@ -9450,13 +9638,14 @@
     }
 
     function syncMarketAlertHistoryDrawdownButton() {
-      const showDrawdowns = Boolean(state.marketAlertHistoryShowDrawdowns);
-      el.marketAlertHistoryDrawdownToggle.classList.toggle("icon-active", showDrawdowns);
-      el.marketAlertHistoryDrawdownToggle.setAttribute("aria-pressed", String(showDrawdowns));
-      const isMacdReview = state.pageView === "macd-screener";
-      const label = showDrawdowns
-        ? (isMacdReview ? "返回当前 MACD 选股池告警" : "隐藏最新涨跌幅低于 -1% 的记录")
-        : (isMacdReview ? "显示当日全部 MACD 告警与回落记录" : "显示最新涨跌幅低于 -1% 的记录");
+      const showAll = Boolean(state.marketAlertHistoryShowAll);
+      el.marketAlertHistoryDrawdownToggle.classList.toggle("icon-active", showAll);
+      el.marketAlertHistoryDrawdownToggle.setAttribute("aria-pressed", String(showAll));
+      const isMacdPage = state.pageView === "macd-screener";
+      const scopeLabel = isMacdPage ? " MACD" : "";
+      const label = showAll
+        ? `当前显示所有${scopeLabel}个股及其全部记录；点击仅显示曾进入告警框的个股`
+        : `当前仅显示曾进入告警框的${scopeLabel}个股及其全部记录；点击显示所有个股记录`;
       el.marketAlertHistoryDrawdownToggle.setAttribute("aria-label", label);
       el.marketAlertHistoryDrawdownToggle.title = label;
     }
@@ -9523,7 +9712,7 @@
     }
 
     function isMacdAlertReviewMode() {
-      return state.pageView === "macd-screener" && Boolean(state.marketAlertHistoryShowDrawdowns);
+      return state.pageView === "macd-screener" && Boolean(state.marketAlertHistoryShowAll);
     }
 
     function closeMarketAlertHistory() {
@@ -9552,7 +9741,9 @@
       try {
         const params = new URLSearchParams({ page: String(view.page + 1), pageSize: "50", q: el.marketAlertHistorySearch.value.trim(), market: el.marketAlertHistoryMarket.value, direction: el.marketAlertHistoryDirection.value, signalType: el.marketAlertHistorySignal.value });
         if (state.marketAlertHistoryDedupe) params.set("dedupe", "earliest");
-        if (state.marketAlertHistoryShowDrawdowns) params.set("includeDrawdowns", "1");
+        // 告警池眼睛关闭时只按“个股是否真正进入过告警框”过滤，不能再用
+        // 最新涨跌幅 -1% 作为二次条件，否则同一只股票会出现规则不一致。
+        params.set("includeDrawdowns", "1");
         if (state.marketAlertHistorySortKey) {
           params.set("sort", state.marketAlertHistorySortKey);
           params.set("sortDir", state.marketAlertHistorySortDir);
@@ -9561,10 +9752,24 @@
         // MACD 页面开启眼睛后进入复盘模式：保留当天所有曾触发过的
         // MACD 告警，哪怕该股后来已被动态条件移出当前选股池。
         const macdReviewMode = isMacdAlertReviewMode();
-        if (scope.codes.length && !macdReviewMode) params.set("codes", scope.codes.join(","));
+        // MACD 默认视图只按“是否真正进入告警框”过滤，不再用收盘后
+        // 涨跌幅低于 -1% 的条件二次隐藏已确认告警。
+        if (state.pageView === "macd-screener") params.set("includeDrawdowns", "1");
+        // MACD 页面默认也要保留当天曾正式进入告警框、但后来已退出当前
+        // 选股池的个股；由 confirmedOnly + pool 在服务端做历史过滤。
+        if (scope.codes.length && !macdReviewMode && state.pageView !== "macd-screener") params.set("codes", scope.codes.join(","));
         const alertHistoryEndpoint = state.pageView === "macd-screener" && state.macdMode === "bear"
           ? "/api/macd-bear/history"
           : "/api/market-alert-history";
+        if (state.pageView === "macd-screener") {
+          // 眼睛关闭时只看曾真正进入告警框的个股；打开后由接口返回所有
+          // 有记录的个股。两种状态下，对已选中的个股都保留完整历史记录。
+          if (state.macdMode !== "bear") params.set("pool", "MACD选股");
+        }
+        // 这是告警池的全局规则，不依赖当前从哪个菜单打开：关闭眼睛时，
+        // MACD选股、MACD空头以及固定观察池都只展示曾实际进入告警框的个股，
+        // 而不是只展示其中满足确认条件的单条记录。
+        if (!state.marketAlertHistoryShowAll) params.set("confirmedOnly", "1");
         const response = await fetch(`${alertHistoryEndpoint}?${params}`, { cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "告警历史读取失败");
@@ -9620,19 +9825,28 @@
           view.total = payload.total;
           view.hasMore = view.page < payload.pages;
           const scopeLabel = macdReviewMode && state.macdMode !== "bear" ? "MACD选股 · 当日全部历史告警" : scope.label;
-          const modes = [state.marketAlertHistoryDedupe ? "每股仅最早告警" : "全部告警记录", state.marketAlertHistoryShowDrawdowns ? "含回落记录" : "隐藏回落超 -1%"];
+          const modes = [state.marketAlertHistoryDedupe ? "每股仅最早告警" : "全部告警记录", state.marketAlertHistoryShowAll ? "所有个股及全部记录" : "曾进入告警框的个股及全部记录"];
           el.marketAlertHistoryMeta.textContent = `${scopeLabel} · ${payload.tradeDate} · ${modes.join(" · ")} ${payload.total.toLocaleString("zh-CN")} 条 · 向下滚动加载更多`;
           if (footer) footer.textContent = view.hasMore ? "继续向下滚动加载更多" : `已加载全部 ${payload.total.toLocaleString("zh-CN")} 条`;
         }
       } catch (error) {
         if (reset) el.marketAlertHistoryBody.innerHTML = `<div class="alert-pool-empty">${escapeHtml(error.message || "告警历史读取失败")}</div>`;
         else if (footer) footer.textContent = error.message || "加载失败，滚动重试";
-      } finally { view.loading = false; }
+      } finally {
+        view.loading = false;
+        if (state.marketAlertHistoryReloadPending) {
+          state.marketAlertHistoryReloadPending = false;
+          // 让本次请求的 finally 先完成，再按最新眼睛状态重载，
+          // 避免点击眼睛时被 loading 保护逻辑吞掉切换。
+          window.setTimeout(() => loadMarketAlertHistory(true), 0);
+        }
+      }
     }
 
     function openMarketAlertHistory() {
       el.marketAlertHistoryModal.hidden = false;
       document.body.classList.add("modal-open");
+      syncMarketAlertHistoryDrawdownButton();
       loadMarketAlertHistory(true);
     }
 
@@ -9739,7 +9953,14 @@
       loadMarketAlertHistory(true);
     });
     el.marketAlertHistoryDrawdownToggle.addEventListener("click", () => {
-      state.marketAlertHistoryShowDrawdowns = !state.marketAlertHistoryShowDrawdowns;
+      state.marketAlertHistoryShowAll = !state.marketAlertHistoryShowAll;
+      syncMarketAlertHistoryDrawdownButton();
+      // 请求尚未完成时不要让旧结果成为最终画面；等当前请求结束后，
+      // 立即按新的眼睛状态重新加载一次。
+      if (state.marketAlertHistory.loading) {
+        state.marketAlertHistoryReloadPending = true;
+        return;
+      }
       loadMarketAlertHistory(true);
     });
     el.marketAlertHistoryMarket.addEventListener("change", () => loadMarketAlertHistory(true));
@@ -10322,7 +10543,7 @@
           state.whitelistStocks = (whitelistPayload.stocks || []).map(stock => ({...stock, name: String(stock.name || "").replace(/-U$/, ""), industry: normalizeWhitelistIndustry(stock)}));
           state.whitelistMenuCount = state.whitelistStocks.length;
           state.whitelistShown = state.whitelistStocks.length;
-          el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · 行情 ${whitelistPayload.tradeDate || "日期待确认"}`;
+          el.whitelistUpdated.textContent = `共 ${state.whitelistStocks.length.toLocaleString("zh-CN")} 只 · ${whitelistPayload.tradeDate || "日期待确认"}`;
           el.whitelistUpdated.title = `${whitelistPayload.source || ""}；名单扫描日期：${whitelistPayload.membershipDate || whitelistPayload.tradeDate || "未知"}`;
           refreshWhitelistIndustryFilterOptions();
         }
@@ -10352,7 +10573,7 @@
       state.whitelistShown = displayedCount;
       renderWhitelistRows();
       const tradeDate = state.macdScreenerTradeDate || "等待交易日扫描";
-      if (el.whitelistUpdated) el.whitelistUpdated.textContent = `共 ${displayedCount.toLocaleString("zh-CN")} 只 · 行情 ${tradeDate}`;
+      if (el.whitelistUpdated) el.whitelistUpdated.textContent = `共 ${displayedCount.toLocaleString("zh-CN")} 只 · ${tradeDate}`;
       renderSectorNavigation();
       if (!state.macdShowAlertReplay) loadAllWhitelistTrends();
     });
