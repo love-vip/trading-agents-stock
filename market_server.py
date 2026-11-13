@@ -800,7 +800,6 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
     post_close_history_repair_hours: set[str] = set()
     last_intraday_scan = 0.0
     last_ai_rebound_scan = 0.0
-    last_macd_alert_scan = 0.0
     last_macd_screener_scan = 0.0
     while not stop_event.wait(30):
         now = datetime.now(CHINA_TZ)
@@ -808,12 +807,7 @@ def follow_up_snapshot_loop(stop_event: threading.Event) -> None:
             continue
         trade_date = now.strftime("%Y-%m-%d")
         current_minutes = now.hour * 60 + now.minute
-        alert_session = is_alert_scan_session(now)
         try:
-            # 顶部告警只扫描 ETF 与科技固定观察池；白名单/黑名单任务已停用。
-            if alert_session and time.monotonic() - last_macd_alert_scan >= 60:
-                start_macd_alert_scan(force=True)
-                last_macd_alert_scan = time.monotonic()
             # MACD 选股独立于页面生命周期：交易中每分钟更新一次。收盘最终
             # 结果由 15:05 后的本地收盘快照独立重算，不依赖循环恰好命中 15:00:00。
             if is_macd_screener_session(now) and time.monotonic() - last_macd_screener_scan >= 60:
@@ -1656,13 +1650,7 @@ def get_menu_quote_batch(menu: str, codes: List[str]) -> Dict[str, Any]:
 
 
 def get_fixed_pool_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
-    """Return the independent ETF/科技 scan universe for the MACD page.
-
-    These members are deliberately kept outside ``macd_screener_members``:
-    they are not MACD candidates and must never affect MACD membership counts.
-    The page can still merge them as a read-only view, with the eye toggle
-    deciding whether to show all fixed-pool members or only confirmed alerts.
-    """
+    """Return the ETF/科技菜单成员，供独立行情列表按需使用。"""
     now = datetime.now(CHINA_TZ)
     policy = get_market_data_policy(now)
     trade_date = str(policy.get("tradeDate") or now.date().isoformat())
@@ -1750,49 +1738,11 @@ def get_fixed_pool_members(hydrate_quotes: bool = False) -> Dict[str, Any]:
         # 会继续按同一规则补齐概念。
         pass
 
-    observations: Dict[str, Tuple[int, bool, Optional[float], str]] = {}
-    latest_alerts: Dict[str, Tuple[str, Optional[float], Optional[float], str]] = {}
-    try:
-        with open_backtest_db() as connection:
-            observation_rows = connection.execute(
-                "SELECT code,observation_count,confirmed,last_change_pct,updated_at "
-                "FROM fixed_pool_threshold_observations WHERE trade_date=?",
-                (trade_date,),
-            ).fetchall()
-            alert_rows = connection.execute(
-                "SELECT code,alert_time,price,change_pct,signal FROM market_alert_history "
-                "WHERE trade_date=? AND alert_type='fixedThresholdEnter' "
-                "ORDER BY alert_time ASC,id ASC",
-                (trade_date,),
-            ).fetchall()
-        for code, count, confirmed, change_pct, updated_at in observation_rows:
-            observations[str(code)] = (int(count or 0), bool(confirmed), number(change_pct), str(updated_at or ""))
-        for code, alert_time, price, change_pct, signal in alert_rows:
-            latest_alerts[str(code)] = (str(alert_time or ""), number(price), number(change_pct), str(signal or ""))
-    except sqlite3.Error:
-        pass
-
-    for stock in stocks:
-        code = str(stock.get("code") or "")
-        count, confirmed, last_change_pct, updated_at = observations.get(code, (0, False, None, ""))
-        alert_time, alert_price, alert_change_pct, signal = latest_alerts.get(code, ("", None, None, ""))
-        stock.update({
-            "fixedObservationCount": count,
-            "fixedAlertConfirmed": confirmed,
-            "fixedLastChangePct": last_change_pct,
-            "fixedLastObservedAt": updated_at,
-            "fixedAlertTime": alert_time,
-            "fixedAlertPrice": alert_price,
-            "fixedAlertChangePct": alert_change_pct,
-            "fixedAlertSignal": signal,
-            "macdAlertChangePct": alert_change_pct if confirmed else None,
-            "macdAlertTime": alert_time if confirmed else "",
-        })
     return {
         "stocks": stocks,
         "tradeDate": trade_date,
         "updatedAt": datetime.now(CHINA_TZ).isoformat(),
-        "source": "本地 SQLite ETF/科技固定观察池；仅按涨幅 ≥3%确认",
+        "source": "本地 SQLite ETF/科技菜单",
     }
 
 
@@ -4610,11 +4560,14 @@ def alert_price_tenth_bucket(value: Any) -> Optional[float]:
 def macd_confirmation_metadata(events: Iterable[Dict[str, Any]]) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
     """Calculate the live MACD confirmation baseline for each stock.
 
-    The first two observations are only counted.  Starting with observation 3,
-    the first observation whose change is at least 3% becomes that stock's
-    same-day baseline.  Later observations are formal alerts only when they do
-    not fall below that baseline.  A stock/signal at the same alert second is
-    one observation even when multiple MACD rules are present.
+    Counting, reference-baseline creation, and alert-box entry are separate:
+    the first observation at or above 3% establishes the same-day baseline,
+    even if it occurs before round three.  The first alert-box entry may only
+    happen from round three onward, but that entry itself needs only a current
+    change of at least 3%.  Once it has entered the alert box, every later
+    alert must also be at or above the already-established baseline.  A
+    stock/signal at the same alert second is one observation even when multiple
+    MACD rules are present.
     """
     ordered = sorted(
         (dict(event) for event in events),
@@ -4627,6 +4580,7 @@ def macd_confirmation_metadata(events: Iterable[Dict[str, Any]]) -> Dict[Tuple[s
     )
     counts: Dict[Tuple[str, str], int] = {}
     baselines: Dict[Tuple[str, str], Optional[float]] = {}
+    entered_alert_box: Set[Tuple[str, str]] = set()
     seen_rounds: Set[Tuple[str, str, str]] = set()
     metadata: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     for event in ordered:
@@ -4641,24 +4595,39 @@ def macd_confirmation_metadata(events: Iterable[Dict[str, Any]]) -> Dict[Tuple[s
         counts[stock_key] = counts.get(stock_key, 0) + 1
         current_change = number(event.get("changePct"))
         baseline = baselines.get(stock_key)
-        if baseline is None and counts[stock_key] >= 3 and current_change is not None and current_change >= 3:
+        if baseline is None and current_change is not None and current_change >= 3:
             baseline = current_change
             baselines[stock_key] = baseline
+        first_entry = (
+            stock_key not in entered_alert_box
+            and counts[stock_key] >= 3
+            and current_change is not None
+            and current_change >= 3
+        )
+        if first_entry:
+            entered_alert_box.add(stock_key)
+        confirmed = first_entry or (
+            stock_key in entered_alert_box
+            and baseline is not None
+            and current_change is not None
+            and current_change >= baseline
+        )
         metadata[round_key] = {
             "count": counts[stock_key],
             "baseline": baseline,
-            "confirmed": baseline is not None and current_change is not None and current_change >= baseline,
+            "confirmed": confirmed,
+            "firstEntry": first_entry,
         }
     return metadata
 
 
 def record_market_alert(event: Dict[str, Any]) -> None:
     """Keep the in-page alert stream and a durable same-day alert audit trail."""
-    # 正式告警目前包含 MACD 选股确认事件，以及 ETF/科技固定池的
-    # “连续第 3 次涨幅仍达到 3%”确认事件。其它内部行情判断不进告警流。
+    # 正式告警仅保留 MACD 选股 / MACD 空头确认事件。ETF 与科技菜单
+    # 仍提供独立行情列表，但不再参与告警、告警池或语音播报。
     event = dict(event)
     alert_type = str(event.get("alertType") or "")
-    if alert_type not in {"macdScreenerEnter", "fixedThresholdEnter"}:
+    if alert_type != "macdScreenerEnter":
         return
     # 告警框和告警池共用同一展示行业口径；在事件进入内存流及落库前
     # 标准化，避免“告警池是固态电池、左侧告警框仍是原行业”的分裂。
@@ -4667,9 +4636,8 @@ def record_market_alert(event: Dict[str, Any]) -> None:
     try:
         with open_backtest_db() as connection:
             price = number(event.get("price"))
-            # MACD 告警沿用元角价格档位去重，避免扫描抖动噪声；固定观察池
-            # 的每一次合格快照都代表一次新的涨幅确认，不能被价格档位去重吞掉。
-            if price is not None and alert_type != "fixedThresholdEnter":
+            # MACD 告警沿用元角价格档位去重，避免扫描抖动噪声。
+            if price is not None:
                 prior_count = connection.execute(
                     "SELECT COUNT(*) FROM market_alert_history "
                     "WHERE trade_date=? AND alert_type=? AND code=? AND signal=? "
@@ -4724,94 +4692,31 @@ def record_market_alert(event: Dict[str, Any]) -> None:
             del _macd_alert_events[:-360]
 
 
-def record_fixed_pool_threshold_observation(
-    trade_date: str,
-    now: datetime,
-    stock: Dict[str, Any],
-    quote: Dict[str, Any],
-) -> None:
-    """Count fixed-pool observations and emit the third-and-later confirmations.
 
-    ETF/CPO/PCB/光纤 fixed pools are sampled by the existing one-minute alert
-    scanner.  Observations are durable, but the first two qualifying samples
-    intentionally stay out of ``market_alert_history``.  Once the third sample
-    is still at or above 3%, every later qualifying sample also creates a durable
-    formal alert; a below-3% sample is ignored and does not reset the count.
-    """
-    if str(stock.get("alertPool") or "") not in {"ETF", "科技"}:
-        return
-    if quote.get("liveQuote") is False:
-        return
-    code = str(quote.get("code") or stock.get("code") or "")
-    change_pct = number(quote.get("changePct"))
-    if not re.fullmatch(r"\d{6}", code) or change_pct is None or change_pct < 3:
-        return
-    # quoteTime is the upstream observation timestamp.  If it is unavailable,
-    # using the price/change pair prevents identical fallback snapshots from
-    # being counted repeatedly after a service restart.
-    observed_at = str(quote.get("updatedAt") or "").strip()
-    observation_key = observed_at or f"{number(quote.get('price'))}:{change_pct}"
-    board = alert_board_for_code(code)
-    name = str(quote.get("name") or stock.get("name") or code).replace("-U", "")
-    pool = str(stock.get("alertPool") or "固定观察池")
-    count = 0
-    confirmed = False
-    should_emit = False
+
+def purge_retired_fixed_pool_alerts() -> Dict[str, int]:
+    """Remove the retired ETF/科技固定池 alert feature's durable state."""
+    removed_history = 0
+    removed_observations = 0
     try:
         with open_backtest_db() as connection:
-            row = connection.execute(
-                "SELECT observation_count,last_observation_key,confirmed,confirmed_at FROM fixed_pool_threshold_observations "
-                "WHERE trade_date=? AND code=?",
-                (trade_date, code),
-            ).fetchone()
-            if row and str(row[1] or "") == observation_key:
-                return
-            count = int(row[0] or 0) + 1 if row else 1
-            confirmed = bool(row[2]) if row else False
-            should_emit = count >= 3
-            confirmed_at = str(row[3] or "") if row and row[3] else (now.isoformat() if should_emit else None)
-            is_confirmed = confirmed or count >= 3
-            connection.execute(
-                "INSERT INTO fixed_pool_threshold_observations("
-                "trade_date,code,name,pool,board,observation_count,last_observation_key,"
-                "last_change_pct,confirmed,confirmed_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) "
-                "ON CONFLICT(trade_date,code) DO UPDATE SET name=excluded.name,pool=excluded.pool,"
-                "board=excluded.board,observation_count=excluded.observation_count,"
-                "last_observation_key=excluded.last_observation_key,last_change_pct=excluded.last_change_pct,"
-                "confirmed=excluded.confirmed,confirmed_at=excluded.confirmed_at,updated_at=excluded.updated_at",
-                (
-                    trade_date, code, name, pool, board, count, observation_key,
-                    change_pct, 1 if is_confirmed else 0,
-                    confirmed_at, now.isoformat(),
-                ),
+            history_cursor = connection.execute(
+                "DELETE FROM market_alert_history WHERE alert_type='fixedThresholdEnter'"
+            )
+            observations_cursor = connection.execute(
+                "DELETE FROM fixed_pool_threshold_observations"
             )
             connection.commit()
+            removed_history = max(0, int(history_cursor.rowcount or 0))
+            removed_observations = max(0, int(observations_cursor.rowcount or 0))
     except sqlite3.Error as exc:
-        print(f"固定池涨幅计数写入失败: {exc}")
-        return
-    if not should_emit:
-        return
-    price = number(quote.get("price"))
-    alert_time = now.strftime("%H:%M:%S")
-    record_market_alert({
-        "id": f"{trade_date}:{code}:fixed-threshold:{count}",
-        "tradeDate": trade_date,
-        "time": alert_time,
-        "code": code,
-        "name": name,
-        "board": board,
-        "pool": f"{pool} · 涨幅确认",
-        "price": price,
-        "changePct": change_pct,
-        "industry": str(quote.get("actualIndustry") or quote.get("industry") or "--"),
-        "alertType": "fixedThresholdEnter",
-        "config": "fixed-pool-change-3-confirm",
-        "signal": f"固定观察池涨幅 ≥3%（第{count}次确认）",
-        "tone": "red",
-        "signals": [{"text": f"固定观察池涨幅 ≥3%（第{count}次确认）", "tone": "red", "alertType": "fixedThresholdEnter"}],
-        "alertCount": count,
-        "alertConfirmed": True,
-    })
+        print(f"清理已停用固定池告警失败: {exc}")
+    with _cache_lock:
+        _macd_alert_events[:] = [
+            event for event in _macd_alert_events
+            if event.get("alertType") != "fixedThresholdEnter"
+        ]
+    return {"history": removed_history, "observations": removed_observations}
 
 
 def purge_repeated_same_price_macd_alerts(trade_date: str) -> int:
@@ -5119,17 +5024,14 @@ def get_market_alert_history(
             f"FROM market_alert_history WHERE {where} ORDER BY alert_time DESC, created_at DESC",
             params,
         ).fetchall()
-    # 已停用 MACD 翻红 / 翻绿告警；固定池第三次确认告警与有效 MACD
-    # 记录一起进入告警池，前两次计数不会出现在这里。
+    # 告警池只读取有效的 MACD 选股 / MACD 空头记录。
     rows = [
         row for row in rows
-        if row[10] in {"macdScreenerEnter", "fixedThresholdEnter"}
+        if row[10] == "macdScreenerEnter"
         and not is_disabled_generic_macd_alert_signal(row[12])
     ]
     if pool_filter:
-        # 固定观察池告警仍属于正式告警；只隔离 MACD 选股 / MACD 空头
-        # 两个来源，避免普通 Tab 看到另一 Tab 的历史记录。
-        rows = [row for row in rows if row[10] == "fixedThresholdEnter" or row[6] == pool_filter]
+        rows = [row for row in rows if row[6] == pool_filter]
     macd_confirmation_by_round: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     macd_rows_for_confirmation = [row for row in rows if row[10] == "macdScreenerEnter"]
     if macd_rows_for_confirmation:
@@ -5142,29 +5044,22 @@ def get_market_alert_history(
         ])
     if confirmed_only:
         # 与 get_macd_alerts 保持完全相同的确认口径：同一池、同一股票、
-        # 同一告警秒算一轮；第 3 轮以后首次达到 3%即锁定基准，后续
-        # 只有不低于该基准的记录才是正式告警。固定池记录本身已经确认。
+        # 同一告警秒算一轮；从第 3 轮起，首次达到 3% 即可正式入框；
+        # 后续记录才需不低于首次达到 3% 时建立的基准值。
         confirmed_rounds = {
             round_key for round_key, meta in macd_confirmation_by_round.items()
             if meta.get("confirmed")
         }
         # 眼睛关闭时按“个股”筛选，而不是按单条记录筛选：只要某只股票
         # 曾有一轮正式告警，就展示这只股票当天的全部历史记录（包括前两次
-        # 记录以及后续回落记录）。固定观察池记录本身就是正式告警，也按股票
-        # 维度保留其全部记录。
+        # 记录以及后续回落记录）。
         confirmed_stock_keys = {
             (pool, code)
             for pool, code, _alert_time in confirmed_rounds
         }
-        fixed_stock_keys = {
-            (str(row[6] or ""), str(row[3] or ""))
-            for row in rows
-            if row[10] == "fixedThresholdEnter"
-        }
-        visible_stock_keys = confirmed_stock_keys | fixed_stock_keys
         rows = [
             row for row in rows
-            if (str(row[6] or ""), str(row[3] or "")) in visible_stock_keys
+            if (str(row[6] or ""), str(row[3] or "")) in confirmed_stock_keys
         ]
     # 告警历史表没有单独的拼音字段；按交易日读取后用同一套拼音首字母规则匹配，
     # 同时支持代码、中文名称与首字母（如 xhy / 新恒汇）。
@@ -5431,251 +5326,6 @@ def alert_industry(stock: Dict[str, Any], quote: Dict[str, Any]) -> str:
     return "--"
 
 
-def scan_macd_alerts(scan_id: int) -> None:
-    """Detect alert signals for the whitelist and independent ETF universe."""
-    now_local = datetime.now(CHINA_TZ)
-    # 顶部告警是盘中信号；收盘后或开盘前的行情缓存不可用于产生新事件。
-    if not is_alert_scan_session(now_local):
-        return
-    trade_date = now_local.strftime("%Y-%m-%d")
-    try:
-        universe = collect_macd_alert_universe()
-        if not universe:
-            return
-        # 服务重启或某个固定菜单首次预热时，内存中的首轮状态会丢失；以当天
-        # 已保存的价格档位事件去重，首轮达到首档也必须补记，不能再静默跳过。
-        with open_backtest_db() as connection:
-            existing_open_move_configs = {
-                (str(code), str(config))
-                for code, config in connection.execute(
-                    "SELECT code,config FROM market_alert_history WHERE trade_date=? AND alert_type='openMove'",
-                    (trade_date,),
-                ).fetchall()
-            }
-
-        # 告警池只覆盖 ETF 与科技固定观察池，无需为此拉取全市场分页行情。
-        # 用腾讯批量报价 + 东方财富扩展字段获取这一小段范围，避免一轮扫描
-        # 被全市场分页接口拖到数分钟，从而卡住下午的后续告警。
-        live_quotes: Dict[str, Dict[str, Any]] = {}
-        try:
-            quote_payload = hydrate_list_quotes({
-                "stocks": [
-                    {"code": code, "name": item.get("name") or code, "industry": item.get("industry") or "--"}
-                    for code, item in universe.items()
-                ],
-                "tradeDate": trade_date,
-                "source": "告警池批量实时行情",
-            }, fetch_if_cache_missing=True)
-            for row in quote_payload.get("stocks") or []:
-                code = str(row.get("code") or "")
-                price = number(row.get("price"))
-                if not code or price is None:
-                    continue
-                live_quotes[code] = {
-                    "code": code,
-                    "name": str(row.get("name") or code),
-                    "price": price,
-                    "changePct": number(row.get("changePct")),
-                    "open": number(row.get("open")),
-                    "previousClose": number(row.get("previousClose")),
-                    "high": number(row.get("high")),
-                    "low": number(row.get("low")),
-                    "amount": number(row.get("amount")),
-                    "actualIndustry": str(row.get("industry") or "").strip(),
-                    "updatedAt": row.get("quoteTime") or datetime.now(CHINA_TZ).isoformat(),
-                    "liveQuote": bool(row.get("liveQuote")),
-                }
-        except (MarketDataError, OSError, TypeError, ValueError):
-            # 市场快照失败时仍可退回已有个股快照；只是不主动把缓存当成新行情。
-            live_quotes = {}
-
-        def load(code: str) -> Optional[Dict[str, Any]]:
-            # 实时价格由本轮全市场快照统一提供；日线历史固定只读本地缓存，
-            # 不混用图表接口的内存缓存，避免同日 MACD 因来源切换而假翻色。
-            try:
-                try:
-                    history = load_cached_daily_rows(code)
-                except (MarketDataError, OSError, TypeError, ValueError, sqlite3.Error):
-                    # ETF 固定池首次参与扫描时未必已有本地日线缓存；仅此时按需
-                    # 补齐日线，之后会命中个股缓存，避免每轮扫描重复穿透行情源。
-                    if universe.get(code, {}).get("alertPool") not in {"ETF", "科技"}:
-                        raise
-                    history = get_stock_data(code).get("history") or []
-                quote = {
-                    **universe.get(code, {}),
-                    "code": code,
-                    "name": str(universe.get(code, {}).get("name") or code),
-                    "history": history,
-                    "dataSource": "本地历史缓存",
-                }
-                live_quote = live_quotes.get(code)
-                return {**quote, **live_quote} if live_quote else quote
-            except (MarketDataError, OSError, TypeError, ValueError, sqlite3.Error):
-                return None
-        with ThreadPoolExecutor(max_workers=min(16, max(1, len(universe)))) as executor:
-            futures = {executor.submit(load, code): code for code in universe}
-            for future in as_completed(futures):
-                code = futures[future]
-                stock = universe[code]
-                try:
-                    quote = future.result()
-                except (MarketDataError, OSError, TypeError, ValueError, sqlite3.Error):
-                    quote = None
-                if not quote:
-                    continue
-                industry = alert_industry(stock, quote)
-                # 顶部告警必须展示可核对的实时价格与涨跌幅。历史日线足以
-                # 计算 MACD，但缺少实时快照的股票不应只带着“--”进入告警框。
-                if number(quote.get("price")) is None or number(quote.get("changePct")) is None:
-                    continue
-                # ETF、CPO、PCB、光纤固定池采用独立的涨幅确认规则：前两次
-                # 只累计次数，第三次仍达到 3% 才写入正式告警历史。
-                record_fixed_pool_threshold_observation(trade_date, now_local, stock, quote)
-                # ETF、科技固定池只使用涨幅确认规则；不能继续进入开盘涨跌、
-                # 均线或 MACD 判断链路，否则会把固定池误当作 MACD 股票处理。
-                if stock.get("alertPool") in {"ETF", "科技"}:
-                    continue
-                if stock.get("alertPool") == "白名单":
-                    opening = number(quote.get("open"))
-                    previous_close = number(quote.get("previousClose"))
-                    price = number(quote.get("price"))
-                    if opening not in (None, 0) and previous_close not in (None, 0) and price is not None:
-                        open_change_pct = (opening / previous_close - 1) * 100
-                        change_pct = (price / previous_close - 1) * 100
-                        move = open_move_alert_level(open_change_pct, change_pct)
-                        move_key = (trade_date, code)
-                        with _cache_lock:
-                            move_state = _open_move_alert_state.setdefault(move_key, {"up": None, "down": None})
-                            previous_level = move_state.get(move[0]) if move else None
-                            if move:
-                                move_state[move[0]] = max(previous_level if previous_level is not None else -1, move[1])
-                        if move:
-                            label, _, threshold, wording = move
-                            move_config = f"open:{label}:{move[1]}"
-                            # 首次识别到已到达首档（如低开低走 -3%）同样是有效
-                            # 告警；数据库去重使重启或后续轮询不会重复写入。
-                            should_record = previous_level is None or move[1] > previous_level
-                            already_recorded = (code, move_config) in existing_open_move_configs
-                        else:
-                            should_record = False
-                            already_recorded = False
-                        if move and should_record and not already_recorded:
-                            direction = "↑" if price > opening else "↓" if price < opening else "--"
-                            tone = "red" if label == "up" else "green"
-                            event = {
-                                "id": f"{trade_date}:{code}:open:{label}:{move[1]}:{time.time_ns()}",
-                                "tradeDate": trade_date,
-                                "code": code,
-                                "name": str(quote.get("name") or stock.get("name") or code).replace("-U", ""),
-                                "price": price,
-                                "changePct": change_pct,
-                                "openPrice": opening,
-                                "industry": industry,
-                                "board": "growth" if re.match(r"^(300|301)", code) else "starBse" if re.match(r"^(688|689|4|8|92)", code) else "main",
-                                "pool": stock.get("alertPool") or "白名单",
-                                "alertType": "openMove",
-                                "config": move_config,
-                                "direction": direction,
-                                "signal": f"{wording}至{threshold:+.0f}%",
-                                "tone": tone,
-                                "time": datetime.now(CHINA_TZ).strftime("%H:%M:%S"),
-                            }
-                            record_market_alert(event)
-                            existing_open_move_configs.add((code, move_config))
-                history = quote.get("history") or []
-                # 日线 MACD 的唯一口径：截至昨日的日线收盘价 + 本轮实时价格
-                # 作为今日尚未收盘的唯一一根日 K。剔除缓存中可能带有的“今日”
-                # 行，防止同日不同来源各自带一根日 K 导致假翻红/翻绿。
-                closes = [
-                    number(row.get("close")) for row in history
-                    if str(row.get("date") or "") < trade_date and number(row.get("close")) is not None
-                ]
-                live_price = number(quote.get("price"))
-                if live_price is not None:
-                    closes.append(live_price)
-                if not closes:
-                    continue
-                # 白名单、ETF、科技价格穿越 MA5/10/20/30 时告警；均线价格取最近 N 个交易日收盘价。
-                if stock.get("alertPool") in {"白名单", "ETF", "科技"}:
-                    price = number(quote.get("price"))
-                    axis_direction = macd_axis_direction(closes)
-                    if price is not None:
-                        for period in (5, 10, 20, 30):
-                            if len(closes) < period:
-                                continue
-                            moving_average = sum(closes[-period:]) / period
-                            relation = 1 if price > moving_average else -1 if price < moving_average else 0
-                            ma_key = (trade_date, code, f"ma{period}")
-                            with _cache_lock:
-                                previous_relation = _open_move_alert_state.setdefault(ma_key, {}).get("relation")
-                                _open_move_alert_state[ma_key] = {"relation": relation}
-                            crossed_up = previous_relation is not None and previous_relation < 0 <= relation
-                            crossed_down = previous_relation is not None and previous_relation > 0 >= relation
-                            if not (crossed_up or crossed_down):
-                                continue
-                            # MA 上穿只在 MACD 位于 0 轴上方且继续走强时提示；
-                            # 下穿只在 MACD 位于 0 轴下方且继续走弱时提示。这样
-                            # 水下反弹、水上回落都不会产生反向的均线告警。
-                            quote_change_pct = number(quote.get("changePct"))
-                            # “水上 / 水下”必须同时满足两层含义：MACD 的零轴
-                            # 位置，以及相对于昨收的当日涨跌方向。这样水下反弹到
-                            # 均线不会报“涨至日线”，水上回落也不会报“跌至日线”。
-                            if crossed_up and (axis_direction != "up" or quote_change_pct is None or quote_change_pct < 0):
-                                continue
-                            if crossed_down and (axis_direction != "down" or quote_change_pct is None or quote_change_pct > 0):
-                                continue
-                            open_price = number(quote.get("open"))
-                            direction = "↑" if open_price is not None and price > open_price else "↓" if open_price is not None and price < open_price else "--"
-                            tone = "red" if crossed_up else "green"
-                            label = "涨至" if crossed_up else "跌至"
-                            event = {
-                                "id": f"{trade_date}:{code}:ma{period}:{time.time_ns()}",
-                                "tradeDate": trade_date,
-                                "code": code,
-                                "name": str(quote.get("name") or stock.get("name") or code).replace("-U", ""),
-                                "price": price,
-                                "changePct": number(quote.get("changePct")),
-                                "openPrice": number(quote.get("open")),
-                                "industry": industry,
-                                "board": "growth" if re.match(r"^(300|301)", code) else "starBse" if re.match(r"^(688|689|4|8|92)", code) else "main",
-                                "pool": stock.get("alertPool") or "白名单",
-                                "alertType": "maCross",
-                                "config": f"ma{period}",
-                                "direction": direction,
-                                "maPrice": round(moving_average, 2),
-                                "signal": f"{label}{period}日线({moving_average:.2f})",
-                                "tone": tone,
-                                "time": datetime.now(CHINA_TZ).strftime("%H:%M:%S"),
-                            }
-                            record_market_alert(event)
-    finally:
-        with _cache_lock:
-            # 已被超时看门狗接管的旧扫描结束时，不能把新扫描误标为已完成。
-            if _macd_scan_status.get("scanId") == scan_id:
-                _macd_scan_status.update({"running": False, "lastCompletedAt": datetime.now(CHINA_TZ).isoformat()})
-
-
-def start_macd_alert_scan(force: bool = False) -> None:
-    if not is_alert_scan_session(datetime.now(CHINA_TZ)):
-        return
-    with _cache_lock:
-        elapsed = time.monotonic() - float(_macd_scan_status.get("lastStartedAt") or 0)
-        stale = elapsed >= 30
-        running = bool(_macd_scan_status.get("running"))
-        # 外部源出现异常时，旧线程不能永久占住告警扫描。新轮次带独立 token，
-        # 因而旧线程稍后返回也不会覆盖新轮次的状态。
-        timed_out = running and elapsed >= 90
-        if (running and not timed_out) or (not running and not force and not stale):
-            return
-        scan_id = int(_macd_scan_status.get("scanId") or 0) + 1
-        _macd_scan_status.update({
-            "running": True,
-            "lastStartedAt": time.monotonic(),
-            "tradeDate": datetime.now(CHINA_TZ).strftime("%Y-%m-%d"),
-            "scanId": scan_id,
-        })
-    threading.Thread(target=scan_macd_alerts, args=(scan_id,), name="macd-alert-scan", daemon=True).start()
-
 
 def restore_top_alert_events(trade_date: str) -> None:
     """Rehydrate top-alert memory from today's durable history after a restart."""
@@ -5684,7 +5334,7 @@ def restore_top_alert_events(trade_date: str) -> None:
             rows = connection.execute(
                 "SELECT id,trade_date,alert_time,code,name,board,pool,price,change_pct,industry,"
                 "alert_type,config,signal,tone,signals_json "
-                "FROM market_alert_history WHERE trade_date=? "
+                "FROM market_alert_history WHERE trade_date=? AND alert_type='macdScreenerEnter' "
                 "ORDER BY alert_time DESC, created_at DESC LIMIT 360",
                 (trade_date,),
             ).fetchall()
@@ -5723,6 +5373,42 @@ def restore_top_alert_events(trade_date: str) -> None:
         del _macd_alert_events[:-360]
 
 
+def load_top_alert_events_from_history(trade_date: str) -> List[Dict[str, Any]]:
+    """Load the durable MACD alert source used by the four in-page panels."""
+    fields = (
+        "id,trade_date,alert_time,code,name,board,pool,price,change_pct,industry,"
+        "alert_type,config,signal,tone,signals_json"
+    )
+    try:
+        with open_backtest_db() as connection:
+            macd_rows = connection.execute(
+                f"SELECT {fields} FROM market_alert_history "
+                "WHERE trade_date=? AND alert_type='macdScreenerEnter' "
+                "ORDER BY alert_time,created_at,id",
+                (trade_date,),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+
+    events: List[Dict[str, Any]] = []
+    for row in macd_rows:
+        if is_disabled_generic_macd_alert_signal(row[12]):
+            continue
+        try:
+            signals = json.loads(row[14] or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            signals = []
+        events.append({
+            "id": row[0], "tradeDate": row[1], "time": row[2], "code": row[3], "name": row[4],
+            "board": row[5], "pool": row[6], "price": number(row[7]), "changePct": number(row[8]),
+            "industry": top_concept_for_stock(row[3], alert_pool_display_industry(row[3], row[9]), row[1]),
+            "sector": top_concept_for_stock(row[3], alert_pool_display_industry(row[3], row[9]), row[1]),
+            "alertType": row[10], "config": row[11], "signal": row[12], "tone": row[13],
+            "signals": signals,
+        })
+    return events
+
+
 def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
     now_local = datetime.now(CHINA_TZ)
     trade_date = now_local.strftime("%Y-%m-%d")
@@ -5742,27 +5428,29 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
             )
             connection.commit()
     else:
-        start_macd_alert_scan(force_refresh)
         ensure_macd_screener_lifecycle_alert_baseline(now_local)
-    restore_top_alert_events(trade_date)
+    # Top panels use SQLite as their source of truth.
+    events = load_top_alert_events_from_history(trade_date)
     with _cache_lock:
-        events = [
-            event for event in _macd_alert_events
-            if event.get("tradeDate") == trade_date
-            and event.get("alertType") in {"macdScreenerEnter", "fixedThresholdEnter"}
-            and not is_disabled_generic_macd_alert_signal(event.get("signal"))
-        ]
         status = dict(_macd_scan_status)
-    # 内存中可能同时保留了历史观察记录和正式告警记录。告警框只展示
-    # “首次达到 3% 后锁定基准，后续不低于该基准”的正式记录；低于基准的
-    # 后续记录仍保留在数据库，供告警池打开眼睛后复盘。
+        if not events:
+            # SQLite transiently unavailable: retain the previous in-memory
+            # behaviour as a safe, short-lived fallback instead of blanking all
+            # panels.
+            events = [
+                event for event in _macd_alert_events
+                if event.get("tradeDate") == trade_date
+                and event.get("alertType") == "macdScreenerEnter"
+                and not is_disabled_generic_macd_alert_signal(event.get("signal"))
+            ]
+    # 告警框只展示
+    # “第 3 次起首次达到 3% 即可进入告警框；后续不低于首次达到 3% 的
+    # 基准值才续报”的正式记录；低于基准的后续记录仍保留在数据库，供
+    # 告警池打开眼睛后复盘。
     macd_events = [event for event in events if event.get("alertType") == "macdScreenerEnter"]
     macd_meta = macd_confirmation_metadata(macd_events)
     visible_events: List[Dict[str, Any]] = []
     for event in events:
-        if event.get("alertType") != "macdScreenerEnter":
-            visible_events.append(event)
-            continue
         round_key = (
             str(event.get("pool") or ""),
             str(event.get("code") or ""),
@@ -5778,8 +5466,6 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
     # 仍合并到一个单元格。不能再按股票只保留最后一次，否则历史不可见。
     grouped: Dict[Tuple[str, str, str, str], List[Dict[str, Any]]] = {}
     for event in events:
-        # 固定池确认告警与同秒的 MACD 信号分别展示，避免合并后丢失
-        # “第 3 次确认”来源。
         key = (
             str(event.get("board") or ""),
             str(event.get("code") or ""),
@@ -5798,7 +5484,27 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
             ]
             current["signal"] = "\n".join(event.get("signal") or "--" for event in same_round)
         visible.append(current)
-    visible.sort(key=lambda item: item.get("time") or "")
+    # The page renders at most four rows in each panel.
+    def panel_board(item: Dict[str, Any]) -> str:
+        code = str(item.get("code") or "")
+        if re.match(r"^(688|689)", code):
+            return "star"
+        if re.match(r"^(4|8|92)", code):
+            return "bse"
+        if re.match(r"^(300|301)", code):
+            return "growth"
+        return "main"
+
+    visible.sort(key=lambda item: (item.get("time") or "", str(item.get("id") or "")), reverse=True)
+    per_board_counts: Dict[str, int] = {}
+    panel_visible: List[Dict[str, Any]] = []
+    for item in visible:
+        board = panel_board(item)
+        if per_board_counts.get(board, 0) >= 4:
+            continue
+        per_board_counts[board] = per_board_counts.get(board, 0) + 1
+        panel_visible.append(item)
+    visible = sorted(panel_visible, key=lambda item: (item.get("time") or "", str(item.get("id") or "")))
     alert_codes = list(dict.fromkeys(
         str(item.get("code") or "") for item in visible if re.fullmatch(r"\d{6}", str(item.get("code") or ""))
     ))
@@ -5830,12 +5536,8 @@ def get_macd_alerts(force_refresh: bool = False) -> Dict[str, Any]:
         stock_key = f"{pool}|{code}"
         fallback_counts[stock_key] = fallback_counts.get(stock_key, 0) + 1
         round_key = (pool, code, alert_time)
-        if item.get("alertType") == "fixedThresholdEnter":
-            item["alertCount"] = max(3, int(item.get("alertCount") or 0))
-            item["alertConfirmed"] = True
-        else:
-            item["alertCount"] = occurrence_by_key.get(round_key, fallback_counts[stock_key])
-            item["alertConfirmed"] = confirmed_by_key.get(round_key, False)
+        item["alertCount"] = occurrence_by_key.get(round_key, fallback_counts[stock_key])
+        item["alertConfirmed"] = confirmed_by_key.get(round_key, False)
     return {"tradeDate": trade_date, "alerts": visible, "running": status.get("running", False), "updatedAt": datetime.now(CHINA_TZ).isoformat()}
 
 
@@ -12160,6 +11862,13 @@ def main() -> None:
     with open_backtest_db() as connection:
         pass
     connection.close()
+    retired_fixed_alerts = purge_retired_fixed_pool_alerts()
+    if retired_fixed_alerts["history"] or retired_fixed_alerts["observations"]:
+        print(
+            "已移除 ETF/科技固定池告警："
+            f"历史 {retired_fixed_alerts['history']} 条，"
+            f"计数 {retired_fixed_alerts['observations']} 条"
+        )
     from macd_bear import MacdBearService
     server.macd_bear = MacdBearService(globals())
     server.macd_bear.start(capture_stop)
